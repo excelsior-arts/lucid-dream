@@ -1,0 +1,63 @@
+/* Lover's dressing.
+ *
+ * The room itself is next door in room.js — it is rendered, and CSS has no
+ * opinion about it. What is left for this file is the flat part: the words on
+ * the glass, and the panel they are typed into. Loaded after the page's own
+ * stylesheet, so anything here wins.
+ */
+
+:root {
+  /* The same three the room is built from, in the same numbers: room.js has
+     them as hex and this file needs them as channels, and when they drifted
+     apart the conversation went on being violet in a parlour that had stopped
+     being one — bubbles, panel edge and the mark shown while the room loads,
+     all of them a color nothing else in here was any more. */
+  --room-accent: 205, 111, 184;         /* 0xcd6fb8, the parlour's accent */
+  --room-warm: 255, 137, 173;           /* 0xff89ad, the lamp */
+  --room-moon: 228, 212, 255;           /* 0xe4d4ff, the one cold thing */
+
+  /* The window has the right of the room and the couch sits under it, so the
+     panel stands left of center. */
+  --panel-x: 34%;
+}
+
+/* ---- the conversation, on the glass --------------------------------------
+   Sized in the flat page's own pixels: the projection puts it in perspective,
+   so nothing here should know how big the screen is. */
+.msg.pill {
+  background: linear-gradient(200deg, rgba(var(--room-accent), .42), rgba(var(--room-accent), .16));
+  border: 1px solid rgba(var(--room-accent), .5);
+  color: #f8f0ff;
+}
+.msg.you {
+  background: linear-gradient(200deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .035));
+  border: 1px solid rgba(255, 255, 255, .16);
+  color: #eee6f6;
+}
+.msg .who { color: rgba(var(--room-warm), .85); }
+.note { color: rgba(var(--room-moon, 214, 198, 255), .55); }
+
+/* No wash over the glass. There was one — the top of the pane lit as though
+   from outside — and it was painted rather than blended, so it composited as
+   a sheet across the whole reading rectangle: a pale panel hanging in front
+   of the window with the words on top of it. Over the library's bookcase the
+   same idea works, because that one screens, and screening over a dark room
+   only ever adds light. Over a window that is already the brightest thing in
+   the room it adds a layer instead, and the layer is exactly what you see.
+   The lines sit straight on the glass now. */
+
+/* ---- the panel -----------------------------------------------------------
+   Same shape as every room's; only the light on it is ours. */
+#panel {
+  border-color: rgba(var(--room-accent), .34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .08),
+    0 26px 60px rgba(0, 0, 0, .6),
+    0 0 70px rgba(var(--room-accent), .14);
+}
+#send.primary,
+#session.primary {
+  background: linear-gradient(200deg, rgba(var(--room-warm), .95), rgba(var(--room-accent), .9));
+  border-color: transparent;
+  color: #1a1206;
+}

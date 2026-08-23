@@ -1,0 +1,3 @@
+# Everything. This codebase is hand-set: the line breaks carry meaning, and a
+# formatter cannot see that. If Prettier is run anyway, it does nothing.
+*

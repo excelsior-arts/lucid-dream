@@ -1,0 +1,2961 @@
+<!doctype html>
+<html lang="en" class="waking">
+<head>
+<meta charset="utf-8">
+<!-- No zooming. This is a room drawn to the size of the screen, with a
+     conversation projected onto a pane inside it — pinched to 1.4 it is a
+     corner of a room and a column of type running off the edge, and a phone
+     that zooms in on a focused field leaves it there. The scale is fixed so
+     that what a phone shows is what was laid out for it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- Before any stylesheet: the browser paints the blank canvas between two
+     documents using this, and reads it while parsing the head. Declaring
+     dark in CSS is too late — that is the white flash on navigation. -->
+<meta name="color-scheme" content="dark">
+<!-- The bands a phone keeps for itself, above the notch and below the home
+     bar, are painted with this. Black is not the color of any of these rooms
+     — the parlour's dark is a plum and the library's is nearly brown — so a
+     black band top and bottom frames the room in something that is not in it.
+     A starting value here for the first paint, and the room's own void put in
+     its place as soon as one is built. See paintEdges. -->
+<meta name="theme-color" content="#0a0610">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- The face this wears everywhere: a tab, a home screen, an installed
+     window. One photograph of a sunset, cut to every size somebody asks for
+     — see shell/static/icons. Flat squares that bleed to the edge, because
+     each platform rounds or masks them its own way; the maskable one is the
+     same picture standing back from its edges so a circular crop takes sky
+     rather than cloud. -->
+<!-- PNG first, .ico last. A browser is entitled to take the first icon it
+     understands, and every one of them understands a PNG; the .ico is here
+     for the ones that ask the root of the site for that name and nothing
+     else. -->
+<link rel="icon" type="image/png" sizes="32x32" href="/shared/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/shared/icons/icon-16.png">
+<link rel="icon" href="/shared/icons/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" sizes="180x180" href="/shared/icons/icon-180.png">
+<link rel="manifest" href="/shared/manifest.webmanifest">
+<title>Lucid Talk</title>
+<!-- Inline, and first: the shared stylesheet is a separate request, and a
+     browser paints a new document before the stylesheet arrives. Without
+     this the first frame of every navigation is white — invisible in
+     Safari, which covers it with a view transition, and a flash in
+     Firefox, which has none. -->
+<style>html{background:#05060b}</style>
+<link rel="stylesheet" href="/shared/night.css?v=3">
+<style>
+  :root {
+    /* The same room as the shell, named the way this page already speaks:
+       the palette moved to /shared/night.css, and these are its local names.
+       Panels are translucent now — there is a sky behind them. */
+    --bg:transparent; --panel:rgba(14,17,25,.72); --line:var(--edge);
+    --text:var(--ink); --dim:var(--star-dim);
+    --accent:var(--brass); --good:#9a9b3c; --warn:#d9932f; --bad:#b5482c;
+    --you:rgba(30,24,14,.66);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  /* ---- the room ---------------------------------------------------------
+     The room is rendered, not laid out: /shared/room3d.js builds it in WebGL
+     from the numbers in personas/<slug>/room.js. What is left here is the
+     canvas it draws on, and the one piece of the app that is still HTML.
+  */
+  body { margin:0; height:100vh; height:100dvh; overflow:hidden;
+         background:#07050c; color:var(--text);
+         overscroll-behavior:none; touch-action:manipulation; }
+  #stage { position:fixed; inset:0; z-index:0; }
+  #stage canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  /* The void closing in from the edges of the picture. Centered on the heart of
+     the room rather than on the middle of the browser window, because the
+     composition is what it belongs to — the engine keeps --eye-x/y pointed at
+     it. Drawn over the canvas and under the conversation, so the words stay
+     out of it. */
+  #stage.vignetted::after {
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse var(--vig-w, 120%) var(--vig-h, 120%)
+                 at var(--eye-x, 50%) var(--eye-y, 50%),
+               transparent var(--vig-hold, 30%), var(--void, #07050c) 100%);
+  }
+
+  /* The conversation, lying on the glass.
+
+     It is a flat page of its own fixed size, and every frame the engine hands
+     it the projection that lands its four corners on the four corners of the
+     window in the room. So it leans with the wall — the words are in the
+     room's perspective rather than pasted over a picture of one — while
+     staying real text you can select, scroll and read a screen reader from.
+  */
+  #glass { position:fixed; left:0; top:0; z-index:1; transform-origin:0 0;
+           display:flex; will-change:transform;
+           -webkit-font-smoothing:antialiased; }
+
+  /* No room.
+     Some machine somewhere has no WebGL, or the room throws, or the graphics
+     context is taken away mid-conversation. None of that should cost anybody
+     the conversation — so the glass stops being a plane in a room and becomes
+     what it already nearly is: a column of text down the middle of the screen.
+     One class, and the projection stands down (--px back to 1, no transform).
+     It is a perfectly good chat, which is the point. */
+  html.flat #stage { display:none; }
+  html.flat body { background:var(--room-ground, #07050c); }
+  /* Type included: out here there is no glass to take a share of, and no
+     perspective shrinking it either — this is a page, read at a page's size. */
+  html.flat #glass { --px:1; --type:15px; left:50%; top:0; transform:translateX(-50%);
+                     width:min(760px, 92vw); height:100vh; height:100dvh; }
+  html.flat #glass::before { display:none; }
+  html.flat #chat { padding-top:max(24px, env(safe-area-inset-top)); }
+
+  /* Waking.
+     Until the room has been tried there is no telling which of the two this
+     is, and the glass looks wrong in the meantime — a page with no projection
+     on it yet is a column of text stretched down the screen. So both are held
+     back behind a mark that says the place is opening, and whichever it turns
+     out to be arrives already looking like itself. */
+  html.waking #stage, html.waking #glass { opacity:0; }
+  #stage, #glass { transition:opacity .45s ease; }
+  #waking { position:fixed; inset:0; z-index:5; display:grid; place-items:center;
+            pointer-events:none; transition:opacity .3s ease; }
+  html:not(.waking) #waking { opacity:0; visibility:hidden; }
+  /* What a room shows while it is being built: its own figure, breathing.
+     The parlour's is a diamond, which is what its walls are ruled with; the
+     library's is the spiral its floor is. Both are the same mark the card in
+     the box was backed with, so the thing you pressed is the thing that keeps
+     you waiting — and there is no third state to design, because a room that
+     names no figure gets the diamond, which is the house shape. */
+  #waking i { display:block; width:26px; height:26px; transform:rotate(45deg);
+              border:1px solid rgba(var(--room-accent, 141,92,214), .55);
+              animation:opening 1.7s ease-in-out infinite; }
+  @keyframes opening {
+    0%, 100% { opacity:.25; transform:rotate(45deg) scale(.82); }
+    50%      { opacity:.9;  transform:rotate(45deg) scale(1); }
+  }
+  /* Turning rather than pulsing, because that is what a spiral is for: a
+     figure with a direction in it says "working" where a fading one says
+     "waiting". Painted with the room's accent through a mask, so it is the
+     same color the diamond would have been. */
+  html[data-figure="spiral"] #waking i {
+      width:30px; height:30px; border:0; transform:none;
+      background:rgba(var(--room-accent, 141,92,214), .6);
+      -webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20100%20100%27%3E%3Cpath%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%275%27%20stroke-linecap%3D%27round%27%20d%3D%27M50.00%204.00%20L53.80%204.45%20L57.52%205.21%20L61.15%206.26%20L64.65%207.61%20L68.01%209.23%20L71.20%2011.12%20L74.21%2013.25%20L77.00%2015.61%20L79.58%2018.17%20L81.92%2020.92%20L84.01%2023.84%20L85.84%2026.91%20L87.40%2030.09%20L88.68%2033.37%20L89.67%2036.73%20L90.38%2040.14%20L90.80%2043.57%20L90.94%2047.00%20L90.79%2050.41%20L90.35%2053.77%20L89.65%2057.07%20L88.68%2060.27%20L87.45%2063.37%20L85.98%2066.33%20L84.28%2069.14%20L82.37%2071.79%20L80.25%2074.25%20L77.96%2076.51%20L75.50%2078.56%20L72.89%2080.39%20L70.16%2081.98%20L67.32%2083.34%20L64.40%2084.44%20L61.41%2085.29%20L58.39%2085.89%20L55.34%2086.23%20L52.30%2086.32%20L49.27%2086.16%20L46.29%2085.75%20L43.38%2085.09%20L40.55%2084.20%20L37.81%2083.09%20L35.20%2081.76%20L32.72%2080.23%20L30.39%2078.51%20L28.23%2076.61%20L26.25%2074.55%20L24.45%2072.35%20L22.85%2070.02%20L21.46%2067.59%20L20.29%2065.06%20L19.34%2062.46%20L18.61%2059.80%20L18.10%2057.12%20L17.83%2054.41%20L17.77%2051.71%20L17.95%2049.03%20L18.34%2046.40%20L18.95%2043.82%20L19.76%2041.31%20L20.77%2038.90%20L21.97%2036.59%20L23.35%2034.41%20L24.90%2032.36%20L26.60%2030.46%20L28.44%2028.72%20L30.41%2027.15%20L32.49%2025.75%20L34.66%2024.54%20L36.91%2023.52%20L39.23%2022.70%20L41.59%2022.08%20L43.98%2021.66%20L46.37%2021.43%20L48.77%2021.41%20L51.14%2021.59%20L53.48%2021.96%20L55.76%2022.52%20L57.97%2023.26%20L60.10%2024.18%20L62.14%2025.27%20L64.06%2026.51%20L65.86%2027.90%20L67.53%2029.43%20L69.06%2031.08%20L70.44%2032.83%20L71.65%2034.69%20L72.71%2036.63%20L73.59%2038.63%20L74.30%2040.69%20L74.83%2042.79%20L75.19%2044.91%20L75.36%2047.04%20L75.36%2049.16%20L75.18%2051.27%20L74.83%2053.33%20L74.31%2055.35%20L73.63%2057.31%20L72.80%2059.19%20L71.82%2060.98%20L70.70%2062.67%20L69.45%2064.26%20L68.08%2065.73%20L66.61%2067.07%20L65.04%2068.27%20L63.38%2069.34%20L61.65%2070.25%20L59.87%2071.02%20L58.04%2071.63%20L56.17%2072.08%20L54.29%2072.38%20L52.40%2072.51%20L50.52%2072.49%20L48.65%2072.31%20L46.82%2071.98%20L45.04%2071.51%20L43.31%2070.89%20L41.65%2070.13%20L40.07%2069.25%20L38.58%2068.24%20L37.18%2067.12%20L35.89%2065.89%20L34.72%2064.57%20L33.66%2063.17%20L32.74%2061.69%20L31.94%2060.15%20L31.28%2058.56%20L30.75%2056.93%20L30.37%2055.28%20L30.12%2053.60%20L30.02%2051.93%20L30.06%2050.26%20L30.23%2048.61%20L30.54%2046.99%20L30.97%2045.41%20L31.54%2043.88%20L32.22%2042.42%20L33.02%2041.03%20L33.93%2039.71%20L34.94%2038.48%20L36.03%2037.35%20L37.21%2036.32%20L38.47%2035.40%20L39.79%2034.59%20L41.16%2033.90%20L42.58%2033.32%20L44.02%2032.87%20L45.50%2032.55%20L46.98%2032.34%20L48.47%2032.27%20L49.95%2032.31%20L51.41%2032.48%20L52.84%2032.77%20L54.24%2033.17%20L55.59%2033.69%20L56.88%2034.31%20L58.11%2035.03%20L59.27%2035.84%20L60.34%2036.75%20L61.34%2037.73%20L62.24%2038.79%20L63.05%2039.91%20L63.75%2041.08%20L64.36%2042.30%20L64.85%2043.57%20L65.24%2044.85%20L65.52%2046.16%20L65.68%2047.48%20L65.74%2048.80%20L65.68%2050.11%20L65.52%2051.41%20L65.25%2052.67%20L64.88%2053.91%20L64.41%2055.10%20L63.85%2056.24%20L63.20%2057.32%20L62.47%2058.34%20L61.66%2059.29%20L60.78%2060.16%20L59.83%2060.95%20L58.83%2061.66%20L57.78%2062.27%20L56.70%2062.80%20L55.57%2063.23%20L54.43%2063.56%20L53.26%2063.79%20L52.09%2063.93%20L50.92%2063.96%20L49.76%2063.90%20L48.61%2063.75%20L47.49%2063.50%20L46.40%2063.16%20L45.35%2062.74%20L44.34%2062.23%20L43.39%2061.64%20L42.49%2060.98%20L41.66%2060.25%20L40.89%2059.47%20L40.20%2058.62%20L39.58%2057.73%20L39.05%2056.79%20L38.59%2055.82%20L38.22%2054.82%20L37.94%2053.80%20L37.74%2052.77%20L37.63%2051.73%20L37.61%2050.69%20L37.68%2049.66%20L37.82%2048.65%20L38.05%2047.66%20L38.36%2046.69%20L38.75%2045.76%20L39.21%2044.88%20L39.74%2044.04%20L40.33%2043.25%20L40.98%2042.51%20L41.69%2041.84%20L42.44%2041.24%20L43.24%2040.70%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+      mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20100%20100%27%3E%3Cpath%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-width%3D%275%27%20stroke-linecap%3D%27round%27%20d%3D%27M50.00%204.00%20L53.80%204.45%20L57.52%205.21%20L61.15%206.26%20L64.65%207.61%20L68.01%209.23%20L71.20%2011.12%20L74.21%2013.25%20L77.00%2015.61%20L79.58%2018.17%20L81.92%2020.92%20L84.01%2023.84%20L85.84%2026.91%20L87.40%2030.09%20L88.68%2033.37%20L89.67%2036.73%20L90.38%2040.14%20L90.80%2043.57%20L90.94%2047.00%20L90.79%2050.41%20L90.35%2053.77%20L89.65%2057.07%20L88.68%2060.27%20L87.45%2063.37%20L85.98%2066.33%20L84.28%2069.14%20L82.37%2071.79%20L80.25%2074.25%20L77.96%2076.51%20L75.50%2078.56%20L72.89%2080.39%20L70.16%2081.98%20L67.32%2083.34%20L64.40%2084.44%20L61.41%2085.29%20L58.39%2085.89%20L55.34%2086.23%20L52.30%2086.32%20L49.27%2086.16%20L46.29%2085.75%20L43.38%2085.09%20L40.55%2084.20%20L37.81%2083.09%20L35.20%2081.76%20L32.72%2080.23%20L30.39%2078.51%20L28.23%2076.61%20L26.25%2074.55%20L24.45%2072.35%20L22.85%2070.02%20L21.46%2067.59%20L20.29%2065.06%20L19.34%2062.46%20L18.61%2059.80%20L18.10%2057.12%20L17.83%2054.41%20L17.77%2051.71%20L17.95%2049.03%20L18.34%2046.40%20L18.95%2043.82%20L19.76%2041.31%20L20.77%2038.90%20L21.97%2036.59%20L23.35%2034.41%20L24.90%2032.36%20L26.60%2030.46%20L28.44%2028.72%20L30.41%2027.15%20L32.49%2025.75%20L34.66%2024.54%20L36.91%2023.52%20L39.23%2022.70%20L41.59%2022.08%20L43.98%2021.66%20L46.37%2021.43%20L48.77%2021.41%20L51.14%2021.59%20L53.48%2021.96%20L55.76%2022.52%20L57.97%2023.26%20L60.10%2024.18%20L62.14%2025.27%20L64.06%2026.51%20L65.86%2027.90%20L67.53%2029.43%20L69.06%2031.08%20L70.44%2032.83%20L71.65%2034.69%20L72.71%2036.63%20L73.59%2038.63%20L74.30%2040.69%20L74.83%2042.79%20L75.19%2044.91%20L75.36%2047.04%20L75.36%2049.16%20L75.18%2051.27%20L74.83%2053.33%20L74.31%2055.35%20L73.63%2057.31%20L72.80%2059.19%20L71.82%2060.98%20L70.70%2062.67%20L69.45%2064.26%20L68.08%2065.73%20L66.61%2067.07%20L65.04%2068.27%20L63.38%2069.34%20L61.65%2070.25%20L59.87%2071.02%20L58.04%2071.63%20L56.17%2072.08%20L54.29%2072.38%20L52.40%2072.51%20L50.52%2072.49%20L48.65%2072.31%20L46.82%2071.98%20L45.04%2071.51%20L43.31%2070.89%20L41.65%2070.13%20L40.07%2069.25%20L38.58%2068.24%20L37.18%2067.12%20L35.89%2065.89%20L34.72%2064.57%20L33.66%2063.17%20L32.74%2061.69%20L31.94%2060.15%20L31.28%2058.56%20L30.75%2056.93%20L30.37%2055.28%20L30.12%2053.60%20L30.02%2051.93%20L30.06%2050.26%20L30.23%2048.61%20L30.54%2046.99%20L30.97%2045.41%20L31.54%2043.88%20L32.22%2042.42%20L33.02%2041.03%20L33.93%2039.71%20L34.94%2038.48%20L36.03%2037.35%20L37.21%2036.32%20L38.47%2035.40%20L39.79%2034.59%20L41.16%2033.90%20L42.58%2033.32%20L44.02%2032.87%20L45.50%2032.55%20L46.98%2032.34%20L48.47%2032.27%20L49.95%2032.31%20L51.41%2032.48%20L52.84%2032.77%20L54.24%2033.17%20L55.59%2033.69%20L56.88%2034.31%20L58.11%2035.03%20L59.27%2035.84%20L60.34%2036.75%20L61.34%2037.73%20L62.24%2038.79%20L63.05%2039.91%20L63.75%2041.08%20L64.36%2042.30%20L64.85%2043.57%20L65.24%2044.85%20L65.52%2046.16%20L65.68%2047.48%20L65.74%2048.80%20L65.68%2050.11%20L65.52%2051.41%20L65.25%2052.67%20L64.88%2053.91%20L64.41%2055.10%20L63.85%2056.24%20L63.20%2057.32%20L62.47%2058.34%20L61.66%2059.29%20L60.78%2060.16%20L59.83%2060.95%20L58.83%2061.66%20L57.78%2062.27%20L56.70%2062.80%20L55.57%2063.23%20L54.43%2063.56%20L53.26%2063.79%20L52.09%2063.93%20L50.92%2063.96%20L49.76%2063.90%20L48.61%2063.75%20L47.49%2063.50%20L46.40%2063.16%20L45.35%2062.74%20L44.34%2062.23%20L43.39%2061.64%20L42.49%2060.98%20L41.66%2060.25%20L40.89%2059.47%20L40.20%2058.62%20L39.58%2057.73%20L39.05%2056.79%20L38.59%2055.82%20L38.22%2054.82%20L37.94%2053.80%20L37.74%2052.77%20L37.63%2051.73%20L37.61%2050.69%20L37.68%2049.66%20L37.82%2048.65%20L38.05%2047.66%20L38.36%2046.69%20L38.75%2045.76%20L39.21%2044.88%20L39.74%2044.04%20L40.33%2043.25%20L40.98%2042.51%20L41.69%2041.84%20L42.44%2041.24%20L43.24%2040.70%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+      animation:winding 2.6s linear infinite; }
+  @keyframes winding {
+    from { transform:rotate(0deg);   opacity:.4; }
+    50%  {                           opacity:.85; }
+    to   { transform:rotate(360deg); opacity:.4; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #waking i, html[data-figure="spiral"] #waking i { animation:none; opacity:.6; } }
+  #chatwrap { position:relative; flex:1; min-height:0; display:flex; overflow:hidden; }
+  /* The conversation scrolls and does not say so. A scrollbar down the glass
+     is a piece of operating system laid over a room — the one thing on that
+     pane that belongs to no part of this — and it is drawing a bright line
+     through a window somebody is reading a scene through. Nothing is lost by
+     taking it away: the last line is followed on its own, and the way back
+     down when you have scrolled up is the tip that already appears for it.
+     Wheel, trackpad, touch and keys are untouched. */
+  #chat { scrollbar-width:none; -ms-overflow-style:none;
+          flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+          overscroll-behavior:contain;
+          padding:calc(1.1em) calc(1.3em) calc(1.4em + var(--under, 0px));
+          font-size:calc(var(--type) * var(--px, 1));
+          display:flex; flex-direction:column;
+          /* Enough that the corner controls of one line clear the next. */
+          gap:calc(1.05em); }
+  #chat::-webkit-scrollbar { width:0; height:0; }
+  /* A short conversation sits on the bottom of the glass rather than hanging
+     from the top of it, and this is the way to say that on something which
+     also scrolls. `justify-content:flex-end` says it more plainly and is a
+     trap: once the conversation is taller than the box, the overflow goes out
+     of the *top*, where scrollTop cannot reach it. scrollHeight stayed equal
+     to clientHeight and twenty thousand pixels of talk sat above the frame
+     with no way back to it — the room had no history at all, and the only
+     visible symptom was a ↓ latest button that would not go away. An auto
+     margin on the first line does the same job and leaves the overflow at the
+     end, where scrolling is. */
+  #chat > *:first-child { margin-top:auto; }
+  /* Sized in real screen pixels, not in the page's own.
+
+     The glass is a plane in a room, so anything written on it comes out at
+     whatever size the perspective makes of it — which changes every time the
+     window is resized. The engine measures that and hands the page --px, the
+     number of page pixels in a screen pixel, so a size asked for here is the
+     size it arrives at. --type is the type on the glass; the panel's own is
+     13px, and the conversation should be a little larger than its controls,
+     not twice them.
+
+     And it keeps its share of the glass, whatever size the glass came out.
+     Held at one size it is right in a full-screen window and shouting in a
+     half-width one, where everything else in the room has come down with the
+     viewport and the writing has not. Tied to the window instead it climbs
+     past the room, which stops growing once the camera has framed it — the
+     shelves and the door stay put and the conversation goes on getting bigger.
+
+     So the engine hands over --glass-px, the width the glass actually came out
+     on screen, and the type is a share of that: a twenty-seventh, which is
+     about thirty characters to the line and the size these want to be read at.
+     Bounded at both ends — below eleven it is a squint, above seventeen it is
+     a poster — and the fallback is the glass at its usual width, for the frame
+     before the first measurement. */
+  #glass { --type:clamp(11px, calc(var(--glass-px, 320px) * .0366), 17px); }
+  #glass .msg { max-width:80%; line-height:1.45;
+                font-size:calc(var(--type) * var(--px, 1));
+                padding:.45em .7em; border-radius:.9em; }
+  #glass .who { font-size:.72em; margin-bottom:.1em; }
+  #glass .note { font-size:.85em; }
+  /* Straddling the corner, in the type's own units so it stays put when the
+     projection changes size.
+
+     Including the buttons: the app's own `button` rule pins them to 13px, and
+     13px on a page hung at the far end of a room is not 13px on the screen —
+     it came out half the size of the words beside it on a desk and about
+     right on a phone. Inheriting the message's size instead means the icons
+     are a fixed fraction of the text, wherever the camera is standing. */
+  #glass .tools { right:.4em; bottom:-.6em; gap:.1em; padding:.1em .2em; }
+  #glass .tools button { font-size:.88em; padding:.16em; }
+  #glass .tools button svg { width:1.15em; height:1.15em; }
+
+  /* ---- who you are with, along the top --------------------------------- */
+  .thermo { width:11px; height:11px; flex:0 0 auto; opacity:.85; }
+  /* Who you are with: the first row of the panel. Nothing of this app floats
+     in the corners of the room — the room is the room, and everything you can
+     press is in one place. */
+  /* Wrapping, and every child allowed to be narrower than its content wants.
+     Without min-width:0 a flex child never shrinks below its own text, which
+     is why a row that fits in one browser overflows in the next: the same
+     select is simply wider there. */
+  /* ---- the deck --------------------------------------------------------
+     Keys with some travel in them: a face, a lit edge along the top, and a
+     shadow under it that shortens when it goes down. Chunky enough for a
+     thumb, and the labels stay words. */
+  #deck { display:flex; align-items:flex-end; flex-wrap:wrap; gap:7px 7px; }
+  /* The writing line, when there is one. It takes the space the keys leave
+     and no more, so the panel stays a row of controls with somewhere to write
+     rather than a form with some buttons under it. */
+  /* A width worth writing in, or a row of its own.
+
+     Asked for nothing and given whatever was spare, it ended up about a
+     hundred and thirty pixels wide whatever the window was doing — the keys
+     take the row and the panel is set by the room, not by the screen — and its
+     own placeholder wrapped inside it. A line you cannot see a sentence in is
+     not a line, it is a slot.
+
+     So it asks for a real width. If the keys leave that much it sits among
+     them and grows into whatever else is spare; if they do not, the row wraps
+     and it takes a line under them, which is the same arrangement a phone gets
+     and for the same reason. The counter is narrow enough now to stay up on
+     the row either way. */
+  /* Its own height, not the row's. Stretched, it copied whatever the tallest
+     thing on the line happened to be — the stacked counter — and stood five
+     pixels above the keys, which is exactly enough for a row to stop looking
+     like one. Two rows of this type plus its padding comes to the height of a
+     key, so all three line up by being the same size rather than by being
+     told to. */
+  #say { flex:1 1 0; min-width:0; display:flex; align-items:flex-end; }
+  /* hidden means hidden. Every `display` in this file outranks the browser's
+     own [hidden] rule, so a thing given the attribute stayed on screen — and
+     the four rules that used to sit here naming individual elements were four
+     people finding that out separately. The microphone key was the fifth: on
+     an address that cannot have a microphone it was told to go and did not,
+     while the console said it was not there. */
+  [hidden] { display:none !important; }
+  #say #text { width:100%; min-width:0; resize:none;
+               padding:4px 9px; font-size:12px; line-height:1.42;
+               overflow-y:auto; }
+  /* A hint is not writing, and should not be the same weight as it: at the
+     same color the box reads as already having something in it. */
+  #say #text::placeholder { color:var(--dim); opacity:.75; }
+  .key { flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
+         gap:2px; min-width:54px; min-height:0; padding:6px 8px 5px;
+         cursor:pointer; border-radius:7px 7px 9px 9px;
+         color:var(--text);
+         background:linear-gradient(#2a2530, #17141d);
+         border:1px solid rgba(255,255,255,.09);
+         border-top-color:rgba(255,255,255,.16);
+         box-shadow:0 2px 0 rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+         transition:transform .06s, box-shadow .06s, background .15s, color .15s; }
+  .key i { font-style:normal; font-size:15px; line-height:1;
+           display:flex; align-items:center; justify-content:center; }
+  .key i svg { width:19px; height:19px; display:block; }
+  /* The waiting circle is drawn a hair smaller than the live one, and they
+     are the same circle. A pale shape on a dark key spreads — put the white
+     one and the red one side by side at the same radius and the white reads
+     larger, which is exactly the wrong way round for the one that is not
+     doing anything. Measured they were identical; seen they were not, and
+     what is seen is the part that counts. */
+  .key.rec:not(.armed) i svg { transform:scale(.93); }
+  .key span { font-size:8.5px; letter-spacing:1.3px; text-transform:uppercase;
+              color:var(--dim); }
+  .key:hover { color:var(--ink); }
+  .key:hover span { color:var(--text); }
+  /* Pressed, and it stays down while what it started is happening. */
+  .key:active, .key.down { transform:translateY(2px);
+                           box-shadow:0 0 0 rgba(0,0,0,.55), inset 0 2px 5px rgba(0,0,0,.5); }
+  .key.down { background:linear-gradient(#1b1822, #221e2a); }
+  .key[disabled] { opacity:.35; cursor:default; transform:none;
+                   box-shadow:0 2px 0 rgba(0,0,0,.55); }
+  /* The two record keys. What goes on the tape comes through one of them —
+     Talk is the mic, Type is a line to write in — and neither is armed until
+     you say so, which is what the color is for: a white circle waiting, a
+     red one live. It used to be red either way, on a red key, which read as a
+     warning about something rather than an offer of two ways to speak. */
+  .key.rec i { color:#e9e5f0; transition:color .15s; }
+  .key.rec.armed i { color:#e0644f; }
+  /* A level, along the foot of the Talk key and nowhere else. Small on
+     purpose: it is here to answer "is it hearing me" while something is being
+     set up, not to be watched. A pair of meters across the panel was a second
+     thing moving in a room that is already moving, and the room is the part
+     worth looking at. */
+  #t-rec { position:relative; overflow:hidden; }
+  #t-rec::after { content:""; position:absolute; left:0; bottom:0; height:2px;
+                  width:var(--lvl, 0%);
+                  background:#ff8a72; box-shadow:0 0 6px rgba(255,138,114,.8);
+                  transition:width .08s linear; }
+  /* And only the microphone blinks. A blink says "this is happening, now",
+     which is true of a mic that is open and listening and is not true of a
+     line waiting to be typed into: nobody types continuously, and a light
+     pulsing at somebody who has stopped to think is a light asking them to
+     hurry up. */
+  #t-rec.armed i { color:#ff6a4d; animation:blink var(--beat, 1.6s) ease-in-out infinite; }
+  .key.playing i { color:var(--good); }
+
+  /* The counter: which turn this is, and how much tape a Play would give. */
+  /* The two readouts sit one above the other, not side by side. They are the
+     narrowest things in the panel and the writing line is the widest, and a
+     row puts them in competition: the counter takes a hundred and twenty
+     pixels it does not need and the line wraps its own placeholder. Stacked,
+     the counter is as wide as the wider of the two and the line gets the rest.
+     Right-aligned so the digits keep a common edge, which is what makes a
+     column of numbers readable at a glance. */
+  #counter { margin-left:auto; display:flex; flex-direction:column;
+             align-items:flex-end; gap:2px;
+             font-variant-numeric:tabular-nums; }
+  #turns { font-size:14px; letter-spacing:2px; color:var(--text);
+           padding:1px 7px; border-radius:5px;
+           background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.08); }
+  /* How much tape is left, as a clock rather than as a word. "15 min" is a
+     label; a pair of digits counting down is the machine telling you where it
+     has got to, which is what the rest of this panel is doing. The colon
+     blinks while it is running, and only then — a still colon is a tape that
+     is not moving, and you can tell at a glance across the room. */
+  #tape { display:inline-flex; align-items:baseline; gap:0;
+          font-size:13px; letter-spacing:1.5px; white-space:nowrap;
+          padding:2px 7px; border-radius:5px; color:#f0c98a;
+          background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.08);
+          text-shadow:0 0 7px rgba(240,201,138,.45); }
+  #tape i { font-style:normal; }
+  #tape em { font-style:normal; padding:0 1px; }
+  #tape.running em { animation:tick 1s steps(1, end) infinite; }
+  /* Held: the colon stops where it is and the whole thing steps back, so a
+     stopped clock is legible as stopped from across the room rather than as
+     one that merely happens to be between blinks. */
+  #tape.holding { color:var(--dim); text-shadow:none; }
+  @keyframes tick { 0%, 49% { opacity:1; } 50%, 100% { opacity:.12; } }
+  /* Run out, and it says so by going the color of a thing that has stopped. */
+  #tape.spent { color:var(--dim); text-shadow:none; }
+
+  /* ---- the panel: the one thing every room shares ----------------------- */
+  /* Centered unless a room says otherwise: --panel-x is where its middle sits,
+     so a room with something to show on one side can push it to the other.
+
+     But only as far as there is room to. A room asks for a fraction of the
+     window, and a fraction of a narrow window puts a 760px panel through the
+     left edge — which makes a perfectly good desktop look like a phone, and
+     then cuts the controls off it.
+
+     So the offset is held between two walls: never nearer either edge than
+     half the panel's own width plus a margin. Whatever a room asks for, the
+     panel slides back towards the middle as the window narrows and stops
+     while it is all still on screen. This is computed on the panel itself
+     rather than on :root, because a custom property is resolved where it is
+     declared — a --panel-x set further down would otherwise be read too late
+     to matter. */
+  :root { --panel-w:min(760px, 92vw); }
+  #panel {
+    --panel-at:clamp(calc(var(--panel-w) / 2 + 12px),
+                     var(--panel-x, 50%),
+                     calc(100% - var(--panel-w) / 2 - 12px));
+  }
+  /* And a room's offset is only worth honouring while there is a room beside
+     it to leave clear. Under this the panel comes back to the middle instead
+     of standing against the left edge. On the elements, so it still beats a
+     room's stylesheet, which can only reach :root. */
+  @media (max-width:1320px) {
+    #panel { --panel-x:50%; }
+  }
+  #panel { position:fixed; z-index:3; transform:translateX(-50%);
+           left:var(--panel-at);
+           bottom:max(20px, env(safe-area-inset-bottom));
+           width:var(--panel-w);
+           display:flex; flex-direction:column; gap:6px;
+           padding:12px 14px 10px; border-radius:18px;
+           background:rgba(10,7,16,.8);
+           border:1px solid rgba(var(--room-accent), .3);
+           box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 26px 60px rgba(0,0,0,.6),
+                      0 0 60px rgba(var(--room-accent), .12);
+           backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+  #controls { display:flex; flex-direction:column; gap:8px; }
+
+  /* Only shown once you have scrolled away from the bottom. */
+  #jump { position:absolute; left:50%; transform:translateX(-50%); bottom:12px;
+          font-size:12px; padding:5px 12px; border-radius:999px; background:#241a0e;
+          border:1px solid var(--line); color:var(--text); box-shadow:0 3px 10px rgba(0,0,0,.5);
+          opacity:.95; z-index:2; }
+  .msg { position:relative; max-width:74%; padding:7px 11px; border-radius:13px;
+         font-size:14px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word; }
+  /* Say it again — the mic cuts it off on a cough, and a line you missed is
+     otherwise gone.
+
+     They sit on the bubble's own corner, half in and half out of it, rather
+     than in a strip of padding reserved for them along the bottom. The window
+     is a small container and the words are the point: a line of padding kept
+     empty against the chance of a hover is a line of text nobody can read. */
+  .tools { position:absolute; right:6px; bottom:-9px; display:flex; gap:2px;
+           padding:2px 3px; border-radius:999px;
+           background:rgba(10,7,16,.78); border:1px solid rgba(255,255,255,.12);
+           backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+           opacity:0; transition:opacity .15s; }
+  /* A line that arrived while the sound was off. The words are on the glass
+     and the voice was dropped, which from in here is indistinguishable from a
+     line that was simply quiet — so the bubble says so itself, beside the
+     text, without waiting to be hovered. Hovering is not a thing a phone
+     does, and this is exactly the case somebody meets on one. */
+  .msg .unheard { position:absolute; right:6px; top:-9px; display:flex;
+                  min-height:0; padding:2px; line-height:0; cursor:pointer;
+                  color:var(--warn, #d9932f); opacity:.85;
+                  background:var(--panel, #1b1b22); border:1px solid var(--line, #33333d);
+                  border-radius:999px; }
+  .msg .unheard:hover { opacity:1; }
+  .msg .unheard svg { width:13px; height:13px; }
+  .tools button { min-height:0; padding:2px; line-height:0; border:0;
+                  background:none; color:var(--dim); cursor:pointer; }
+  .msg:hover .tools, .tools button:focus { opacity:1; }
+  .tools .replay:hover { color:var(--accent); }
+  .tools .del:hover { color:var(--bad); }
+  /* A phone has no hover, so there they stay visible and quiet instead. */
+  @media (hover: none) { .tools { opacity:.4; } }
+  /* Nothing to replay or delete until the line is finished — mid-stream they
+     read as controls that do not work. */
+  .msg.streaming .tools { display:none; }
+
+  .msg.you { align-self:flex-end; background:var(--you); border-bottom-right-radius:4px;
+             border:1px solid rgba(201,162,39,.16);
+             backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+  /* No shadow under either of them: they are on the glass, not floating in
+     front of it, and a cast shadow says the wrong thing about where they are. */
+  /* The other half of the conversation. There was a `.pill` in here as well —
+     the lamps in the strip along the bottom of the panel — and it made every
+     one of these a flex row, so the name sat beside the text instead of over
+     it. That strip is gone and so is the rule; this is the only `.pill` on
+     the page now. Third time a name has been quietly shared by two things
+     that had nothing to do with each other, after `.row` and `.deck`. */
+  .msg.pill { align-self:flex-start; background:var(--panel); border:1px solid var(--rim);
+             border-bottom-left-radius:4px;
+             backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+  .who { font-size:10px; text-transform:uppercase; letter-spacing:.7px; color:var(--dim);
+         margin-bottom:3px; }
+  /* The record key blinks while the mic is open, and faster when it can hear
+     you — the meter is the key itself rather than a lamp beside it. */
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+  .tag { color:var(--accent); opacity:.8; }
+  .note { align-self:center; font-size:12px; color:var(--dim); font-style:italic; }
+  /* Your turn, before the words exist: it hears you now, the transcript
+     arrives a second later. Without this the screen says nothing while you
+     talk and the reply seems to come out of nowhere. */
+  .msg.pending { opacity:.7; }
+  /* Something you did, not something you said. */
+  .msg.hand .body { font-style:italic; opacity:.82; }
+  .msg.hand .who { opacity:.7; }
+  .dots { display:inline-flex; gap:5px; align-items:center; height:1em; }
+  .dots b { width:6px; height:6px; border-radius:50%; background:var(--dim);
+            animation:blink 1.2s ease-in-out infinite; }
+  .dots b:nth-child(2) { animation-delay:.2s; }
+  .dots b:nth-child(3) { animation-delay:.4s; }
+
+  /* No rule along the top. There was a row of buttons above this once and the
+     line divided the two; with that gone it was drawing a line under nothing. */
+  #controls { padding:12px 16px;
+              background:linear-gradient(transparent, rgba(255,255,255,.025));
+              display:flex; flex-direction:column; gap:10px; }
+  /* Said once, above the keys, when the machine has been taken to another
+     window: the keys still look pressable and nothing they do would reach
+     this conversation. A page that has stopped meaning anything should say
+     so rather than go quiet. */
+  #taken, #gone { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+           padding:8px 12px; border-radius:9px; font-size:12.5px;
+           color:#e9c98f; background:rgba(120,80,20,.22);
+           border:1px solid rgba(217,164,65,.32); }
+  #taken span, #gone span { flex:1; min-width:120px; }
+  #taken button, #gone button { padding:5px 10px; font-size:12px; }
+  /* Not a warning about somebody else — a dead end. Said in the color this
+     program uses for something that has gone wrong rather than something that
+     is merely elsewhere. */
+  #gone { color:#e9a184; background:rgba(90,38,23,.28);
+          border-color:rgba(90,38,23,.6); }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  button { font:inherit; font-size:13px; color:var(--text); background:#1d1710;
+           border:1px solid var(--line); border-radius:8px; padding:7px 13px; cursor:pointer; }
+  button:hover:not(:disabled) { background:#2a2114; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#1a1206; font-weight:600; }
+  button.danger { background:#33170f; border-color:#5a2617; color:#e9a184; }
+  /* These two change their labels while you are reaching for them — Send /
+     Stop & send, Start models / Starting… / Stop models. Sized for the
+     longest, they keep still: a button that resizes between your press and
+     your release takes the click with it and nothing happens. */
+  #send { min-width:112px; }
+  #session { min-width:124px; }
+  button.danger:hover:not(:disabled) { background:#411d12; }
+  input[type=text], textarea, select {
+        font:inherit; font-size:13px; color:var(--text); background:#17120b;
+        border:1px solid var(--line); border-radius:8px; padding:7px 11px; }
+  input[type=text] { flex:1; min-width:180px; }
+  /* The room's own color when it has the focus, not the browser's blue. It
+     is the only field on the page and it is usually the focused thing, so
+     that ring was on screen most of the evening. */
+  input[type=text]:focus, textarea:focus {
+        outline:none; border-color:rgba(var(--room-accent), .55);
+        box-shadow:0 0 0 2px rgba(var(--room-accent), .14); }
+  label.chk { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
+
+  /* Two tight lines of status, sized so the pair stands as tall as the
+     button beside them and no taller. */
+  /* Asking before something cannot be undone. In the page's own colors,
+     because a browser dialog arrives in a different typeface wearing the
+     name of the machine. */
+  #ask { position:fixed; inset:0; z-index:20; display:flex; align-items:center;
+         justify-content:center; background:rgba(0,0,0,.6); padding:20px; }
+  .askbox { max-width:420px; background:var(--panel); color:var(--text);
+            border:1px solid var(--line); border-radius:14px; padding:18px 20px;
+            box-shadow:0 18px 50px rgba(0,0,0,.6); }
+  .askbox h2 { margin:0 0 8px; font-size:15px; font-weight:600; }
+  .askbox p { margin:0 0 16px; font-size:13px; line-height:1.5; color:var(--dim); }
+  .askrow { display:flex; justify-content:flex-end; gap:10px; }
+
+  .frow { display:flex; align-items:center; gap:6px 14px; min-width:0; flex-wrap:wrap; }
+  .frow > span:empty { display:none; }
+  .s { width:7px; height:7px; border-radius:50%; background:#4a3d29; }
+  .s.ready { background:var(--good); } .s.loading,.s.starting { background:var(--warn); }
+  .s.error { background:var(--bad); }
+  /* the one thing you cannot tell by looking: whether the browser is really
+     canceling its voice out of what the microphone hears */
+  #micinfo.bare { color:var(--warn); }
+  #log { flex:1; min-width:0; text-align:right; overflow:hidden;
+         text-overflow:ellipsis; white-space:nowrap; }
+
+  /* ---- phone ---------------------------------------------------------- */
+  @media (max-width:700px), (pointer:coarse) {
+    /* The screen belongs to the conversation: Start, the mic switch and a
+       text box. Everything else lives behind More. */
+    input[type=text], textarea, select { font-size:16px; }
+    button { min-height:44px; padding:8px 12px; font-size:14px; }
+
+    /* A phone is the same room from closer in — the engine's portrait camera
+       does that. All that changes here is the chat's own type, and that the
+       panel comes back to the middle: there is no room beside it to leave. */
+    /* A phone holds the screen closer than a desk holds a monitor. */
+    #glass { --type:16px; }
+    #glass .msg { max-width:88%; }
+    /* Set here rather than on --panel-x: a room's own stylesheet loads after
+       this one, and a variable it sets would win even on a phone. */
+    #panel { left:50%; }
+    #panel { width:calc(100% - 20px); padding:10px 12px 8px; }
+    /* The deck keeps all four keys and the counter on one line: on a phone
+       they were a hair too wide together and the tape length ran off the
+       right-hand edge. */
+    /* The line you type and the key that sends it stay on one line: wrapped,
+       Send took a whole row of a panel that is trying to be small. */
+    #say { flex-wrap:nowrap; }
+    /* Sixteen pixels, and not for legibility. A phone zooms the whole page in
+       when a field it is focusing has type smaller than that, and the zoom
+       does not go back on its own — so a line typed into a room leaves the
+       room bigger than it was, every time. The one number that stops it is
+       this one, and it costs a slightly larger line of type in a place where
+       somebody is typing anyway. */
+    #say #text { min-width:0; font-size:16px; line-height:1.35; }
+    #say #send { flex:0 0 auto; }
+    /* Six keys and a counter across a phone: the keys give up what they can
+       and the tape length gives up its place — it is in Play's tooltip and on
+       the box, and the turn number is the one worth keeping in the corner. */
+    .key { min-width:41px; padding:6px 4px 5px; }
+    .key i svg { width:20px; height:20px; }
+    /* Condensed rather than dropped. Eight keys and a counter across a phone
+       is tight, and everything here gives up a little so that all of it fits
+       on one row: the labels lose half a pixel and most of their tracking, the
+       keys their padding. */
+    .key span { font-size:7.5px; letter-spacing:.2px; }
+    .key { min-width:29px; padding:6px 2px 5px; }
+    #deck { gap:2px; }
+    /* And the clock stays. Stacked it costs no width at all — only the height
+       of a line it was already sharing with the turn count — and how much tape
+       is left is the one number that changes while you are looking at it. */
+    #counter { gap:2px; }
+    #turns { font-size:12px; padding:1px 4px; letter-spacing:1px; }
+    #tape { font-size:12px; padding:1px 4px; letter-spacing:.5px; }
+    /* And on a phone there is nothing spare, so the line takes one of its own
+       under the keys rather than a sliver between them — after the counter,
+       so the counter stays up on the row with the keys instead of being
+       pushed down to a line of its own. */
+    #say { flex:1 0 100%; order:1; }
+
+    #chat { padding:calc(.9em) calc(1em) calc(1em + var(--under, 0px));
+            gap:calc(.85em); }
+    #jump { min-height:0; }
+    .msg { max-width:88%; font-size:15px; }
+
+    #controls { padding:8px 12px; gap:6px; }
+    /* No disclosure: what is left either belongs on screen or nowhere. The
+       minutes field keeps its default; the device pickers are Mac hardware. */
+
+    /* one bar, then one row to type — nothing else by default */
+    #text { flex:1 1 auto; min-width:0; }
+    #send { flex:0 0 auto; }
+
+    /* stack each entry: title and time on one line, the preview under it */
+
+    /* Models and RAM on one line, what is happening right now on the next. */
+    .frow { gap:9px; flex-wrap:wrap; }
+    .frow.now { gap:2px 9px; }
+    #session { min-height:34px; padding:5px 10px; font-size:12px; flex:0 0 auto; }
+  }
+
+  /* ---- the notch ------------------------------------------------------
+     Last, so it survives the phone rules above: standalone from the home
+     screen the page owns the whole screen, notch and home bar included. */
+  @supports (padding:max(0px)) {
+
+
+    #controls { padding-left:max(18px, env(safe-area-inset-left));
+                padding-right:max(18px, env(safe-area-inset-right)); }
+
+    @media (max-width:700px), (pointer:coarse) {
+
+      #controls {
+               padding-left:max(12px, env(safe-area-inset-left));
+               padding-right:max(12px, env(safe-area-inset-right)); }
+    }
+  }
+</style>
+</head>
+<body>
+<!-- The room, rendered into here by /shared/room3d.js from the numbers in
+     personas/<slug>/room.js. Nothing of the app is in it. -->
+<div id="stage" aria-hidden="true"></div>
+
+<!-- Shown only while it is not yet known whether there is a room. -->
+<div id="waking" aria-hidden="true"><i></i></div>
+
+<!-- And the one thing that is not rendered: the conversation, laid on the
+     window's glass by the projection the engine works out each frame. -->
+<div id="glass">
+  <div id="chatwrap">
+    <div id="chat"></div>
+    <button id="jump" hidden>&darr; latest</button>
+  </div>
+</div>
+
+<!-- What the pill remembers and what you have already said to it are sheets now,
+     shared with the box's dashboard — see static/sheets.js. They used to be
+     two panels hung off this one, which only made sense from inside a room. -->
+
+<!-- The panel: the one thing every room shares. Only its colors change. -->
+<!-- What is left of the panel: a microphone, whether the pill keeps going, a line
+     to type, and a way to send it. Everything that used to sit along the top
+     of it — which pill, how it is taking you, New, History, Memory — are in
+     the console now, where the rest of the machinery already lives. A row of
+     buttons over a conversation is a row of buttons you stop seeing, and each
+     one was a thing this window had to be wide enough to hold. -->
+<div id="panel">
+  <!-- The deck. A conversation is a tape: linear, positional, replayable and
+       finite, so the controls of a tape are honest about it rather than
+       decoration over something else. Say it again, let it run on its own,
+       talk, stop the tape and take it out.
+
+       Four keys and a counter, not the six of the machine this is looking at:
+       a row of identical black keys under six-point labels is charming and
+       unusable. The posture is borrowed, the legibility is not given up —
+       every key keeps a word under it and a sentence in its tooltip. -->
+  <div id="controls">
+    <div id="taken" hidden>
+      <span>another window has the machine</span>
+      <button type="button" id="takeback">take it back</button>
+    </div>
+    <!-- The other way a page can be pointed at nothing: an address naming a
+         conversation that is not there. Same shape as the banner above and
+         for the same reason — a page that has quietly stopped meaning
+         anything should say so, and offer the one thing that still works. -->
+    <div id="gone" hidden>
+      <span>this conversation is not here</span>
+      <button type="button" id="goback">back to the box</button>
+    </div>
+    <div id="deck">
+      <button id="t-back" class="key" title="say the last line again — useful when a cough cut it off">
+        <i data-icon="again"></i><span>Again</span></button>
+      <!-- Play and Pause are two keys, not one, for the reason a cassette
+           player has two: they answer different questions. Play is whether
+           the tape is running at all; Pause is whether the sound is moving
+           right now. One key doing both meant its meaning depended on whether
+           a voice happened to be going — so pressing Play a second after
+           Skip, meaning "keep it rolling", paused a sentence instead, and
+           looked exactly like a key that did nothing. -->
+      <button id="t-play" class="key" title="let it carry on by itself; talk any time to steer">
+        <i data-icon="play"></i><span>Play</span></button>
+      <button id="t-pause" class="key" title="hold the sound where it is — the tape waits for you" disabled>
+        <i data-icon="pause"></i><span>Pause</span></button>
+      <button id="t-stop" class="key" title="cut it off and end the run" disabled>
+        <i data-icon="stop"></i><span>Stop</span></button>
+      <!-- The one thing a long reply asks for that Stop cannot give: enough
+           of this line, and on to the next. It takes the floor away from what
+           is speaking and leaves the tape running, so in a run the next turn
+           starts straight away. -->
+      <button id="t-skip" class="key" title="enough of this one — on to the next" disabled>
+        <i data-icon="skip"></i><span>Skip</span></button>
+      <!-- Two ways to put something on the tape, and they are not a choice
+           between: the mic can be live while you type, which is what you want
+           when the room is loud or a word will not come out. -->
+      <!-- aria-pressed from the start, not from the first toggle: it is what
+           makes these two switches rather than buttons, to a screen reader and
+           to the ear both, and a key that only becomes a switch once you have
+           already pressed it is neither. -->
+      <button id="t-rec" class="key rec" aria-pressed="false" title="talk to it — the mic listens until you press it again">
+        <i data-icon="record"></i><span>Talk</span></button>
+      <button id="t-type" class="key rec" aria-pressed="false" title="write instead — return sends it">
+        <i data-icon="record"></i><span>Type</span></button>
+      <button id="t-eject" class="key" title="close the room and go back to the box">
+        <i data-icon="eject"></i><span>Eject</span></button>
+      <!-- Opened by the Type key, and in the row rather than above it: a
+           field the width of the panel turns a machine into a form. Here it
+           takes whatever the keys have left over, which on a desk is a good
+           line's worth and on a phone is its own line under them. -->
+      <div id="say" hidden>
+        <!-- Two lines rather than one, and the height of the keys beside it.
+             A single line the width of the panel is a form; two short ones
+             are a note being written on the machine, which is what this is.
+             Return sends, shift-return is a new line.
+
+             The placeholder is short because the line is narrow: the keys have
+             the row and the panel is set by the room, not the window, so this
+             gets about a hundred pixels whatever the screen is doing. A hint
+             that wraps inside its own box reads as something broken rather
+             than as a hint, and it was doing exactly that. What it does not
+             say any more is on the Type key, in its title, which is where
+             somebody wondering about it will be looking. -->
+        <textarea id="text" rows="2" spellcheck="false"
+                  placeholder="type to steer"></textarea>
+      </div>
+      <!-- Two numbers, two things, and one tooltip each: a single sentence on
+           the box round them is read over whichever one the pointer is
+           nearest, describing the other.
+
+           Neither says "length", though both are one. This counts lines and
+           the other counts minutes, so calling either of them the length of
+           the tape describes the pair and identifies nothing. -->
+      <span id="counter">
+        <b id="turns" title="how many lines have been said">000</b><b id="tape"><i>15</i><em>:</em><i>00</i></b></span>
+    </div>
+  </div>
+  <!-- Nothing else. The dials that used to run along the bottom of this panel
+       — three lamps, the memory, what the audio was doing, the last thing the
+       server said — are all in the console, which is where the machine lives.
+       What is left is the four things this panel is for. -->
+</div>
+
+<!-- Fixed over everything, so it stays out of the room's layout. -->
+<div id="ask" hidden>
+  <div class="askbox">
+    <h2 id="asktitle"></h2>
+    <p id="askbody"></p>
+    <div class="askrow">
+      <button id="askno">Cancel</button>
+      <button id="askyes" class="danger">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- The room this persona keeps. Two files out of its own bundle: room.js is
+     the room itself — how big, what color, which wall the window is in, what
+     stands on the floor — and room.css only dresses the flat things the room
+     does not own, the panel and the words. A persona nobody has dressed yet
+     gets the engine's own defaults, and it is still a room. -->
+<script type="module">
+  const slug = location.pathname.replace(/\/$/, '').split('/').pop();
+
+  /* The room is built in a module and the websocket lives in a classic script
+     below, so they cannot see each other's names. This object is the seam:
+     what the server last said about the room, what the room wants saved, and
+     the way to send it. Whichever script loads first makes it. */
+  const link = window.RoomLink || (window.RoomLink = {last: null, pending: null});
+
+  /* Into the console, whenever it turns up. This module runs before the
+     shared script that builds the console, and the things worth saying here
+     — a room that would not load, a machine with no WebGL — happen in that
+     window. Waiting for `load` was not enough: a dynamic import can reject
+     long after the page has finished loading, and the message went nowhere. */
+  const tell = (text, level = 'error') => {
+    let tries = 0;
+    const go = () => {
+      if (window.Hatch) return window.Hatch.say(text, level);
+      if (++tries < 60) setTimeout(go, 100);
+    };
+    go();
+  };
+
+  const sheet = document.createElement('link');
+  sheet.rel = 'stylesheet';
+  sheet.href = `${slug}/room/room.css`;
+  document.head.appendChild(sheet);
+
+  /* Without a room. The conversation is the app; the room is what it happens
+     in, and a machine that cannot draw one should still be able to talk. */
+  const open = () => document.documentElement.classList.remove('waking');
+
+  function flat(why) {
+    document.documentElement.classList.add('flat');
+    open();
+    const glass = document.getElementById('glass');
+    const panel = document.getElementById('panel');
+    // The panel still stands in front of it, and out here nobody is measuring
+    // the projection, so the last line is kept clear by hand.
+    const clear = () => glass.style.setProperty('--under', panel.offsetHeight + 16 + 'px');
+    clear();
+    addEventListener('resize', clear);
+    if (window.ResizeObserver) new ResizeObserver(clear).observe(panel);
+    console.warn('lucid: no room —', why);
+    /* And into the console, which is where somebody looks. A flat page is
+       the app working correctly on a machine that cannot draw — but it is
+       also what a broken room.js looks like, and those two want telling
+       apart without opening the browser's own inspector. */
+    tell('no room — ' + why);
+  }
+
+  // If the engine neither arrives nor fails — a stalled request, a machine
+  // thinking about it far too long — the conversation still has to happen.
+  const patience = setTimeout(() => {
+    if (document.documentElement.classList.contains('waking')) flat('took too long');
+  }, 8000);
+
+  try {
+    // Ask before importing 357K of engine: an old browser says no here.
+    const probe = document.createElement('canvas');
+    if (!(probe.getContext('webgl2') || probe.getContext('webgl'))) throw 'no WebGL';
+
+    const [engine, dressing] = await Promise.all([
+      import('/shared/room3d.js'),
+      /* A room that will not load is not a reason to lose the conversation —
+         the engine's own defaults are a room. But it used to happen in total
+         silence, so a typo in a persona's room.js looked exactly like a
+         persona that had never been given one. */
+      import(`./${slug}/room/room.js`).then(m => m.default).catch(e => {
+        const why = `${slug}/room.js did not load — ${e && e.message || e}`;
+        console.warn('lucid:', why);
+        tell(why);
+        return {};
+      }),
+    ]);
+    // Exposed so the app can reach the room: the light knows how the pill is
+    // holding you, and one day the room will show it.
+    /* The phone's own bands, and the page behind everything, in the color of
+       the room they are framing. Both are the void the room stands in: the
+       thing you would see if the walls gave out, which is exactly what is
+       past the edges of the screen. */
+    const paintEdges = (spec) => {
+      const hex = spec && spec.palette && spec.palette.void;
+      if (typeof hex !== 'number') return;
+      const css = '#' + hex.toString(16).padStart(6, '0');
+      document.documentElement.style.background = css;
+      const tag = document.querySelector('meta[name=theme-color]');
+      if (tag) tag.content = css;
+    };
+    paintEdges(dressing);
+
+    window.Room = engine.mount(dressing, {
+      stage: document.getElementById('stage'),
+      glass: document.getElementById('glass'),
+      // What stands in front of the glass, so the conversation can keep its
+      // last line clear of it — on a phone the panel is half the screen.
+      under: document.getElementById('panel'),
+    });
+
+    /* What the room cannot know by itself: whose room this is, which
+       conversation is in it, how the persona is set right now, and what the
+       last save says was done to it. It arrives over the websocket, possibly
+       long after this — the room is built to be told later.
+
+       `lastRoom` is held here because the socket usually connects before the
+       room finishes mounting, and because a room has to be able to say what
+       it wants saved before there is a session to save it to: a click on a
+       cold server is still a click. It is re-sent on reconnect for the same
+       reason. */
+    window.Room.room.knows({
+      ...(link.last || {}),
+      save(state) {
+        // Held as well as sent: a click on a cold server is still a click,
+        // and there is no session to keep it in until something is said.
+        link.pending = state;
+        if (link.send) link.send(state);
+      },
+      // What the room says a hand just did. Held the same way and for the
+      // same reason: the press that starts an evening is usually the one that
+      // happens before anything has finished connecting.
+      did(text) {
+        if (link.did) link.did(text);
+        else (link.said || (link.said = [])).push(text);
+      },
+    });
+
+    open();
+
+    // A context can be taken away long after it was granted — another tab
+    // wanting the GPU, a laptop waking up. Then the room goes and the
+    // conversation stays.
+    document.querySelector('#stage canvas').addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      if (window.Room) { window.Room.stop(); window.Room = null; }
+      flat('context lost');
+    });
+  } catch (e) {
+    flat(e && e.message || e);
+  } finally {
+    clearTimeout(patience);
+  }
+</script>
+<!-- This page is one of the app's rooms, not its front door: the console
+     offers the commands that need a conversation only where there is one. -->
+<script>window.LucidWhere = 'room';</script>
+<link rel="stylesheet" href="assets/sheets.css">
+<script src="assets/sheets.js"></script>
+<script src="/shared/qr.js?v=3"></script>
+  <script src="/shared/night.js?v=3"></script>
+<script>
+const $ = id => document.getElementById(id);
+// A phone has no push-to-talk, and claims the audio for itself.
+const isPhone = window.matchMedia('(pointer:coarse)').matches;
+let history = [];
+let running = false, state = 'stopped', streaming = null;
+
+let ws, retry = null, pending = [];
+// Audio and key-state, sent many times a second: stale ones are worse than
+// none, so these are dropped rather than queued when the socket is down.
+const TRANSIENT = new Set(['mic_audio', 'audio_state', 'ptt']);
+
+/* What this page came for, read off its address: /lucid-talk/lover?session=…
+   is a pill and one of its conversations.
+
+   The conversation belongs in the address too. There is still a single stack
+   behind this — one model, one voice, one mic — so the server holds one
+   conversation at a time and every page connected hears about it. That was
+   fine while there was one window and unbearable with two: a room drew the
+   other room's transcript, and one pill's voice came out of the other's
+   speakers, with nothing on either page admitting what had happened.
+
+   So each page knows which conversation is its own, and ignores everything
+   addressed to another. When the machine has been taken to another window it
+   says so, and offers to take it back, which is the honest version of a page
+   that has quietly stopped meaning anything. */
+const SLUG = location.pathname.replace(/\/$/, '').split('/').pop();
+/* The addresses a browser trusts with no certificate at all. Declared up here
+   because the microphone reads it, and the microphone can be asked for before
+   the bottom of this file has run. */
+const LOCAL = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
+let SID = new URLSearchParams(location.search).get('session') || '';
+// Waiting to hear that the machine is ours. True from the moment we ask until
+// something addressed to us comes back — a page that has not been answered yet
+// is not a page that has been taken from.
+let claiming = true, claimedAt = 0;
+// Whether this page has ever been connected. The first time it asks for what
+// it came for; after that it only asks again if it still had the machine.
+let arrived = false;
+
+/* The address, once we know it. A conversation opened without one is still a
+   conversation somebody may want to come back to, send to their phone, or
+   open beside another — and until this line existed it had no address at all
+   until the moment it scrolled off the History sheet. */
+/* Asked for a new conversation, and waiting to be told its name.
+ *
+ * A page turns away everything addressed to another conversation, which is
+ * what stops two windows from wearing each other's words — and a new
+ * conversation is, for that one moment, another conversation. So the page has
+ * to know it asked, and this is the knowing. */
+let expecting = false, expectedAt = 0;
+/* And not for long. The exception is "the conversation I just asked for", and
+   what it recognizes is any message on this pill wearing another name — which
+   is also an exact description of a second window on the same pill, talking.
+   Left open, this page would quietly move into that conversation and both
+   windows would answer to it. The answer to a /session_new comes back in well
+   under a second; anything later than this is somebody else. */
+const EXPECT_FOR = 8000;
+
+function ownSession(id) {
+  if (!id || id === SID) return;
+  SID = id;
+  const url = new URL(location.href);
+  url.searchParams.set('session', id);
+  // window.history: `history` in this file is the transcript, and has been
+  // since before the address had anything in it worth replacing.
+  window.history.replaceState(null, '', url);
+}
+
+/* Is this message about our conversation? Everything the server sends is
+   stamped with the pill and the session it belongs to — see whose_msg in
+   server.py. */
+function mine(m) {
+  if (!m.pill && !m.sid) return true;            // not about a conversation
+  if (m.pill !== SLUG) return false;             // another pill entirely
+  if (!SID) { ownSession(m.sid); }               // ours, and now we know its name
+  /* Or one we asked for a moment ago. Everything else about another sid is
+     somebody else's conversation and is turned away; this is the exception,
+     and it is only an exception because the page said so first. */
+  if (expecting && Date.now() - expectedAt > EXPECT_FOR) expecting = false;
+  if (expecting && m.sid && m.sid !== SID) {
+    expecting = false;
+    SID = '';
+    ownSession(m.sid);
+    clearChat();
+    streaming = null;
+    paintCounter();
+  }
+  if (m.sid && m.sid !== SID) return false;      // this pill, another tape
+  /* Something addressed to us is the proof that we have the machine, whenever
+     it arrives. It used to clear the banner only while the page was still
+     waiting on its own claim — so a claim that took longer than the five
+     seconds of grace (a cold machine loading a voice will) declared the page
+     stale, and then nothing ever un-declared it: every message afterwards was
+     ours, was accepted, was drawn, and the banner over the keys went on
+     saying another window had the machine for the rest of the evening. */
+  claiming = false;
+  if (elsewhere) setElsewhere(false);
+  return true;
+}
+
+/* Something arrived for somebody else. While we are still waiting on our own
+   claim that is ordinary — the machine is on its way over — so it is only
+   worth saying once the answer is late. */
+let elsewhere = false;
+function notMine() {
+  if (nowhere) return;          // already said what is wrong; see setGone
+  if (claiming && Date.now() - claimedAt < 5000) return;
+  claiming = false;
+  setElsewhere(true);
+}
+
+function setElsewhere(on) {
+  if (on === elsewhere) return;
+  elsewhere = on;
+  const bar = $('taken');
+  if (bar) bar.hidden = !on;
+  /* And the keys, here, on the change itself — because a page that has lost
+     the machine stops being sent anything it will accept, so the tick that
+     repaints the deck five times a second stops arriving too. Left to that,
+     the keys would go on looking pressable until it got the machine back,
+     which is precisely the window in which they must not. */
+  if (typeof paintPlay === 'function') paintPlay();
+  /* Again lives on the counter's paint, not the deck's, and the counter is
+     painted by a new bubble — which is exactly what a page without the machine
+     does not get. Left to that, taking the machine back left the key gray
+     until the pill next spoke. */
+  if (!on && typeof paintCounter === 'function') paintCounter();
+  /* The microphone is a machine that is on, not a key that is lit: losing the
+     floor has to actually close it, or this page goes on capturing a room it
+     is no longer part of. Suspended rather than switched off, so taking the
+     machine back reopens it — the same pair the page uses for a tab that went
+     to the background, and for the same reason. */
+  if (on) suspendMic('another window has the machine');
+  /* And only when somebody is actually looking at this page. Taking the
+     machine back is a message arriving, which can happen with the window
+     behind three others — and asking for a microphone then is asking a
+     browser for something it will not give a page nobody is looking at. */
+  else if (!document.hidden && document.hasFocus()) resumeMic();
+  if (on) log('another window has the machine — this page is showing an old view');
+}
+
+// Take it back: ask for our pill and our conversation again, which is the
+// same thing this page asked for when it opened.
+$('takeback').onclick = () => {
+  claiming = true; claimedAt = Date.now();
+  setElsewhere(false);
+  send({cmd: 'open', slug: SLUG, session: SID});
+};
+
+function connect() {
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;   // already on it
+  clearTimeout(retry); retry = null;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  // Relative to wherever this page is mounted — the shell gives each app a
+  // route of its own, so the socket lives beside the page rather than at /ws.
+  const base = location.pathname.replace(/[^/]*$/, '');
+  ws = new WebSocket(`${proto}://${location.host}${base}ws`);
+  ws.onopen = () => {
+    reconciled = false;                  // a fresh socket, a fresh reckoning
+    // Said first, and on every reconnect: the server holds one persona, and
+    // this page is the one thing that knows who was asked for. It is ignored
+    // when it is already this one, so a dropped socket costs no conversation.
+    /* What this page came for, in one move: the pill, and — deep-linked from
+       the dashboard, a bookmark, or a code scanned onto a phone — which of
+       its conversations. It was two commands a tenth of a second apart and
+       they raced, since switching pills opens a conversation of its own: the
+       page could draw the most recent one and then jump. */
+    /* A page claims the machine when it arrives, and on a *re*connect only if
+       it had the machine when the socket went.
+
+       This used to claim every time, which is how a phone left open in a
+       pocket pulled a conversation out from under somebody at a desk: its
+       wifi hiccupped, it reconnected, said what it had come for — another
+       pill, an hour ago — and the desk found itself listening to the wrong
+       voice mid-sentence. A page already showing "another window has the
+       machine" has no business taking it back because its connection
+       flickered. It waits, and the button says how to ask for it on purpose. */
+    if (!arrived || !elsewhere) {
+      claiming = true; claimedAt = Date.now();
+      ws.send(JSON.stringify({cmd: 'open', slug: SLUG, session: SID}));
+    }
+    arrived = true;
+    const queued = pending;
+    pending = [];
+    queued.forEach(o => ws.send(JSON.stringify(o)));
+    if (queued.length) log('reconnected — sent that');
+  };
+  ws.onmessage = e => handle(JSON.parse(e.data));
+  ws.onclose = () => { retry = setTimeout(connect, 1000); log('disconnected — retrying'); };
+}
+
+// Restart the server with this page open and every command vanished here: the
+// socket was closed, this returned false, and nothing said so. Pressing Start
+// did nothing at all, and the press after it worked because the retry had
+// landed in between. A command waits for the socket now instead.
+/* What a page may still say once it has lost the machine.
+ *
+ * Everything else it might send acts on whatever conversation is live, which
+ * is somebody else's — pressing Play in a window showing an old view started a
+ * run in the room next door, and a line typed into it arrived in a
+ * conversation with a different pill. These four are safe because none of them
+ * is about the live conversation: asking for it back, and the three sheets,
+ * which name the pill they are about and are read the same from anywhere.
+ */
+const STILL_ALLOWED = new Set(['open', 'sessions', 'memory_get', 'memory_save',
+                               'relation_reset']);
+const send = o => {
+  if (elsewhere && !STILL_ALLOWED.has(o.cmd)) {
+    /* Silently for the ones that repeat. An open microphone sends a packet
+       eleven times a second and does not stop because a key went gray, so
+       saying this each time wrote eleven lines a second into the console every
+       window shares — for as long as the tab stayed open. What a person
+       pressed is worth a line; what a stream does is not. */
+    if (!TRANSIENT.has(o.cmd)) log('another window has the machine — that did nothing here');
+    return false;
+  }
+  if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; }
+  if (!TRANSIENT.has(o.cmd)) {
+    if (pending.length < 8) pending.push(o);
+    log('not connected — sending when it reconnects');
+  }
+  connect();
+  return false;
+};
+/* The last thing that happened used to be a line of small type under the
+   conversation. It is in the console now, with everything else and with the
+   times — a one-line status under a conversation is a thing you either miss
+   or read instead of the conversation.
+
+   The server's own notes already arrive there by another road (session.emit
+   puts them in the log directly); these are the page's: a socket that dropped,
+   a microphone that would not open. */
+const log = (t, level) => { if (window.Hatch) Hatch.say(t, level || 'info'); };
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+function render(text) {
+  // A space after every line break, and the bubble keeps whitespace (pre-wrap),
+  // so a reply written as short lines came out with a step down the left of it:
+  //
+  //     Yeah.
+  //      You're right there.
+  //      I can feel it.
+  //
+  // Nothing here put it there and nothing on the server did either. A tokenizer
+  // carries the space in front of a word as part of the word, so the token
+  // after a newline is " You're" rather than "You're", and the model streams
+  // exactly that. It never reaches the voice — split_for_speech strips each
+  // line before it is spoken — so this is the only place it shows.
+  const tidy = text.replace(/\n[ \t]+/g, "\n");
+  return escapeHtml(tidy).replace(/\[[a-z-]+\]/g, m => `<span class="tag">${m}</span>`);
+}
+// ---- staying at the bottom, without fighting you --------------------------
+// Following the conversation means pinning to the newest line; reading back
+// through it means being left alone. The rule: keep pinning while you are
+// already near the bottom, and offer a way back when you are not.
+let pinned = true;
+/* Where we last put the scroll ourselves, and when. A scroll event at that
+   position, moments after we put it there, is our own doing and not the
+   reader's — and telling the two apart is the whole of it. Following a reply,
+   we scroll to the bottom on every delta; each of those raises a scroll event
+   that arrives a frame later, by which time the next delta has made the page
+   taller. So the handler read "not at the bottom", let go of the conversation
+   mid-sentence, and there was no way back: nothing sets `pinned` again except
+   a scroll event, and we had just stopped producing them. The ↓ latest button
+   sat there while you were already looking at the latest.
+
+   The "when" matters as much as the "where". Position alone was wrong: an
+   empty conversation scrolls to 0, so 0 stayed marked as ours for the rest of
+   the evening, and scrolling back to the very first line — which lands on
+   exactly 0 — was read as something we had done and ignored. */
+let ourTop = -1, ourAt = 0;
+function nearBottom() {
+  const c = $('chat');
+  return c.scrollHeight - c.scrollTop - c.clientHeight < 60;
+}
+function keepDown(force) {
+  const c = $('chat');
+  // Reading back through it: leave the reader alone and offer the way down —
+  // but only if there is one. Asked while already at the end, the honest
+  // answer is no button, whatever the flag believes.
+  if (!force && !pinned) { $('jump').hidden = nearBottom(); return; }
+  c.scrollTop = c.scrollHeight;
+  ourTop = c.scrollTop;
+  ourAt = Date.now();
+  pinned = true;
+  $('jump').hidden = true;
+}
+$('chat').addEventListener('scroll', () => {
+  const c = $('chat');
+  // Ours, or theirs. Content growing under us does not move scrollTop, so a
+  // late event still reads the position we set — and is still ours, as long
+  // as we put it there a moment ago rather than at some point this evening.
+  if (c.scrollTop !== ourTop || Date.now() - ourAt > 400) pinned = nearBottom();
+  // And the button follows the truth rather than a flag: a way back down
+  // while there is somewhere to go, and nothing at all at the end of the
+  // conversation. It used to appear only when a new line arrived, so reading
+  // back through a long evening meant scrolling all the way out by hand.
+  if (nearBottom()) pinned = true;
+  $('jump').hidden = nearBottom();
+}, {passive: true});
+$('jump').onclick = () => keepDown(true);
+
+/* Following the conversation has to survive the room moving under it. The
+   glass is a plane in a room, so the page is laid out again — at a different
+   width, and at a different size of type — after the transcript has been
+   drawn and scrolled to its end. Every line changes height, the conversation
+   gets taller, and the view stays where it was: a phone opened a conversation
+   at the top of it, thousands of pixels from anything recent, with nothing
+   saying so. Each line is watched, so whatever changes its height takes the
+   view with it — as long as we are still following. */
+const growth = new ResizeObserver(() => { if (pinned) keepDown(true); });
+growth.observe($('chat'));
+const watchGrowth = el => { try { growth.observe(el); } catch (e) {} };
+/* And letting go. A ResizeObserver holds its targets, so every bubble it was
+   ever given stayed alive after the node left the page — a whole transcript at
+   a time when a conversation is swapped out, which is the one moment this
+   happens in bulk. Anything that takes a message off the page comes through
+   here. */
+const dropGrowth = el => { try { growth.unobserve(el); } catch (e) {} };
+const clearChat = () => {
+  $('chat').querySelectorAll('.msg').forEach(dropGrowth);
+  $('chat').innerHTML = '';
+};
+// Delegated, so it covers messages that do not exist yet.
+$('chat').addEventListener('click', e => {
+  const btn = e.target.closest && e.target.closest('.tools button');
+  if (!btn) return;
+  const msg = btn.closest('.msg');
+  if (!msg || !msg._raw) return;
+  if (btn.classList.contains('replay')) {
+    send({cmd: 'replay', text: msg._raw});
+    return;
+  }
+  // Delete: gone from the page and from the transcript. What has already been
+  // folded into memory stays there — that file is edited by hand.
+  send({cmd: 'delete', role: msg.classList.contains('you') ? 'user' : 'assistant',
+        text: msg._raw});
+  if (msg === streaming) streaming = null;
+  dropGrowth(msg);
+  msg.remove();
+});
+
+const TRASH_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
+
+const SPEAKER_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>'
+  + '<path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+
+// The same speaker with the waves struck through: what a line looks like when
+// it was written but not spoken.
+const MUTED_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  + '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>'
+  + '<path d="M22 9l-6 6"/><path d="M16 9l6 6"/></svg>';
+
+/* Two speakers: you, and the pill. Which pill is what the label says — Gold,
+   Violet — because that is what a player was handed out of the box. Nothing
+   in here names a character or picks a pronoun for one; the prompt does both,
+   and this side stays out of it. */
+function bubble(who, text) {
+  const el = document.createElement('div');
+  const mine = who === 'You';
+  /* A turn taken with your hands rather than your voice: the room wrote it,
+     and it is wrapped in brackets because that is how it reads to the model
+     as well — a thing done rather than a thing said. Same bubble, same side
+     of the conversation, leaning. */
+  const hand = mine && /^\s*\(.*\)\s*$/.test(text || '');
+  el.className = 'msg ' + (mine ? 'you' : 'pill') + (hand ? ' hand' : '');
+  el.innerHTML = `<div class="who">${who}</div><div class="body">${render(text)}</div>`
+    + '<span class="tools">'
+    + (mine ? '' : `<button class="replay" title="say it again">${SPEAKER_SVG}</button>`)
+    + `<button class="del" title="delete this — from here and from the transcript">${TRASH_SVG}</button>`
+    + '</span>';
+  el._raw = text;                      // what gets spoken, not what is rendered
+  $('chat').appendChild(el);
+  watchGrowth(el);
+  paintCounter();                      // the tape is one turn longer
+  keepDown();
+  return el;
+}
+function note(text) {
+  const el = document.createElement('div');
+  el.className = 'note';
+  el.textContent = text;
+  $('chat').appendChild(el);
+  watchGrowth(el);
+  keepDown();
+}
+
+// ---- "it is hearing you" ---------------------------------------------------
+// Speech starts, the server says listening, and this stands in for the words
+// until the transcript lands. It is replaced by the real turn, or removed if
+// what it heard turns out not to be speech.
+let heard = null, heardAt = 0;
+function showHeard() {
+  if (heard) return;
+  heard = document.createElement('div');
+  heard.className = 'msg you pending';
+  heard.innerHTML = '<div class="who">You</div>'
+                  + '<div class="body"><i class="dots"><b></b><b></b><b></b></i></div>';
+  heardAt = Date.now();
+  $('chat').appendChild(heard);
+  keepDown();
+}
+function clearHeard() {
+  if (heard) { dropGrowth(heard); heard.remove(); heard = null; }
+}
+
+/* And the same three dots on the other side of the conversation, while it is
+   thinking and has not said anything yet.
+
+   The pulse says a voice is coming and the dots say a reply is; between them
+   there was a gap where the room was quietly beating at somebody with nothing
+   on the glass to explain it. This is the answer already used for the other
+   direction — the dots that stand in for your own words while they are being
+   transcribed — pointed the other way, which is what makes it read as the
+   same thing happening rather than a second invention. */
+let musing = null;
+function showMusing() {
+  if (musing || streaming) return;
+  musing = document.createElement('div');
+  musing.className = 'msg pill pending';
+  musing.innerHTML = `<div class="who">${personaName}</div>`
+                   + '<div class="body"><i class="dots"><b></b><b></b><b></b></i></div>';
+  $('chat').appendChild(musing);
+  keepDown();
+}
+function clearMusing() {
+  if (musing) { dropGrowth(musing); musing.remove(); musing = null; }
+}
+
+function handle(m) {
+  // The shared sheets get first refusal: they asked for these and they know
+  // whether they are still waiting on them. Before the filter below, because
+  // a sheet's answer is addressed to whoever opened it and not to a
+  // conversation.
+  if (window.Sheets && Sheets.take(m)) return;
+  /* Before the filter, because this one is about a conversation we are *not*
+     in — it names what was asked for rather than what is live, and the filter
+     below would turn it away as somebody else's. */
+  if (m.type === 'no_such_session') {
+    if (m.asked && m.asked === SID) {
+      setGone(true);
+      log('there is no conversation called ' + m.asked + ' — nothing was opened');
+    }
+    return;
+  }
+  // And then: is this ours? Someone else's turn, someone else's voice and
+  // someone else's room, all silently dropped.
+  if (!mine(m)) { notMine(); return; }
+  switch (m.type) {
+    case 'tick': tick(m); break;
+    case 'state': setState(m.state); break;
+    case 'user':
+      // It arrived. Stop holding a copy of it.
+      if (m.text.trim() === stored(UNSENT)) store(UNSENT, '');
+      clearHeard();
+      if (streaming) streaming.classList.remove('streaming');   // its is over
+      bubble('You', m.text);
+      streaming = null;
+      break;
+    case 'assistant_delta':
+      clearMusing();
+      if (!streaming) {
+        streaming = bubble(personaName, '');
+        streaming._raw = '';
+        streaming.classList.add('streaming');
+      }
+      streaming._raw += m.text;
+      streaming.querySelector('.body').innerHTML = render(streaming._raw);
+      keepDown();
+      break;
+    case 'assistant_done':
+      clearMusing();
+      // the final text can differ in length from what streamed, so settle again
+      if (streaming) {
+        if (m.text) {
+          streaming.querySelector('.body').innerHTML = render(m.text);
+          streaming._raw = m.text;
+        }
+        streaming.classList.remove('streaming');   // now there is a line to replay
+      }
+      keepDown();
+      streaming = null; break;
+    case 'log':
+      // "heard 1.2s but no usable speech" — nothing is coming, take it down
+      // "no usable speech", "too short to hear", "STT failed" — nothing is
+      // coming, so take the dots down and say why.
+      if (/no usable speech|too short to hear|STT failed/.test(m.text)) clearHeard();
+      /* And nothing else. This line is already in the console — the server
+         wrote it there as it sent it (session.emit -> LOG.say) — so passing
+         it to log() sent the server's own words back to the server, which
+         wrote them a second time, as the page. Every line appeared twice,
+         and three times with two windows open. */
+      break;
+    case 'continuous': setContinuous(m.on, m.minutes); break;
+    /* The strength set on the box is how long a Play runs. The panel used to
+       ask for it again in a number box of its own, which meant two places
+       said the dose and only one of them was the one that counted. */
+    case 'setup':
+      if (m.minutes) { tapeMinutes = m.minutes; paintCounter(); }
+      break;
+    case 'audio': playWav(m.pcm, m.rate); break;
+    /* Steering rather than stopping: the line being spoken lands, and what
+       was queued behind it is dropped. Cutting a voice off mid-word to answer
+       somebody reads as a machine glitching; the half second it costs to let
+       the sentence finish is the difference between being interrupted and
+       being listened to. */
+    case 'audio_stop': m.soft ? softStop() : stopWav(); break;
+    case 'input_mode': setInputMode(m.mode); break;
+    case 'personas':
+      // Which pills exist is the console's business now — /take_pill lists
+      // them and takes one. Nothing on the page shows this any more.
+      break;
+    case 'memory':
+      break;                       // Sheets took it, above
+    /* The room, as the server has it: who, which conversation, how the
+       persona is set now, and what hands have done in here. Kept whether or
+       not the room has mounted yet — with no WebGL there is no room to tell,
+       and the conversation carries on regardless. */
+    /* Where the pill is holding you, which is what the room is lit by. It
+       lands after every turn that had you in it, so the room warms up or
+       grays out around somebody who is sitting in it — see the note on the
+       grade in room3d.js. Kept on the link as well, because a `room` message
+       arriving later carries the mood block and would otherwise put the
+       color back to whatever it was when the conversation opened. */
+    case 'relation': {
+      if (m.slug && m.slug !== SLUG) break;
+      // Only what actually arrived. An undefined assigned over a good value
+      // reads as a pill with no opinion of you, and the room goes flat.
+      const st = m.state || {}, heat = {};
+      if (typeof st.warmth === 'number') heat.warmth = st.warmth;
+      if (typeof st.mood === 'number') heat.temper = st.mood;
+      if (!('warmth' in heat) && !('temper' in heat)) break;
+      const link = window.RoomLink || (window.RoomLink = {last: null, pending: null});
+      if (link.last && link.last.mood) Object.assign(link.last.mood, heat);
+      if (window.Room && window.Room.room.knows) window.Room.room.knows({mood: heat});
+      break;
+    }
+    case 'room': {
+      /* And this one names the pill it is for, so it can say so itself. The
+         handshake sends the room of whatever conversation is live, straight
+         down the new socket before the page has asked for anything — which on
+         a page opening a different pill is the other pill's room, arriving
+         unaddressed and looking exactly like an answer. */
+      if (m.persona && m.persona !== SLUG) break;
+      const link = window.RoomLink || (window.RoomLink = {last: null, pending: null});
+      link.last = {persona: m.persona, session: m.session,
+                   mood: m.mood, state: m.state};
+      /* Neither of these speaks from a window that does not have the machine.
+         A press is a turn now, so a room left open on another screen could
+         push books into somebody else's conversation and write its own idea
+         of the furniture over theirs — the same fault the transcript had
+         before a page learned which conversation was its own, and worse,
+         because this one arrives as words the pill answers. The banner above
+         the keys already says why nothing is happening. */
+      link.send = state => { if (!elsewhere) send({cmd: 'room_set', state}); };
+      /* And a hand put to something is a turn. The room writes the sentence
+         — it is the only part of this that knows a book from a cushion — and
+         it goes up the same socket as anything typed. Which makes touching
+         the room a third way of talking to a pill, beside the microphone and
+         the line at the bottom of the screen. */
+      link.did = text => { if (!elsewhere) send({cmd: 'did', text}); };
+      (link.said || []).forEach(t => link.did(t));
+      link.said = [];
+      if (window.Room && window.Room.room.knows)
+        window.Room.room.knows({...link.last, did: link.did});
+      // Anything touched before there was a session to keep it in goes now.
+      if (link.pending && m.session) {
+        send({cmd: 'room_set', state: link.pending});
+        link.pending = null;
+      }
+      break;
+    }
+    case 'sessions':
+      break;                       // Sheets took it, above
+    case 'history':
+      clearChat();
+      streaming = null;
+      pinned = true;                       // a freshly loaded log opens at its end
+      // Whose conversation this is, from the message itself. The state that
+      // carries it arrives after this one — the room is restored last, on
+      // purpose — so waiting for it drew a whole reopened evening as "the pill".
+      personaName = m.persona_name || personaName;
+      (m.messages || []).forEach(x => bubble(x.role === 'user' ? 'You' : personaName, x.content));
+      keepDown(true);
+      break;
+  }
+}
+
+let idleSince = 0;
+function setState(s) {
+  const was = state;
+  state = s;
+  if (s === 'listening') showHeard();
+  /* A turn is beginning. Which is where the wait for a voice starts as well:
+     between the sentences of one reply the voice stops for a moment while the
+     next is made, and a room that started beating in those gaps was saying
+     "something is coming" over and over about a thing that was already here.
+     It is asked once per turn, and answered by the first sound of it. */
+  if (s === 'thinking' && was !== 'thinking') showMusing();
+  if (s !== 'thinking' && s !== 'speaking') clearMusing();
+  // Idle passes through for a moment between the end of your sentence and the
+  // transcript, so it is a wait, not a signal — two seconds of it means the
+  // turn is not coming (transcription failed, or it was cut off).
+  // The dots stay until the words arrive. Transcription can take a couple of
+  // seconds and the state passes through idle on the way, so a short idle
+  // means nothing — the server says outright when a turn is dropped, and the
+  // long timeout is only a backstop for a crash.
+  idleSince = s === 'idle' ? (idleSince || Date.now()) : 0;
+  if (s === 'speaking' || s === 'stopped'
+      || (heard && idleSince && Date.now() - idleSince > 20000)) clearHeard();
+  if (typeof refreshSend === 'function') refreshSend();
+}
+
+let reconciled = false;
+function tick(m) {
+  running = m.running;
+  setState(m.state);
+  /* Which conversation we are in can change under us — a persona switch opens
+     a new one, and the handshake that arrived a moment before described the
+     old one. Ask for the room again whenever it moves, or one room opens with
+     another room's lamp lit. */
+  const link = window.RoomLink || (window.RoomLink = {last: null, pending: null});
+  if (link.seen !== m.session_id) {
+    link.seen = m.session_id;
+    send({cmd: 'room_get'});
+  }
+  // A refresh takes the page's capture with it and leaves the server holding a
+  // microphone that stopped existing — reading live, hearing nothing. Say so
+  // once per connection: either the mic is gone, or the label is stale.
+  if (!reconciled) {
+    reconciled = true;
+    if (m.input_mode === 'mic' && !micStream) {
+      send({cmd: 'input_mode', mode: 'type'});
+    } else if ((m.input_mode === 'mic') !== micOn) {
+      setInputMode(m.input_mode);
+    }
+  }
+  // the dot: dark when the mic is off, green when live, bright when it hears you
+  const gate = Math.max(m.floor * 3, 0.004);
+  // Live means frames are actually arriving. When the page is the microphone
+  // and the page is not capturing, they are not, whatever the server believes.
+  const live = running && m.input_mode === 'mic' && !!micStream;
+  /* The record key is the meter. It blinks while the mic is open and blinks
+     faster when it can actually hear you, which is the one thing a person
+     needs to know about a microphone and the thing a label never says. */
+  const rec = $('t-rec');
+  // How much of it is hearing you, along the foot of the key.
+  const heard = live ? Math.min(1, m.level / Math.max(gate * 3, 0.02)) : 0;
+  const was = +(rec.dataset.lvl || 0);
+  const now = heard > was ? heard : was * 0.7 + heard * 0.3;   // falls back gently
+  rec.dataset.lvl = now < 0.01 ? 0 : now.toFixed(3);
+  rec.style.setProperty('--lvl', (now * 100).toFixed(1) + '%');
+  rec.classList.toggle('armed', live);
+  rec.style.setProperty('--beat', live && m.level > gate ? '.45s' : '1.6s');
+  rec.title = live ? (m.level > gate ? 'hearing you — press to stop listening'
+                                     : 'listening — press to stop')
+                   : 'talk to it — the mic listens until you press it again';
+  if (m.mic_follow) micFollow = m.mic_follow;
+  // How the pill is taking you is a thing to read, not a control, and it is on the
+  // box's own dashboard beside the doses and what it remembers.
+  personaName = m.persona_name || personaName;
+  /* Loading and unloading the models is the console's job now — /start and
+     /stop, next to the log that says why they would not. It was a button in
+     this panel, which put the one control you need when nothing is working
+     inside the thing that was not working, and it took up the width of two
+     others to say a word most evenings never need. */
+  // The text box stays live even when nothing is loaded: typing into it is
+  // how you start, and the server brings the stack up and answers what you
+  // typed. Keep going needs a running stack to hand the wheel to.
+  if (m.continuous !== undefined && m.continuous !== continuous)
+    setContinuous(m.continuous, m.continuous_min);
+  paintPlay();                       // five times a second, so it cannot go stale
+  // How much is left runs down while it plays; the counter reads it.
+  if (m.continuous && m.continuous_min !== undefined) {
+    tapeLeft = m.continuous_min;
+    tapeSync(m.continuous_min);
+    paintCounter();
+  }
+  refreshSend();
+
+}
+
+// Asks, and resolves to what you chose. Escape or the backdrop is No, so the
+// safe answer is always the easy one; No takes the focus for the same reason.
+function ask(title, body, yes = 'Yes') {
+  return new Promise(resolve => {
+    $('asktitle').textContent = title;
+    $('askbody').textContent = body;
+    $('askyes').textContent = yes;
+    $('ask').hidden = false;
+    $('askno').focus();
+    const done = answer => {
+      $('ask').hidden = true;
+      document.removeEventListener('keydown', onKey, true);
+      resolve(answer);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); done(false); }
+    };
+    $('askyes').onclick = () => done(true);
+    $('askno').onclick = () => done(false);
+    $('ask').onclick = e => { if (e.target === $('ask')) done(false); };
+    document.addEventListener('keydown', onKey, true);
+  });
+}
+
+/* These three had buttons along the top of the panel. They are one-in-a-while
+   things — what it remembers, what you have already said to it, and the
+   nuclear option — and a row of buttons over a conversation for once-in-a-while
+   things is a row you stop seeing.
+
+   The sheets they open are shared with the box's dashboard, which is where a
+   person would go looking. This is the other door, for somebody already deep
+   in a conversation who should not have to leave it to check what it
+   remembers. */
+Sheets.use({send});
+addEventListener('load', () => {
+  if (!window.Hatch) return;
+  // The console stays where it is: the sheet opens over it, and closing the
+  // sheet puts you back in the log you were reading.
+  const show = fn => () => { fn(); };
+  /* After moving anything in a room: what can still actually be pressed.
+     Nothing else notices when a chair puts itself in front of a lamp, and it
+     looks exactly like a lamp that has stopped working. */
+  /* The names in this console are `<the thing>_<what about it>`, so that a
+     list somebody reads down falls into families on its own: room_clear beside
+     room_reach beside room_state, ai_models_start beside ai_models_stop.
+     Anything added here should sort into that.
+
+     Which puts the verb last, and the verb is what somebody types. The console
+     matches on any word of a name for that reason — "start" finds
+     ai_models_start — so a name being subject-first costs nothing to find and
+     buys the list its order. See suggest() in night.js. */
+  Hatch.command('room_reach', 'what in this room can still be pressed, and what is in the way',
+    () => {
+      if (!window.Room || !Room.room.reach) return 'no room to look at';
+      const all = Room.room.reach();
+      const bad = all.filter(r => r.ok === false);
+      const gone = all.filter(r => r.ok === null);
+      const lines = bad.map(r => `  ✗ ${r.name} — ${r.why}`);
+      return [`${all.length - bad.length - gone.length} of ${all.length} reach themselves`
+              + (gone.length ? `, ${gone.length} out of the room` : ''),
+              ...(lines.length ? lines : ['  nothing is in the way of anything'])].join('\n');
+    });
+
+  /* Here rather than on the server, because it is about this room and not
+     about the machine. One console serves every page, so a command answered
+     on the server acts on whichever conversation is live — which is only this
+     one while nothing else is open. This page asks, so this page knows to
+     follow the new conversation instead of mistaking it for somebody
+     else's. */
+  Hatch.command('session_new', 'begin a fresh conversation with this pill',
+    () => {
+      if (elsewhere) return 'another window has the machine — take it back first';
+      expecting = true; expectedAt = Date.now();
+      claiming = true; claimedAt = Date.now();
+      send({cmd: 'clear'});
+      return 'starting a new one…';
+    });
+
+  Hatch.command('memory_show', 'what this pill remembers about you',
+                show(() => Sheets.memory(SLUG, personaName)));
+  Hatch.command('sessions_list', 'conversations you have already had',
+                show(() => Sheets.history(SLUG, personaName)));
+  /* `standing_clear` rather than `forget_standing`, for the same reason
+     /room_clear is not /tidy: the console is a list somebody reads down, and
+     the names should fall into pairs on their own. What a thing is called
+     first, what is being done to it second. */
+  Hatch.command('standing_clear', 'put how this pill is taking you back to nothing',
+                show(() => Sheets.forget(SLUG, personaName)));
+});
+
+
+// Always hands-free: the app decides when you have finished speaking.
+
+// ---- nothing you typed is lost ---------------------------------------------
+// A reload, a crash, a phone that decides to reclaim the tab: none of them
+// should cost you a sentence you had written. Two things are kept — what is in
+// the box right now, and what has been sent but not yet echoed back by the
+// server, which is the window where a message could vanish in transit.
+const DRAFT = 'lucid.draft', UNSENT = 'lucid.unsent';
+
+function store(key, value) {
+  try { value ? localStorage.setItem(key, value) : localStorage.removeItem(key); }
+  catch (e) { /* private window, or storage refused — nothing to do */ }
+}
+function stored(key) {
+  try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+}
+function saveDraft() { store(DRAFT, $('text').value); }
+
+function submit() {
+  const t = $('text').value.trim();
+  if (!t) return;
+  /* You paused because you stepped away; saying something is coming back.
+     Leaving it held here is the one way this can go quiet with nothing
+     visibly wrong — everything after would queue behind a paused element and
+     never be heard. */
+  if (held) holdWav(false);
+  store(UNSENT, t);            // cleared when the server echoes it back
+  $('text').value = '';
+  saveDraft();
+  send({cmd: 'say', text: t});
+}
+function talking() { return state === 'speaking' || state === 'thinking'; }
+/* No Send. Return sends, which is what everybody's hands already do, and on a
+   phone the keyboard's own return key does it too — so the button was a
+   second way to do the one thing the field is for, taking the width of three
+   keys to say so.
+
+   What is left of this is the deck: the keys read differently depending on
+   what is happening, and this is where that gets recomputed. */
+function refreshSend() { paintPlay(); }
+
+
+$('text').addEventListener('input', () => { refreshSend(); saveDraft(); });
+
+// ---- play audio on this device -------------------------------------------
+// The Mac generates the sound; these frames are raw PCM over the websocket.
+// An AudioContext can only start from a user gesture, which is why this is a
+// button rather than a setting.
+let audioFrames = 0, audioErr = '';
+/* When something was last heard out loud — and, while it is still zero,
+   the fact that nothing ever has been.
+
+   That is what arms the waiting pulse: not how long this gap is, but whether
+   anybody has yet heard this page make a sound. See paintPlay. */
+let lastVoiceAt = 0;
+
+function reportAudio() {
+  // What is still unheard: the chunk playing plus everything behind it. The
+  // server paces itself on this instead of its own estimate.
+  send({cmd: 'audio_state', queued_s: queuedS + playingS});
+}
+let complaining = false;
+function audioStatus() {
+  /* Once per run of trouble, not once per sentence.
+
+     It said something whenever the message changed, which sounds like the
+     same thing and is not: a page that cannot play at all fails twice per
+     chunk in two different ways — the browser refusing to start, then the
+     element giving up on the clip — and the two take turns, so every message
+     was a new message and a reply put twenty lines in the console. Which is
+     one page's stuck audio drowning the log everybody else's trouble goes to.
+
+     The whole of it is one fact anyway: this page is not making any sound.
+     Said once, and again only once it has made some and stopped. */
+  if (!audioErr) { complaining = false; return; }
+  if (complaining || !window.Hatch) return;
+  complaining = true;
+  /* Waiting for a first click is not a fault. Every browser refuses to play
+     until the page has been touched, the next press anywhere clears it, and
+     the deck cannot be used without pressing something — so it is a note
+     about the state of the room, not something to be raised on the console's
+     knob. Anything else audio says is a real one: it means this page cannot
+     make a sound and nobody outside it can tell. */
+  const waiting = /NotAllowed/.test(audioErr);
+  Hatch.say(waiting ? 'audio: this browser will not play until the page has been clicked'
+                    : 'audio: ' + audioErr,
+            waiting ? 'warn' : 'error');
+}
+// ---- capture: this device's microphone ------------------------------------
+// The only microphone there is: the machine behind this page never opens one,
+// so a refusal here is the answer rather than the first of two attempts. Sent
+// as 16 kHz PCM, and the voice detection, barge-in and turn assembly all live
+// at the other end. Echo cancellation is the browser's, which is most of why
+// it must be this device that listens: the same device is playing the voice.
+let micStream = null, micCtx = null, micNode = null, micSrc = null;
+
+/* One attempt at a time. Two overlapping asks — the key pressed while the
+   window is also taking focus, which is one gesture on a desktop — is enough
+   for a browser to refuse both, and it refuses with InvalidStateError, which
+   reads as "not ready" and is really "not again". */
+let asking = null;
+async function startCapture() {
+  if (micStream) return true;
+  if (asking) return asking;
+  asking = capture().finally(() => { asking = null; });
+  return asking;
+}
+
+async function capture() {
+  if (!navigator.mediaDevices || !window.isSecureContext) {
+    log('microphone needs https — see AGENTS.md');
+    return false;
+  }
+  /* InvalidStateError is two different answers wearing one name.
+
+     Safari says it when the certificate does not verify. It will load the page
+     and play the voice on an exception clicked through once, and still refuse
+     a microphone, because an exception is not a trusted chain — no warning
+     anywhere, and the only symptom is a key that does nothing.
+
+     Every browser says it when the page is not fully active, which happens on
+     the way back from another app, in the moment between the window taking
+     focus and the document being ready to be asked. That one passes in a
+     fraction of a second, so it is worth asking twice before believing it. */
+  /* Tell Safari this page does both.
+   *
+   * WebKit keeps an audio session for the page, the way an iOS app has one,
+   * and picks a category from what the page has been doing. This page plays a
+   * voice, so by the time anybody presses Talk the session is `playback` — and
+   * a microphone cannot be opened in `playback`. It refuses with
+   * InvalidStateError and the words "AudioSession category is not compatible
+   * with audio capture", which is the only clue there is.
+   *
+   * `play-and-record` is what this program actually is: a voice coming out
+   * while a room is listened to. Set before asking, because after the refusal
+   * is too late. Safari only — elsewhere navigator.audioSession does not
+   * exist, and the category was never the problem. */
+  try {
+    if (navigator.audioSession && navigator.audioSession.type !== 'play-and-record') {
+      navigator.audioSession.type = 'play-and-record';
+    }
+  } catch (e) {
+    log('could not set the audio session: ' + (e && e.name || e), 'warn');
+  }
+  const ask = () => navigator.mediaDevices.getUserMedia({
+    audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
+  });
+  try {
+    try {
+      micStream = await ask();
+    } catch (e) {
+      if (e && e.name === 'InvalidStateError') {
+        await new Promise(r => setTimeout(r, 350));
+        micStream = await ask();
+      } else {
+        throw e;
+      }
+    }
+  } catch (e) {
+    /* Named so it can be acted on. These are the three that happen, and each
+       wants a different thing done about it — on a phone, where the only way
+       to see the console is to know it is there, the difference between "say
+       yes to the browser" and "the certificate is not trusted" is the whole
+       of whether the evening happens. */
+    const why = e && e.name;
+    log(why === 'NotAllowedError'
+          ? 'microphone refused — allow it for this page in the browser'
+        : why === 'NotFoundError'
+          ? 'no microphone on this device'
+        : why === 'InvalidStateError'
+          /* Two things say this, and blaming the wrong one sends somebody off
+             for an afternoon. On an address a browser already trusts, the
+             address is not the fault: it is the page's audio session, set
+             above, or a page that was not ready to be asked. Anywhere else it
+             is worth naming the address, because that is both the fault and
+             the fix. */
+          ? (LOCAL
+             ? 'microphone refused — press Talk once more; if it keeps '
+               + 'refusing, the line below is the reason.'
+             : 'microphone refused — this address is not one a browser will '
+               + 'open a microphone on. On the computer itself, open '
+               + `https://localhost:${location.port || 6969} instead.`)
+          : 'microphone refused: ' + (why || e));
+    /* And the browser's own words, which are the only thing that says which
+       of the several reasons this actually was. Every guess above is a guess
+       until somebody has read this line. */
+    if (e && e.message) log('the browser said: ' + e.message, 'warn');
+    micStatus(null);
+    return false;
+  }
+  // echoCancellation is asked for above, but asking is not getting: report what
+  // the track actually granted. With it, its voice is subtracted from what the
+  // mic hears and speakers are fine; without it, an open mic answers itself.
+  const got = micStream.getAudioTracks()[0].getSettings();
+  micStatus(got.echoCancellation);
+  micCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (micCtx.state === 'suspended') await micCtx.resume();
+  micSrc = micCtx.createMediaStreamSource(micStream);
+  const BUF = 4096;
+  micNode = micCtx.createScriptProcessor(BUF, 1, 1);
+  micNode.onaudioprocess = ev => {
+    const inBuf = ev.inputBuffer.getChannelData(0);
+    const ratio = micCtx.sampleRate / 16000;
+    const outLen = Math.floor(inBuf.length / ratio);
+    const pcm = new Int16Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const x = i * ratio, i0 = Math.floor(x), f = x - i0;
+      const v = (inBuf[i0] || 0) * (1 - f) + (inBuf[i0 + 1] || 0) * f;
+      pcm[i] = Math.max(-32768, Math.min(32767, v * 32768));
+    }
+    let bin = '';
+    const bytes = new Uint8Array(pcm.buffer);
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    send({cmd: 'mic_audio', rate: 16000, pcm: btoa(bin)});
+  };
+  micSrc.connect(micNode);
+  micNode.connect(micCtx.destination);   // Safari will not run the node otherwise
+  return true;
+}
+
+// null = no microphone at all; nothing here is listening.
+/* The one browser whose report cannot be taken at its word.
+   getSettings() says echoCancellation: true, the console says "microphone:
+   echo canceled", and the pill still hears itself and stops mid-sentence --
+   with an echo canceller that never converges rather than one that takes a
+   moment to. Two things follow from it and both are here.
+
+   Named rather than sniffed for a feature, because there is no feature to
+   ask: a browser that answers this question wrongly will answer every version
+   of it wrongly. Wrong in the safe direction if it is ever fixed -- barge-in
+   off, which /mic_barge on turns back on.
+
+   ---- what to try, when there is time for it ----------------------------
+
+   Two candidates, one of them ruled out. macOS lends its own voice processing
+   to getUserMedia and Firefox takes it (bug 1404972), which broke exactly this
+   for built-in speaker and mic in 128 (bug 1908539). Not it: the pref that
+   turns it off, media.getusermedia.audio.processing.platform.enabled, is true
+   in 154 and turning it off changes nothing here -- the mic meter still moves
+   while the pill speaks, where Safari's sits still.
+
+   The other is the shape of the graph. Firefox cancels against the audio
+   played out in the same MediaTrackGraph as the capture (bug 1849108), and
+   this page plays the voice through an <audio> element while the microphone
+   lives in an AudioContext of its own -- so there may be nothing in the
+   canceller's reference to subtract. Worth measuring: play a burst three ways
+   -- that element, a second AudioContext, and the microphone's own -- and
+   watch which of them the mic stops hearing. If it is the third, the fix is
+   to play the voice through micCtx and this whole constant goes away.
+
+   And the honest replacement for a browser name is measurement anyway: we
+   know when the voice is playing and how loud, so mic energy that rises with
+   it is cancellation that is not happening, whoever is at fault. */
+const SAYS_SO_ANYWAY = /\bFirefox\//.test(navigator.userAgent);
+
+function micStatus(aec) {
+  /* Said once, into the console, rather than parked in a corner of the panel.
+     "No echo cancellation" is exactly the kind of thing that explains a bad
+     evening an hour later, and exactly the kind of thing nobody reads while
+     it is only a small gray line under a conversation. */
+  // Reported true and demonstrably false is a third answer, not the first one.
+  const lying = SAYS_SO_ANYWAY && aec === true;
+  const note = lying ? 'microphone: this browser reports echo cancellation it '
+                     + 'does not do — talking over the pill is off. '
+                     + 'Headphones, or /mic_barge on to insist'
+             : aec === true ? 'microphone: echo canceled'
+             : aec === false ? 'microphone: no echo cancellation — use headphones'
+             : aec === undefined ? 'microphone: echo cancellation not reported'
+             /* null: there is no microphone. This page is the only one there
+                is, so there is nothing else to try and nothing to fall back
+                to — see the note on capture above. */
+             : 'no microphone — this page was not given one';
+  if (note !== lastMicNote) {
+    lastMicNote = note;
+    if (window.Hatch) Hatch.say(note, aec === true && !lying ? 'info' : 'warn');
+  }
+  /* And barge-in follows it, because without cancellation the pill is the
+     loudest thing in the room and talking over it is what barge-in is for: it
+     hears itself, decides somebody interrupted, and stops mid-sentence. Told
+     no, it finishes the line and you type or press Skip instead — which is a
+     worse way to interrupt and a great deal better than a voice that cuts
+     itself off every second sentence.
+
+     `false` only, never `undefined`: a browser that does not report is not a
+     browser that failed, and turning this off on a maybe would take barge-in
+     away from people who have it. If one reports cancellation and plainly is
+     not doing any, /mic_barge off is the same switch by hand. */
+  send({cmd: 'barge', on: aec !== false && !lying});
+}
+let lastMicNote = '';
+
+function stopCapture() {
+  lastMicNote = '';                     // says it again next time it is opened
+  if (micNode) { micNode.onaudioprocess = null; micNode.disconnect(); micNode = null; }
+  if (micSrc) { micSrc.disconnect(); micSrc = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (micCtx) { micCtx.close().catch(() => {}); micCtx = null; }
+}
+
+// ---- iOS path: play through <audio> ---------------------------------------
+// Web Audio on iOS is silenced by the ringer switch and refuses buffers whose
+// rate differs from the context's. An <audio> element counts as media, so it
+// ignores the switch and decodes a WAV on its own terms.
+const wavQueue = [];
+let wavEl = null, wavBusy = false;
+let wavUrl = '';     // the chunk in hand, so stopping can give it back
+let queuedS = 0, playingS = 0;
+
+// The voice model hands back whatever level it happens to speak at, and it is
+// usually well under full scale. Left alone, the interface clicks sit over the
+// top of it — and dropping the clicks far enough to fix that just makes the
+// whole game quiet. So each piece of speech is brought up to a known loudness
+// before it plays.
+//
+// Loudness is an average, and the thing that stops you reaching it is a single
+// sample. Speech from this model runs about 20 dB of crest — a sentence at
+// 0.044 RMS peaks at 0.44 — so lifting it to the figure below would put its
+// loudest sample past full scale. Held to the absolute peak, the gain is then
+// decided by whichever consonant happened to be sharpest, which is per
+// sentence and has nothing to do with how loud the sentence sounds. Measured
+// on one six-sentence reply before this was written: the ceiling governed five
+// of the six, and they played 5.9 dB apart — wider than the 5.2 dB the model
+// had put there itself.
+//
+// So the peak that sets the ceiling is the one 0.5% of samples exceed, not the
+// maximum, and the handful above it are rounded over rather than clipped flat.
+// The ceiling itself sits a little under full scale to leave the rounding
+// somewhere to happen: at 0.97 the loudest sentence of a reply was arriving
+// with its peaks pressed against the top of the knee, which is a limiter
+// working hard rather than a limiter catching something.
+//
+// The lift is still one slowly-moving figure for the whole voice, which is
+// what keeps a whisper a whisper.
+const VOICE_RMS = 0.14;         // where speech should sit, of full scale
+const VOICE_CEILING = 0.94;     // and where the loud 0.5% is held
+const VOICE_KNEE = 0.80;        // above this, gently; see soften()
+const VOICE_TAIL = 0.005;       // the fraction of samples allowed past the ceiling
+// Below this is the pause on the end of a sentence, not the sentence.
+//
+// Loudness is measured over what was actually said. A chunk is one sentence
+// plus the gap after it, and every sentence gets the same gap — so a short one
+// is mostly silence, its average reads as far quieter than the speech in it,
+// and the lift computed from that average lands the line above everything
+// round it. Measured: "Kiss me." on its own is 0.26s of speech in a chunk that
+// is 77% quiet, and came out 6.3 dB over its target against 2.7-4.5 dB for the
+// long lines beside it — which is a line jumping out of a paragraph for no
+// reason anybody reading it could hear.
+const VOICE_QUIET = 0.01;
+const VOICE_ENOUGH = 2400;      // 0.1s at 24k; less than this, trust the whole chunk
+let voiceLift = null;           // one slowly-moving figure for the whole voice
+
+// Peaks rounded rather than cut. A sample over the knee is compressed into
+// what is left below full scale, so the few that the ceiling no longer holds
+// down bend instead of breaking — the difference between a limiter and a
+// razor, and audible on plosives.
+function soften(v) {
+  const a = Math.abs(v);
+  if (a <= VOICE_KNEE) return v;
+  const over = (a - VOICE_KNEE) / (1 - VOICE_KNEE);
+  const bent = VOICE_KNEE + (1 - VOICE_KNEE) * Math.tanh(over);
+  return v < 0 ? -bent : bent;
+}
+
+function normalize(bytes) {
+  const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length >> 1);
+  // One pass for both: the loudness, and a histogram to read the working peak
+  // off without sorting forty thousand samples on the thread that draws.
+  const BINS = 512;
+  const hist = new Int32Array(BINS);
+  let sum = 0, said = 0, voiced = 0, peak = 0;
+  for (let i = 0; i < pcm.length; i++) {
+    const v = pcm[i] / 32768;
+    sum += v * v;
+    const a = v < 0 ? -v : v;
+    if (a > VOICE_QUIET) { said += v * v; voiced++; }
+    if (a > peak) peak = a;
+    const b = (a * BINS) | 0;
+    hist[b >= BINS ? BINS - 1 : b]++;
+  }
+  if (!pcm.length || !peak) return bytes;
+  // The speech, where there is enough of it to measure. A whisper, or a chunk
+  // that is nearly all breath, falls back to the whole thing rather than being
+  // lifted off a handful of samples.
+  const rms = voiced >= VOICE_ENOUGH ? Math.sqrt(said / voiced)
+                                     : Math.sqrt(sum / pcm.length);
+
+  // The level the loudest half a percent sits above. A stray sample in a
+  // plosive no longer decides how loud a whole sentence is played.
+  let allowed = Math.floor(pcm.length * VOICE_TAIL), edge = BINS - 1;
+  for (let b = BINS - 1; b >= 0; b--) {
+    allowed -= hist[b];
+    if (allowed <= 0) { edge = b; break; }
+  }
+  // Never below twice the loudness, which is a floor rather than a
+  // measurement: a chunk that is mostly the pause on the end of it has almost
+  // all its samples at nothing, and a percentile read off that would call the
+  // sentence quiet and lift it into the ceiling.
+  const working = Math.max((edge + 1) / BINS, rms * 2);
+
+  // One lift for the voice, not one per sentence. Speech arrives a sentence at
+  // a time, and correcting each one to the same loudness would iron out the
+  // difference between a line it raises and a line it drops to — the whisper
+  // would come back as loud as the shout. So the figure moves slowly across
+  // sentences: the overall quietness is fixed, the shape of the delivery is
+  // not. Within a sentence nothing is touched at all — this is one constant
+  // multiplier, not a compressor.
+  const want = Math.max(1, VOICE_RMS / (rms || 1));
+  voiceLift = voiceLift === null ? want : voiceLift * 0.85 + want * 0.15;
+
+  // The one thing allowed to override it, per sentence — but measured against
+  // the working peak, so it binds when a sentence is genuinely hot rather than
+  // whenever one sample is.
+  const lift = Math.max(1, Math.min(voiceLift, VOICE_CEILING / working));
+  if (lift > 1.01) {
+    for (let i = 0; i < pcm.length; i++) {
+      const v = Math.round(soften(pcm[i] / 32768 * lift) * 32768);
+      pcm[i] = v > 32767 ? 32767 : v < -32768 ? -32768 : v;
+    }
+  }
+  return bytes;
+}
+
+function wavBlob(bytes, rate) {
+  const n = bytes.length, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  const put = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  put(0, 'RIFF'); v.setUint32(4, 36 + n, true); put(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  put(36, 'data'); v.setUint32(40, n, true);
+  new Uint8Array(buf, 44).set(bytes);
+  return new Blob([buf], {type: 'audio/wav'});
+}
+function wavPlayNext() {
+  // wavBusy means "a chunk is playing right now". It is cleared only when that
+  // chunk ends, errors, or is stopped -- never merely because the queue is
+  // empty, which used to let the next chunk cut off the one still playing.
+  // Nothing to play it with yet: playWav makes the element, and only it fills
+  // the queue, so this cannot happen in the ordinary run of things — but a
+  // resume that arrives first should do nothing rather than throw.
+  if (held || wavBusy || !wavEl || !wavQueue.length) return;
+  wavBusy = true;
+  const blob = wavQueue.shift();
+  playingS = blob.secs || 0;
+  queuedS = Math.max(0, queuedS - playingS);
+  /* Held where stopping can reach it. A chunk that is cut off never runs
+     done(), so the browser was left holding the decoded audio for every
+     sentence anybody ever interrupted — one per barge-in, per Skip, per hush,
+     all evening, and only a reload gave them back. */
+  const url = wavUrl = URL.createObjectURL(blob);
+  const done = () => {
+    URL.revokeObjectURL(url);
+    if (wavUrl === url) wavUrl = '';
+    wavBusy = false;
+    playingS = 0;
+    audioStatus();
+    reportAudio();
+    paintPlay();                     // the key follows what is coming out
+    wavPlayNext();
+  };
+  wavEl.onended = done;
+  wavEl.onerror = () => { audioErr = 'decode'; done(); };
+  wavEl.src = url;
+  wavEl.play().then(() => { audioFrames++; audioErr = ''; lastVoiceAt = Date.now();
+                            audioStatus(); paintPlay(); })
+              .catch(e => {
+                /* Pausing a chunk whose play() has not settled yet rejects it
+                   with AbortError. That is us, doing what we were asked, and
+                   treating it as a failure threw the sentence away: done()
+                   revokes the object URL and moves on, so the chunk you paused
+                   was gone before you pressed resume. Which is most of why
+                   pausing took more than one press to work — half the time it
+                   was not a pause, it was a skip. */
+                if (e && e.name === 'AbortError' && held) return;
+                audioErr = 'play: ' + e.name;
+                done();
+              });
+}
+// Its voice answers to the same knob as the latches and the ticks — one level
+// for the whole thing, kept in this browser. Set before anything plays, and
+// again whenever the corner control moves.
+const masterVolume = () => (window.Lucid && window.Lucid.sound)
+  ? window.Lucid.sound.level : 1;
+document.addEventListener('lucid:volume', e => { if (wavEl) wavEl.volume = e.detail; });
+
+/* Not now, said in the corner. The shell owns the switch — it is the same one
+   that silences the interface — and this is the half of it the shell cannot
+   do: the pill's voice is an audio element on this page and nothing outside
+   knows about it. Muted, the words still arrive and are still read; they are
+   simply not spoken, which is the whole of what anybody means by turning a
+   conversation down while somebody else is in the room.
+
+   (The server goes on making the voice. Not making it at all is the better
+   answer and a bigger one — it would want telling the machine that nobody is
+   listening, and then unloading the voice model when that stays true.) */
+const hushed = () => !!(window.Lucid && Lucid.sound && Lucid.sound.hush);
+document.addEventListener('lucid:hush', (e) => {
+  if (e.detail) { stopWav(); }                 // drop what was in the air
+  paintPlay();
+});
+
+/* The line that is being spoken right now, or the last one there was: what
+   the mark goes on. */
+function markUnheard() {
+  const el = streaming
+    || [...$('chat').querySelectorAll('.msg.pill:not(.pending)')].pop();
+  if (!el || el.querySelector('.unheard')) return;
+  const mark = document.createElement('button');
+  mark.type = 'button';
+  mark.className = 'unheard';
+  mark.title = 'not spoken — press to hear it';
+  mark.setAttribute('aria-label', mark.title);
+  mark.innerHTML = MUTED_SVG;
+  el.appendChild(mark);
+}
+
+/* Pressing it turns the sound back on and says the line — both halves,
+   because a mark that only explains itself sends somebody hunting for a
+   switch on another screen. */
+$('chat').addEventListener('click', (e) => {
+  const mark = e.target.closest && e.target.closest('.unheard');
+  if (!mark) return;
+  e.stopPropagation();
+  const msg = mark.closest('.msg');
+  if (window.Lucid && Lucid.sound && Lucid.sound.hush) Lucid.sound.setHush(false);
+  $('chat').querySelectorAll('.unheard').forEach(m => m.remove());
+  if (msg && msg._raw) send({cmd: 'replay', text: msg._raw});
+});
+
+/* Nothing on the glass is unheard once the sound is back. */
+document.addEventListener('lucid:hush', (e) => {
+  if (!e.detail) $('chat').querySelectorAll('.unheard').forEach(m => m.remove());
+});
+
+function playWav(b64, rate) {
+  if (hushed()) { markUnheard(); return; }
+  /* Nor from a page that does not have the machine. Everything addressed to
+     another conversation is already dropped upstream, in mine() — this is the
+     belt to that pair of braces, because of all the things a stale page can
+     get wrong, speaking somebody else's words in somebody else's voice is the
+     one you cannot miss and cannot undo. */
+  if (elsewhere) return;
+  if (!wavEl) {
+    wavEl = new Audio();
+    wavEl.playsInline = true;
+    wavEl.preload = 'auto';
+    wavEl.volume = masterVolume();
+  }
+  const raw = atob(b64), bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  const secs = (bytes.length / 2) / rate;
+  wavQueue.push(wavBlob(normalize(bytes), rate));
+  queuedS += secs;
+  wavQueue[wavQueue.length - 1].secs = secs;
+  wavPlayNext();
+  reportAudio();
+  audioStatus();
+  paintPlay();                       // a voice arrived; the key is a pause now
+}
+/* Held, not cut. You were distracted halfway through something long and you
+   do not want it gone — you want it to wait. The chunk that is playing is
+   paused where it is and the rest of the queue stays where it is, so pressing
+   play again picks the sentence up mid-word.
+
+   It also stops the pill running ahead while you are away, for free: the
+   server paces itself on how much audio the page still has to play, and while
+   this is held that number does not go down. Nothing is generated into a room
+   nobody is listening to. */
+let held = false;
+function holdWav(on) {
+  held = on;
+  /* And the run behind the voice, if there is one. A pause that stops only
+     the sound leaves the machine writing turns nobody is listening to and the
+     dose spending itself against a silence — see hold_continuous. */
+  if (continuous) { send({cmd: 'hold', on}); tapeHold(on); }
+  if (on) {
+    // Whatever is playing stops where it is; what is behind it stays behind
+    // it, because wavPlayNext will not start anything while this is set.
+    if (wavEl) { try { wavEl.pause(); } catch (e) {} }
+  } else {
+    /* Two ways to come back, and picking the wrong one is why resuming took
+       more than one press. A voice arrives a sentence at a time: pause during
+       a sentence and there is a part-played chunk to pick up; pause in the
+       gap between two and there is nothing playing at all, only a queue
+       waiting — and calling play() on the element then does nothing, so the
+       press appeared to be ignored. */
+    /* If a chunk is loaded — playing, part-played, or paused before it ever
+       started — it is the one to pick up, from wherever it got to. Only when
+       there is no chunk in hand does the next one come off the queue. */
+    if (wavBusy && wavEl) {
+      wavEl.play().catch(e => {
+        if (e && e.name === 'AbortError') return;
+        audioErr = 'resume: ' + e.name;
+      });
+    } else {
+      wavPlayNext();
+    }
+  }
+  paintPlay();
+}
+
+/* Letting a pause go without picking up what it paused.
+
+   A hold is three things: this flag, the clock on the tape, and the run on the
+   server behind it. Stop and Skip throw the queue away, so there is nothing to
+   resume — and they used to clear the flag alone. The other two stayed held:
+   the counter then read the same number for the rest of the evening, on every
+   run after it, and the server went on holding a run the page believed was
+   going. Releasing is always safe, whether or not anything is held. */
+function letGo() {
+  if (!held) return;
+  held = false;
+  tapeHold(false);
+  send({cmd: 'hold', on: false});
+}
+
+/* Let go of everything except the words in the air. */
+function softStop() {
+  letGo();
+  wavQueue.length = 0;
+  queuedS = 0;
+  reportAudio();          // the Mac paces itself on this; it is nearly empty now
+  audioStatus();
+  paintPlay();
+}
+
+function stopWav() {
+  letGo();
+
+  wavQueue.length = 0;
+  queuedS = 0; playingS = 0;
+  reportAudio();                   // tell the Mac the queue is gone, or it
+                                   // keeps gating the mic on audio we dropped
+  if (wavEl) {
+    wavEl.onended = null;          // pausing must not chain into the next chunk
+    wavEl.onerror = null;          // and neither must the old chunk's failure
+    try { wavEl.pause(); } catch (e) {}
+  }
+  if (wavUrl) { URL.revokeObjectURL(wavUrl); wavUrl = ''; }
+  wavBusy = false;
+  audioStatus();
+}
+
+
+// A phone is here to be talked to, so it claims the audio on its own. The
+// AudioContext still needs a gesture, so the first tap anywhere unlocks it.
+
+let unlocked = false;
+function unlockOnce() {
+  if (unlocked) return;
+  unlocked = true;
+  /* A silent play() inside the gesture is what buys autoplay rights later.
+     Every browser wants this, not just iOS.
+
+     On the element we already have, never a new one. This used to build a
+     fresh Audio and assign it over the top, and if the first press of the
+     evening landed while something was playing — which it does the moment you
+     reload a page mid-reply, or press a key to answer — the element carrying
+     that chunk was thrown away with its onended handler still on it. The
+     chunk never ended, so `wavBusy` never cleared, so nothing behind it in
+     the queue ever played. Silence, with nothing in the console: the failure
+     was the absence of an event rather than an error.
+
+     And the clip is real silence rather than a header with no samples in it.
+     A zero-length wav cannot be decoded — Firefox says so out loud — and a
+     play() that fails to decode is a poor way to ask for the right to play. */
+  if (!wavEl) {
+    wavEl = new Audio();
+    wavEl.playsInline = true;
+    wavEl.preload = 'auto';
+    wavEl.volume = masterVolume();
+  }
+  if (!wavBusy) {
+    wavEl.src = 'data:audio/wav;base64,UklGRmQGAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YUAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    wavEl.play().catch(e => { audioErr = 'unlock: ' + e.name; });
+  }
+  audioStatus();
+}
+// Playback happens in the page on every device now, and both Web Audio and an
+// <audio> element need a gesture before they will make a sound.
+['pointerdown', 'touchstart', 'keydown'].forEach(e =>
+  window.addEventListener(e, unlockOnce, {once: false, passive: true}));
+
+
+
+
+let micOn = false;   // the server starts with the mic off
+/* This page is the microphone. There is nowhere else to ask: the machine
+   behind it never opens a device, so a refusal here is the answer and not the
+   first of two attempts. Which is why the key stays off when it fails rather
+   than coming on over a microphone that is not there. */
+$('t-rec').onclick = async () => {
+  if (micOn) {
+    stopCapture();
+    send({cmd: 'input_mode', mode: 'type'});
+    return;
+  }
+  if (!await startCapture()) return;    // it said why; the key stays off
+  send({cmd: 'input_mode', mode: 'mic'});
+};
+// ---- the mic follows the window -------------------------------------------
+// Walk away from the page and the microphone should not stay open behind you:
+// switch tab, switch app, lock the phone, and it closes. Come back and it
+// opens again, but only if it was open when you left. If you had turned it
+// off yourself, nothing here touches it.
+// "focus" (leave the window and it closes), "hidden" (only when the page is
+// really hidden, so you can work in another window and keep talking), or
+// "never". From config.json, arriving with every tick.
+//
+// "hidden" by default. Losing focus is not leaving — the microphone's own menu
+// in the menu bar takes focus for as long as it takes to read, and under
+// "focus" the mic closes while you are looking at it, so the indicator
+// disappears under the pointer and the system's microphone controls cannot be
+// reached at all.
+let micFollow = 'hidden';
+// Until the server says which pill this is. Never a name, never a pronoun.
+let personaName = 'the pill';
+let micWasOn = false, micSwitching = false;
+
+function suspendMic(why) {
+  if (!micOn || micSwitching) return;
+  micWasOn = true;
+  micSwitching = true;
+  stopCapture();
+  send({cmd: 'input_mode', mode: 'type'});
+  log('mic closed — ' + why);
+  micSwitching = false;
+}
+
+async function resumeMic() {
+  if (!micWasOn || micOn || micSwitching) return;
+  micSwitching = true;
+  try {
+    if (!await startCapture()) {
+      log('mic did not reopen — press Talk when you are back');
+      micWasOn = false;
+      return;
+    }
+    send({cmd: 'input_mode', mode: 'mic'});
+    micWasOn = false;
+    log('mic open again');
+  } finally {
+    micSwitching = false;
+  }
+}
+
+/* Hidden is normally the honest signal -- another tab, another app, a locked
+   phone -- and it closes the mic at once, because a phone going into a pocket
+   should not take an open microphone with it.
+
+   Except in the browser above, which reports the menu bar taking over as the
+   page being hidden rather than merely unfocused. So the gesture that "hidden"
+   exists to survive -- opening the microphone's own menu to reach Voice
+   Isolation -- closed the mic there anyway, six times in the forty seconds it
+   took to find that out.
+
+   The wait is Gecko's alone, and desktop is where it happens: elsewhere a
+   hidden page can be frozen outright, its timers with it, and a close that
+   waits for a timer is a close that never comes. */
+let hiding = null;
+document.addEventListener('visibilitychange', () => {
+  if (micFollow === 'never') return;
+  clearTimeout(hiding);
+  hiding = null;
+  if (!document.hidden) return resumeMic();
+  if (!SAYS_SO_ANYWAY) return suspendMic('page hidden');
+  hiding = setTimeout(() => suspendMic('page hidden'), 700);
+});
+// Focus as well as visibility, but only under "focus": on a desktop the window
+// can be fully visible on another screen while you type somewhere else, and
+// whether that should close the mic is a matter of taste.
+/* Leaving is not the same as glancing away.
+ *
+ * Clicking the microphone in the menu bar — to see who has it, or to turn
+ * Voice Isolation on — takes focus off the window for as long as it takes to
+ * read it. Some browsers report that as blur and some do not, so on one the
+ * mic closed under you the moment you went to look at it, and on the others it
+ * did not. Neither is a page anybody can predict.
+ *
+ * So a blur waits half a second to see whether it meant anything. Come back
+ * and nothing happened; stay away and the mic closes as it always did. Half a
+ * second is longer than any round trip to the menu bar and shorter than
+ * anybody's idea of having left the room. */
+let leaving = null;
+window.addEventListener('blur', () => {
+  if (micFollow !== 'focus') return;
+  clearTimeout(leaving);
+  leaving = setTimeout(() => suspendMic('window not in front'), 500);
+});
+window.addEventListener('focus', () => {
+  clearTimeout(leaving);
+  leaving = null;
+  if (micFollow === 'focus') resumeMic();
+});
+
+function setInputMode(mode) {
+  micOn = (mode === 'mic');
+  if (!micOn) stopCapture();
+  // Down and lit while it is listening, the way a record key stays down.
+  $('t-rec').classList.toggle('armed', micOn);
+  // A switch, and now it says so: the shell reads this to know a press is
+  // flipping something rather than doing something, and gives it the heavier
+  // sound. It is what a screen reader wanted anyway.
+  $('t-rec').setAttribute('aria-pressed', micOn ? 'true' : 'false');
+  $('t-rec').querySelector('span').textContent = micOn ? 'Talking' : 'Talk';
+}
+
+
+
+/* Play is a mode, not a send: it does not touch what you have typed, and it
+   starts nothing on its own — after the next reply ends, the pill carries on
+   by itself until the tape runs out.
+
+   How long that is comes from the strength you set on the box, which is the
+   same number the panel used to ask for again in a little box of its own. A
+   dose is a tape length. It cannot be turned off, which is what keeps Play
+   from being a thing left running unattended overnight. */
+let continuous = false, tapeMinutes = 15;
+/* One key for everything the tape is doing, and everything stopping it.
+   Mid-reply it cuts the line off; armed and between turns it disarms; idle it
+   starts a run. Interrupt does both of the first two server-side, which is
+   what lets this be one key instead of a Stop button beside a Play one — and
+   that pair was the confusion: two controls a few pixels apart, both about
+   stopping, disagreeing about what. */
+/* Play and pause are the same key, as they are on the machine this borrows
+   from, and they mean what that machine means by them.
+
+   With a voice coming out, pause holds it where it is and play picks it up —
+   mid-word if that is where you stopped it. With nothing playing, play starts
+   the tape: the pill takes a turn now and carries on until the tape runs out.
+   That last part is the difference between a key and the checkbox this
+   replaces — a box could promise something about later, a key has to do
+   something when you press it. */
+/* Play asks one question and answers it the same way every time: is the tape
+   running. Down while it is, and pressing it again lets it go — which is what
+   a key that stays down means, and is the one thing the old dual key could
+   never do, because half the time it was a Pause. */
+$('t-play').onclick = () => {
+  /* A key that does nothing and says nothing is the worst answer a key can
+     give -- the same argument start_continuous makes about Play landing on a
+     cold stack. Three things can swallow this press, and each one now says so
+     rather than leaving somebody pressing it twice and reporting it broken. */
+  if (elsewhere) { log('another window has the machine — take it back first', 'warn'); return; }
+  if ($('t-play').disabled) {
+    log('say something first — Play carries on a conversation, it does not start one', 'warn');
+    return;
+  }
+  if (continuous) { send({cmd: 'continuous_stop'}); return; }
+  // Held when you press Play: you meant go, so let the sound go too.
+  if (held) holdWav(false);
+  send({cmd: 'continuous', minutes: tapeMinutes, now: true});
+};
+
+/* And Pause is about the sound in the room, not about the tape. It stops what
+   is being said where it is and holds the run behind it — see hold_continuous:
+   a pause that stopped only the sound left the machine writing turns nobody
+   was listening to, and the dose spending itself against a silence. */
+$('t-pause').onclick = () => {
+  if ($('t-pause').disabled) return;
+  holdWav(!held);
+};
+
+/* And stop is the hard one: cut this line off and end any run. Pause waits
+   for you; stop does not. */
+$('t-stop').onclick = () => {
+  if ($('t-stop').disabled) return;
+  letGo();
+  send({cmd: 'interrupt'});
+};
+
+/* And skip, which is Stop for one line rather than for the evening. The page
+   drops what it is holding as well as asking the server to stop sending: the
+   sentences already queued here are the ones you are trying to get past. */
+$('t-skip').onclick = () => {
+  if ($('t-skip').disabled) return;
+  stopWav();                   // which lets any hold go, clock and run and all
+  send({cmd: 'skip'});
+};
+
+// Something is actually coming out of the speaker right now.
+function sounding() { return wavBusy || wavQueue.length > 0; }
+function setContinuous(on, minutes) {
+  continuous = on;
+  if (!on) tapeHeld = 0;       // a run that ended cannot still be paused
+
+  if (on && minutes) { tapeLeft = minutes; tapeEnds = Date.now() + minutes * 60000; }
+  paintCounter();
+  refreshSend();
+}
+/* Its own second. Everything else in this panel is repainted when the server
+   says something, which is often enough for a word and not for a clock: a
+   countdown that moves in the steps the machine happens to speak in reads as
+   a broken clock rather than as a running one. */
+setInterval(() => { if (continuous) paintCounter(); }, 500);
+
+
+/* The keys' faces, drawn rather than typed.
+ *
+ * They were the characters for them — ⏮ ▶ ■ ⏭ ⏏ — which is exactly what those
+ * characters are for, and which a phone renders as color emoji: a row of
+ * little glossy 3-D buttons sitting inside the flat ones, at whatever size
+ * and weight Apple felt like. There is no asking a font not to do that
+ * reliably, and the rest of this interface is drawn anyway, so these are too.
+ * One shape each, on the same 24-unit grid as the corner rail, filled with
+ * whatever color the key is — so a record circle still goes red by being
+ * told to, and nothing here has to know about that.
+ */
+const FACE = {
+  play:   '<path d="M8 5.2 19 12 8 18.8Z"/>',
+  pause:  '<path d="M8.2 5h3.1v14H8.2zM12.7 5h3.1v14h-3.1z"/>',
+  stop:   '<rect x="6.4" y="6.4" width="11.2" height="11.2" rx="1.2"/>',
+  again:  '<path d="M5 5h2.6v14H5zM19.6 5v14L9.1 12Z"/>',
+  skip:   '<path d="M4.4 5 14.9 12 4.4 19ZM16.4 5H19v14h-2.6z"/>',
+  record: '<circle cx="12" cy="12" r="5.4"/>',
+  eject:  '<path d="M12 4.8 20 14H4ZM4.6 16.4h14.8v2.8H4.6z"/>',
+};
+const face = (name) => `<svg viewBox="0 0 24 24" fill="currentColor"
+  aria-hidden="true">${FACE[name] || ''}</svg>`;
+document.querySelectorAll('.key i[data-icon]').forEach(
+  (i) => { i.innerHTML = face(i.dataset.icon); });
+
+/* Nothing on the deck means anything from a window that has lost the machine.
+ *
+ * Left lit they are a row of keys that do nothing — or worse, that do
+ * something in the room next door: Play started a run in somebody else's
+ * conversation, and a line typed here arrived in it. The banner above them is
+ * already saying why, so the keys only have to stop pretending.
+ *
+ * Said in one place and applied last, because the keys that have reasons of
+ * their own to be dark — nothing recorded yet, nothing playing to stop — get
+ * those reasons worked out in two different painters, and whichever ran
+ * second used to light them again. Eject is not in the list: leaving is this
+ * page's own business and works from anywhere.
+ */
+/* A page pointed at a conversation that is not there.
+ *
+ * The address is a request and the server could not meet it — a name of the
+ * wrong shape, or one belonging to another pill. Nothing was opened and the
+ * machine was left where it was, so this page is looking at a room it is not
+ * in and has no conversation of its own.
+ *
+ * Which is a dead end, and dead ends are better said than worked around. It
+ * used to be worked around: the page was quietly given a different
+ * conversation, went on asking after the one in its address, turned away
+ * every word of the one it was actually in, and put up a banner blaming
+ * another window that was not open. */
+let nowhere = false;
+function setGone(on) {
+  if (on === nowhere) return;
+  nowhere = on;
+  const bar = $('gone');
+  if (bar) bar.hidden = !on;
+  /* And the other banner goes, because it is not true here. A page with no
+     conversation of its own turns away everything addressed to the live one,
+     which looks exactly like having lost the machine — so it said both at
+     once, and blamed a window nobody had open. There is one thing wrong with
+     this page and it should say one thing. */
+  if (on) setElsewhere(false);
+  lockDeck();
+}
+
+function lockDeck() {
+  // Nothing works here except the way out. Eject is deliberately not in this
+  // list: it is the one key that still means something, and a room with no
+  // working key at all is a room somebody has to close the tab to leave.
+  if (nowhere) {
+    for (const id of ['t-play', 't-pause', 't-stop', 't-skip', 't-back',
+                      't-rec', 't-type']) {
+      $(id).disabled = true;
+    }
+    $('text').disabled = true;
+    return;
+  }
+  const off = !!elsewhere;
+  if (off) {
+    for (const id of ['t-play', 't-pause', 't-stop', 't-skip', 't-back']) {
+      $(id).disabled = true;
+    }
+  }
+  $('t-rec').disabled = off;
+  $('t-type').disabled = off;
+  $('text').disabled = off;
+}
+
+/* Kept out of lockDeck and paintPlay on purpose: those two decide what a key
+   means right now, and this is not about now. A microphone that cannot exist
+   on this address never can, for as long as the page is open. */
+
+/* What the play key says it will do, which depends on what is happening. */
+function paintPlay() {
+  const key = $('t-play'), stop = $('t-stop');
+  /* Anything still to be heard, including the gaps. A reply is a run of
+     chunks with silence between them, and for a moment at each join nothing
+     is playing — which used to turn Pause back into Play mid-sentence, so a
+     press in the wrong twentieth of a second started a run instead of
+     stopping one. That is the "press it three times" of it. `talking()` is
+     true for the whole reply, gaps and all. */
+  const voice = sounding() || talking();
+  /* A reply is on its way and none of it has been heard yet — on the first
+     turn of an evening that is a speech model loading, which is long enough
+     to watch the words arrive in silence and wonder whether the sound is
+     broken. The shell says so in the only register that does not compete with
+     reading: a soft pulse, quickening, that holds off for a beat first so an
+     ordinary turn never plays it. Not from a window that does not have the
+     machine, which is not waiting for anything. */
+  /* Once an evening, and only the first time.
+   *
+   * It answers exactly one question — does the sound work at all — and that
+   * question is asked once, by somebody who has never heard this voice and is
+   * watching words scroll past in silence. `lastVoiceAt` is zero until this
+   * page has played something, which is the same thing said in a number.
+   *
+   * After that it is the same sound at the same interval with nothing left to
+   * explain, ticking under a conversation. Every reply has a gap before it;
+   * a sound that marks all of them marks nothing. */
+  if (window.Lucid && Lucid.sound)
+    Lucid.sound.waiting(!lastVoiceAt && talking() && !sounding()
+                        && !held && !elsewhere);
+  /* Play says one thing: whether the tape is running. It stays down while it
+     is, the way a Play key on a cassette player does, and pressing it again
+     lets it up. */
+  key.querySelector('i').innerHTML = face('play');
+  key.querySelector('span').textContent = 'Play';
+  key.title = continuous ? 'let the tape go — it stops after this line'
+            : 'play: it takes a turn now and carries on until the tape runs out';
+  key.classList.toggle('down', continuous);
+  key.classList.toggle('playing', continuous);
+  /* A blank tape cannot be played. Something has to have been said, and by
+     you: the first word on a tape is always the one somebody recorded. */
+  const seeded = $('chat').querySelectorAll('.msg.you').length > 0;
+  key.disabled = !seeded;
+
+  /* And Pause says the other thing: whether the sound is moving. It means
+     nothing when there is no sound to hold, so it is dark then rather than
+     lit and inert. */
+  const pause = $('t-pause');
+  pause.querySelector('span').textContent = held ? 'Resume' : 'Pause';
+  pause.title = held ? 'pick it up where you paused it'
+                     : 'hold the sound where it is — the tape waits for you';
+  pause.classList.toggle('down', held);
+  pause.disabled = !(voice || held);
+
+  // Stop means something only while there is something to cut.
+  stop.disabled = !(talking() || continuous || voice || held);
+  /* Skip is two things wearing one key, and they are the same thing: with a
+     voice going it cuts this line and takes the next, and with nothing going
+     it takes the next. So it is lit whenever there is a next to take — which
+     needs the tape to have been started, exactly as Play does. The first word
+     on a tape is somebody's, and a room where nothing has been said has
+     nothing for a pill to go on from. */
+  $('t-skip').disabled = !(voice || held || seeded);
+  $('t-skip').title = voice || held
+    ? 'enough of this one — on to the next'
+    : (seeded ? 'let it take another turn, without typing anything'
+              : 'say something first — a tape has to be recorded before it plays');
+  /* Last, and it must stay last. Everything above says what a key would mean
+     if this page were the one holding the machine; this says whether it is.
+     Skip used to be painted after it and quietly undid it — so a window that
+     had lost the machine sat there with one live key, which pressed a turn
+     into somebody else's conversation. */
+  lockDeck();
+}
+
+/* ---- the counter ---------------------------------------------------------
+   Which turn this is, and how much tape a Play would give you. Both are read
+   off things that already exist: the transcript on the page, and the strength
+   set on the box. */
+let tapeLeft = 0;
+/* When the tape runs out, in this page's own clock.
+ *
+ * The server says how many minutes are left, five times a second, rounded to
+ * a tenth — which is plenty to keep a clock honest and nothing like enough to
+ * make one tick. So the deadline is kept here and the seconds are counted
+ * off it locally, and the server's answer is used to correct it whenever the
+ * two have drifted more than a second or two apart: the count is this page's,
+ * the truth is the machine's.
+ */
+let tapeEnds = 0, tapeHeld = 0;
+function tapeSync(minutes) {
+  if (tapeHeld) return;                    // stopped; the machine agrees
+  const to = Date.now() + Math.max(0, minutes) * 60000;
+  if (Math.abs(to - tapeEnds) > 1500) tapeEnds = to;
+}
+/* The clock stops where it is, here, rather than waiting to be told. The
+   machine stops it too — that is what the hold is — but the page is the thing
+   somebody is looking at while they press the key, and a clock that runs on
+   for another second after a pause reads as a pause that did not take. */
+function tapeHold(on) {
+  if (on && !tapeHeld) tapeHeld = Math.max(0, tapeEnds - Date.now());
+  else if (!on && tapeHeld) { tapeEnds = Date.now() + tapeHeld; tapeHeld = 0; }
+  paintCounter();
+}
+function paintCounter() {
+  // Said, not being said: the heard-you line and the thinking dots are both
+  // messages on the page and neither is a turn yet, so the number ran up and
+  // back down again on every turn taken.
+  const turns = $('chat').querySelectorAll('.msg:not(.pending)').length;
+  $('turns').textContent = String(turns).padStart(3, '0');
+
+  const left = continuous ? (tapeHeld ? tapeHeld / 1000
+                                     : Math.max(0, (tapeEnds - Date.now()) / 1000))
+                          : tapeMinutes * 60;
+  const mm = Math.floor(left / 60), ss = Math.floor(left % 60);
+  const box = $('tape');
+  box.firstElementChild.textContent = String(mm).padStart(2, '0');
+  box.lastElementChild.textContent = String(ss).padStart(2, '0');
+  // Blinking is what a tape that is moving does; a held one stands still.
+  box.classList.toggle('running', continuous && !held);
+  box.classList.toggle('holding', continuous && held);
+  box.classList.toggle('spent', continuous && left < 1);
+  box.title = continuous ? 'how much of this dose is left'
+                         : `a Play would run for ${tapeMinutes} minutes`;
+  /* A blank tape cannot be played: the first word is yours, always, and until
+     it is said the only lit key is the red one. */
+  paintPlay();
+  if ($('t-play').disabled) {
+    $('t-play').title = 'say something first — a tape has to be recorded before it plays';
+  }
+  $('t-back').disabled = !lastSaid();
+  lockDeck();
+}
+
+// The last thing the pill said, which is what Again says again.
+function lastSaid() {
+  /* Not the dots. While the pill is thinking there is a bubble on the page
+     with its class and no words in it, and counting it enabled Again — which
+     then asked for an empty line to be said over. `pending` is what marks it,
+     and it is the same mark the counter uses. */
+  const all = $('chat').querySelectorAll('.msg.pill:not(.pending)');
+  return all.length ? all[all.length - 1] : null;
+}
+$('t-back').onclick = () => {
+  const msg = lastSaid();
+  if (!msg) return;
+  send({cmd: 'replay', text: msg._raw !== undefined ? msg._raw : msg.querySelector('.body').textContent});
+};
+$('t-eject').onclick = () => { location.href = './'; };
+$('goback').onclick = () => { location.href = './'; };
+
+/* ---- the two ways of putting something on the tape ------------------------
+   Talk opens the microphone; Type opens a line to write in. Both may be on:
+   the mic can be live while you write, which is what you want when the room
+   is loud or a word will not come out. Neither is a mode the other cancels.
+
+   Which one you were last using is remembered, because it is a preference and
+   not a state of the conversation. Before anything has been said the line is
+   open whatever you did last: a blank tape needs an obvious way in, and a key
+   labeled Type is not obvious enough to be the only one. */
+const TYPING = 'lucid:typing';
+function showType(on, focus = true) {
+  $('say').hidden = !on;
+  $('t-type').classList.toggle('armed', on);
+  $('t-type').setAttribute('aria-pressed', on ? 'true' : 'false');
+  $('t-type').querySelector('span').textContent = on ? 'Typing' : 'Type';
+  $('t-type').title = on ? 'put the line away'
+    : 'write instead — return sends it, shift-return is a new line';
+  try { localStorage.setItem(TYPING, on ? '1' : '0'); } catch (e) {}
+  if (on && focus) setTimeout(() => $('text').focus(), 30);
+}
+$('t-type').onclick = () => showType($('say').hidden);
+(() => {
+  /* Shut, unless you left it open.
+   *
+   * It used to be the other way about — open unless you had shut it, and open
+   * regardless in a room where nothing had been said yet — which meant a line
+   * to type into was waiting every time anybody walked into a room, whatever
+   * they had come for. The microphone does not do that, and this is the same
+   * kind of thing: a way in that you choose. The two record keys are sitting
+   * there saying which two there are.
+   */
+  /* Shut by default — unless there is no microphone on this address, where
+     typing is the only way in and a line waiting is the kindest thing there
+     is. Either way a choice, once made, outranks both: it is a preference and
+     not a suggestion, and forcing it open at every load meant it could never
+     be turned off, because opening it writes it down again. */
+  let want = !canBeHeard();
+  try {
+    const saved = localStorage.getItem(TYPING);
+    if (saved !== null) want = saved === '1';
+  } catch (e) {}
+  showType(want, false);
+})();
+$('text').onkeydown = e => {
+  /* Return sends; shift-return is a new line. Which is the way round every
+     message box anybody has used works, and it is now a box with two lines in
+     it rather than a field, so the question exists at all. */
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+  // Escape puts the line away rather than leaving it open and empty. The
+  // console has its own Escape and takes it first, so this only fires when
+  // the console is shut.
+  else if (e.key === 'Escape') { showType(false); $('text').blur(); }
+};
+// The on-screen keyboard shrinks the viewport; keep the latest reply in view.
+if (window.visualViewport) {
+  const bottom = () => keepDown(true);
+  window.visualViewport.addEventListener('resize', bottom);
+  $('text').addEventListener('focus', () => setTimeout(bottom, 250));
+}
+
+// Whatever was in the box when the page went away, plus anything sent that was
+// never acknowledged — the window in which a message could be lost in transit.
+// It comes back into the box rather than being re-sent, so you decide.
+(() => {
+  const back = [stored(UNSENT), stored(DRAFT)].filter(Boolean).join(' ').trim();
+  if (!back) return;
+  $('text').value = back;
+  store(UNSENT, '');
+  saveDraft();
+  refreshSend();
+  log('restored what you had typed');
+})();
+
+/* The deck, once, before anything has been said. Every key's state was worked
+   out only when something arrived — a bubble, a tick, a run beginning — so a
+   page that was never answered kept whatever the markup happened to say, and
+   Again sat there lit over an empty room. Pressing it asked for the last line
+   to be said again where there was no last line.
+
+   Down here rather than beside paintCounter, because it reads the faces the
+   keys are drawn with and those are declared further down the file. */
+/* A microphone that cannot exist here.
+ *
+ * On an address a browser does not trust — which for this program means a
+ * phone reaching the Mac over plain http — getUserMedia is not merely refused,
+ * it is absent. There is nothing to press and no way to make it work from
+ * this side, so the key goes rather than sitting there grayed or, worse,
+ * lighting up and doing nothing.
+ *
+ * Everything else on the page still works: the voice plays, the room is there,
+ * the line at the bottom sends. It is a remote, and a remote is a perfectly
+ * good thing to be. */
+function canBeHeard() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+         && window.isSecureContext;
+}
+if (!canBeHeard()) {
+  $('t-rec').hidden = true;
+  log('no microphone on this address — the voice still plays, and you can '
+      + 'type. See MANUAL, “Your phone”.', 'warn');
+}
+
+paintCounter();
+
+connect();
+</script>
+</body>
+</html>

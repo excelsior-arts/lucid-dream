@@ -1,0 +1,29 @@
+# What Lucid Dream needs to run. Installed into the venv that also holds
+# mlx_lm.server -- see AGENTS.md, and llm.venv in lucid_talk/config.json.
+#
+#   uv pip install --python .venv/bin/python -r requirements.txt
+
+# the machinery
+mlx
+mlx-lm            # the language model, and the prompt-cache server it runs in
+mlx-audio         # speech to text
+mlx-vlm           # the alternative model server
+sentencepiece
+huggingface-hub
+
+# the app
+fastapi
+uvicorn
+websockets
+requests
+numpy
+scipy
+pyyaml            # persona frontmatter
+
+# ---- development only; nothing at runtime imports these -------------------
+# Used to check work, not to do it: segno and reedsolo are reference
+# implementations that shell/static/qr.js is tested against, and opencv reads
+# the finished code back off a screenshot to prove a phone could.
+#   segno
+#   reedsolo
+#   opencv-python

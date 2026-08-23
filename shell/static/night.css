@@ -1,0 +1,737 @@
+/* The world everything is lit by: one palette, one set of materials, shared by
+   the shell and by every app inside it.
+
+   Deliberately not WebGL. The text — its replies, your typing, the log — has
+   to be real text: selectable, resizable, screen-readable, and legible at four
+   in the morning on a phone. Text inside a WebGL scene is a texture, and every
+   one of those properties has to be rebuilt by hand and is never quite right.
+   So the room is CSS 3D, which is GPU-composited and takes DOM elements as its
+   objects, and only the sky behind it is a canvas. When something genuinely
+   needs geometry and light — a real box, a real mirror — a canvas can be
+   dropped in behind these same objects without touching any of it. */
+
+:root {
+  /* Ground: not black. A very dark blue reads as depth where #000 reads as
+     off, and the stars need something to sit in front of. */
+  --void:#05060b; --void-2:#0a0c14;
+  /* Brass, warm and slightly dirty. The one thing in this world that is lit. */
+  --brass:#c9a227; --brass-dim:#8a6f22; --amber:#c98a3c;
+  /* Starlight, for anything cold: rims, glass edges, the far distance. */
+  --star:#cfe0f2; --star-dim:#6f8298;
+  --ink:#f2e5d0; --ink-dim:#a08f74;
+  --edge:rgba(201,162,39,.28);       /* a brass hairline */
+  --rim:rgba(207,224,242,.14);       /* a cold one */
+  /* And the one place in this world that is not the same dark blue as the
+     rest of it: the inside of the box. Everything else here is night — the
+     void, the table, the outside of the lid — so an interior lined in the
+     same color reads as a hole cut in the page rather than as a lined case,
+     and the pills sit in nothing. Burgundy is the smallest departure that
+     fixes it: dark enough to keep the brass as the only lit thing, warm
+     enough that opening the lid is a change of material. */
+  --inside:#2b0d18; --inside-2:#180509;
+  --lining:linear-gradient(rgba(255,255,255,.05), transparent 60%),
+           linear-gradient(#33101c, var(--inside));
+  color-scheme:dark;
+}
+
+/* Antique futuristic: engraved metal and cold glass, no wood grain and no
+   drop-shadowed leather. The trick is that every surface is nearly the same
+   dark, and only the *edges* carry light — that is what makes brass read as
+   brass without a single texture file. */
+.plate {
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.045), transparent 42%),
+    linear-gradient(#0e1119, #080a10);
+  border:1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),      /* the lit top edge */
+    inset 0 -1px 0 rgba(0,0,0,.6),
+    0 18px 40px rgba(0,0,0,.55);
+}
+.engraved { text-shadow:0 1px 0 rgba(0,0,0,.75), 0 -1px 0 rgba(255,255,255,.05); }
+
+/* Cross-document transitions: the pages are separate documents on purpose —
+   the persona is a route — and this is what stops that from feeling like a
+   page load. Browsers without it simply cut, which is what they do today. */
+@view-transition { navigation:auto; }
+
+/* The default is a 250ms crossfade, which on three nearly-black pages is
+   indistinguishable from a page load. These are the real thing: the room
+   fades slowly, and anything named (the mirror, the case) is treated as one
+   object that moves and grows between the two documents rather than as two
+   pictures dissolved into each other. */
+:root { view-transition-name:none; }        /* the page itself is not an object */
+
+::view-transition-old(root) {
+  animation:vt-dim .42s cubic-bezier(.4,0,.9,.3) both; }
+::view-transition-new(root) {
+  animation:vt-rise .62s cubic-bezier(.15,.75,.2,1) both; }
+@keyframes vt-dim  { to { opacity:0; transform:scale(.985); } }
+@keyframes vt-rise { from { opacity:0; transform:scale(1.02); } }
+
+/* The object that persists. Longer than the fade, and eased so it arrives
+   rather than stops. */
+::view-transition-group(mirror) {
+  animation-duration:.78s;
+  animation-timing-function:cubic-bezier(.2,.72,.16,1); }
+::view-transition-old(mirror) { animation:vt-fade .3s ease both; }
+::view-transition-new(mirror) { animation:vt-fade .55s ease .12s reverse both; }
+@keyframes vt-fade { to { opacity:0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation:none !important; }
+}
+
+::selection { background:rgba(201,162,39,.3); }
+
+/* Padding inside the width, everywhere. This was lost when the box geometry
+   moved into this file, and <main> came out 422px wide in a 390px window —
+   the box then sat 32px right of center, leaning on the wall. */
+* { box-sizing:border-box; }
+
+/* The dark goes on the root element, not only on the body. Between two
+   documents a browser paints the *new* document's root background before any
+   of its content — with the color only on <body> that first paint is the
+   default white, which is the flash Firefox shows on every navigation.
+   Safari hides it behind a view transition; Firefox has none to hide it. */
+html { -webkit-text-size-adjust:100%; background:var(--void); }
+body {
+  margin:0; background:var(--void); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+}
+/* Width and height explicitly: a canvas is a replaced element, so inset:0
+   alone leaves it at its intrinsic 300x150 and the sky ends up a postage
+   stamp in the corner.
+
+   And in large-viewport units, not percentages. A fixed element sized in %
+   gets iOS's *small* viewport — the screen minus the status bar and minus the
+   address bar — so the sky stopped short of both edges and left black bands
+   top and bottom. lvh is the whole screen, whether or not the bars are
+   showing; the vh line before it is for browsers that have never heard of it. */
+#sky { position:fixed; z-index:0; pointer-events:none;
+       /* Exactly the screen, and starting at its corner.
+        *
+        * Hanging it past every edge is the obvious way to survive a browser
+        * moving its bars about, and it buys nothing: measured on an iPhone,
+        * a fixed element is clipped to the layout viewport, which on Safari
+        * stops short of the status bar and the toolbar. Forty pixels of
+        * overhang and two hundred more are thrown away, and the sky lands
+        * exactly where it would have landed anyway.
+        *
+        * So it is the size of the screen and starts at its corner — in plain
+        * vh, and not in lvh, which is meant to be the larger of the two and
+        * measures smaller here: on an iPhone the same box came out 714 CSS
+        * pixels tall in lvh against 746 in vh, and every one of those is a
+        * line of sky along an edge.
+        *
+        * What is left over is the browser's. A fixed element cannot be
+        * painted into the strip Safari keeps for its status bar or the one it
+        * keeps for its toolbar, whatever it is given for a size — which is
+        * why a page that never scrolls shows a band at each end and a page
+        * that scrolls does not: scrolling is what makes Safari fold its
+        * toolbar away and hand the room back. */
+       left:0; top:0; width:100vw; height:100vh; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration:.001s !important; transition-duration:.001s !important; }
+}
+
+/* ---- the corner ----------------------------------------------------------
+   Three small brass fittings, in one rail down the top right: what you can
+   hear, how to take it with you, and the promise that none of it leaves.
+   Quiet until looked at, and never in front of the object in the middle.
+
+   One corner rather than three. Scattering them into three corners meant
+   three things to find and three edges for the eye to check, and on a page
+   whose whole subject is in the middle they read as litter round the frame.
+   Stacked, they are a single small object you learn once. */
+/* touch-action tells iOS these are things you press, not things you read: a
+   double tap on the minus button zooms the page otherwise, which is maddening
+   when you are stepping the volume down. Pinch-to-zoom on the page itself is
+   untouched — that one belongs to the reader. */
+.corners, .knob, .pop, .pop * { touch-action:manipulation; }
+.knob, .pop .step, .pop.vol .calm { -webkit-user-select:none; user-select:none;
+                                    -webkit-tap-highlight-color:transparent; }
+
+.corners { position:fixed; inset:0; z-index:70; pointer-events:none;
+           /* Its own 3-D layer. WebKit will paint a big transformed element
+              over a plain fixed one whatever the z-index says, which is how
+              these vanished behind the open box on a phone. */
+           transform:translateZ(0); }
+/* The rail they hang on: top right, and only as wide as a knob. */
+.rail { position:absolute; top:max(18px, env(safe-area-inset-top));
+        right:max(20px, env(safe-area-inset-right));
+        display:flex; flex-direction:column; align-items:flex-end; gap:9px;
+        pointer-events:none; }
+/* Each fitting is only as big as its own knob. Its panel is taken out of the
+   flow: hidden, it still had size, and a wide invisible rectangle lying
+   across the page swallowed every press meant for what was under it. */
+.corner { position:relative; pointer-events:auto; display:flex; align-items:center; }
+.corner[hidden] { display:none; }
+
+.knob { display:flex; align-items:center; gap:7px; padding:7px; min-height:0;
+        color:var(--star-dim); background:rgba(12,15,22,.6); cursor:pointer;
+        border:1px solid var(--rim); border-radius:11px;
+        backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+        transition:color .2s, border-color .2s, background .2s; }
+.knob svg { width:19px; height:19px; display:block; }
+.knob:hover, .corner.open .knob { color:var(--brass); border-color:var(--edge);
+                                  background:rgba(20,16,8,.7); }
+.knob.muted { color:#6b5f4c; }
+
+/* The panel each one opens. Same brass and glass as everything else, and it
+   grows out of its own corner rather than appearing in the middle. */
+.pop { position:absolute; pointer-events:none;
+       opacity:0; visibility:hidden; transform:translateY(-4px) scale(.97);
+       transform-origin:top right; transition:opacity .18s, transform .18s, visibility .18s;
+       background:rgba(10,13,19,.9); border:1px solid var(--edge); border-radius:13px;
+       box-shadow:0 22px 50px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06);
+       backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+       padding:11px 13px; color:var(--ink); }
+.corner.open .pop { opacity:1; visibility:visible; transform:none; pointer-events:auto; }
+/* Out to the side rather than downwards: below its own knob is where the next
+   knob is, so a panel opening down covers the rest of the rail.
+
+   `max-content` because a box positioned from the right shrink-wraps to the
+   space left of it, and the space left of a knob is one knob wide — without
+   this the panels came out as a column of single words. The cap is what
+   actually decides how wide they get, and each panel may set its own. */
+.pop { top:0; right:100%; margin-right:10px;
+       width:max-content; max-width:min(300px, 78vw); }
+
+.pop.vol { display:flex; flex-direction:column; gap:9px; }
+/* `stepper` and not `row`. A shared sheet has no business owning a name that
+   generic: an app defined its own `.row` with flex-wrap on it, which loads
+   after this one, and the minus, the slider and the plus each took a line of
+   their own. Anything in here that a page might plausibly also name gets
+   renamed, not out-specified. */
+.pop.vol .stepper { display:flex; flex-wrap:nowrap; align-items:center; gap:10px; }
+/* Centered under the stepper. The label is nearly as wide as the panel, so
+   aligning it to the slider's left edge left it hanging off to one side —
+   centered, it balances the row above it. */
+.pop.vol .calm { display:flex; align-items:center; justify-content:center; gap:7px;
+                 cursor:pointer; font-size:11px; letter-spacing:.6px; color:var(--star-dim); }
+.pop.vol .calm:hover { color:var(--ink); }
+.pop.vol .calm input { accent-color:var(--brass); width:13px; height:13px; margin:0; }
+/* Not now. The one press somebody reaches for in a hurry, so it is the first
+   thing in the panel and the widest — and it says which of the two states it
+   is in rather than which one it would put you in, because a switch that
+   describes the other side of itself is a switch you press twice to find out
+   where you are. */
+.pop.vol .hush { display:flex; align-items:center; gap:9px; width:100%;
+                 min-height:0; padding:7px 10px; cursor:pointer;
+                 font-size:11.5px; letter-spacing:.5px; text-align:left;
+                 color:var(--ink); background:rgba(255,255,255,.05);
+                 border:1px solid var(--rim); border-radius:8px; }
+.pop.vol .hush svg { width:16px; height:16px; flex:0 0 auto; }
+.pop.vol .hush .what { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.pop.vol .hush b { font-weight:400; }
+/* The cost of the button, under its name. Quiet enough not to be a second
+   label and close enough to be read as part of the first. */
+.pop.vol .hush em { font-style:normal; font-size:9.5px; letter-spacing:.2px;
+                    line-height:1.25; opacity:.6; }
+.pop.vol .hush:hover { border-color:var(--edge); color:var(--brass); }
+.pop.vol .hush.on { color:#f0a58f; border-color:rgba(240,165,143,.4);
+                    background:rgba(240,165,143,.09); }
+
+.pop.vol .step { min-height:0; width:24px; height:24px; padding:0; cursor:pointer;
+                 display:grid; place-items:center; font-size:14px; line-height:1;
+                 color:var(--ink); background:rgba(255,255,255,.05);
+                 border:1px solid var(--rim); border-radius:7px; }
+.pop.vol .step:hover { color:var(--brass); border-color:var(--edge); }
+.pop.vol input[type=range] { width:120px; accent-color:var(--brass); background:transparent; }
+
+.pop.tale { max-width:290px; }
+.pop.tale b { display:block; font-size:12px; font-weight:500; letter-spacing:1.6px;
+              text-transform:uppercase; color:var(--brass); margin-bottom:7px; }
+.pop.tale p { margin:0; font-size:12.5px; line-height:1.65; color:var(--star-dim); }
+
+/* The code itself: one element per module, laid out as a grid. Drawn rather
+   than fetched — see qr.js — because this program does not ask the network
+   for a picture of its own address. */
+.pop.qr { display:flex; flex-direction:column; align-items:center; gap:8px;
+          max-width:min(280px, 74vw); }
+.pop.qr b { font-size:10.5px; font-weight:500; letter-spacing:2px;
+            text-transform:uppercase; color:var(--brass); }
+.pop.qr .code { display:grid; grid-template-columns:repeat(var(--n, 25), 5px);
+                background:#f2e5d0; padding:10px; border-radius:6px; line-height:0; }
+.pop.qr .code i { width:5px; height:5px; background:transparent; }
+.pop.qr .code i.on { background:#0a0d14; }
+/* A hostname is whatever the person called their machine, and some of them
+   are very long. It wraps anywhere rather than pushing the panel off the
+   screen — the code above it is the part that matters, this only says which
+   machine you are about to reach. */
+.pop.qr .url { max-width:100%; font-size:9.5px; letter-spacing:.6px; color:#5c6675;
+               font-variant-numeric:tabular-nums; text-align:center; line-height:1.45;
+               overflow-wrap:anywhere; word-break:break-word; }
+
+@media (max-width:620px) {
+  .pop.qr .code { grid-template-columns:repeat(var(--n, 25), 4px); }
+  .pop.qr .code i { width:4px; height:4px; }
+}
+
+/* ---- the console ---------------------------------------------------------
+   A sheet down from the top, over whatever is there. Called a hatch and not a
+   deck, because an app already had a `.deck` — the tray its pills lie in — and
+   this sheet inherited its centering and came out as a narrow column in the
+   middle of the page. Second time a shared name has done that; the rule is in
+   the volume panel's comment and it applies here too.
+
+    Not a popover: this is
+   where somebody goes when the evening is not working, and it wants the width
+   of the window and a scrollback they can actually read.
+
+   Monospace and plain on purpose. Everything else in this program is dressed;
+   this is the one surface that should look like what it is.
+--------------------------------------------------------------------------*/
+.hatch { position:fixed; left:0; right:0; top:0; z-index:60;
+        height:min(46vh, 460px); display:flex; flex-direction:column;
+        background:rgba(7,9,13,.94); color:#c8d0da;
+        border-bottom:1px solid var(--edge);
+        box-shadow:0 26px 60px rgba(0,0,0,.6);
+        backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+        font:12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+        transform:translateY(-101%); transition:transform .26s cubic-bezier(.2,.7,.2,1);
+        padding-top:env(safe-area-inset-top); }
+.hatch.open { transform:none; }
+
+/* The top bar: what is running, and how it is. The one thing in here worth
+   seeing without reading. */
+/* The right-hand end of this bar is under the rail: the fittings are fixed to
+   the top-right corner of the page and the console opens across the top of it,
+   so anything sitting at that end reads through a speaker icon. The padding
+   clears the rail's offset and a knob, with a gap after it. */
+.hatch-bar { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px;
+            padding:9px calc(72px + env(safe-area-inset-right, 0px)) 9px 14px;
+            border-bottom:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.02); }
+.hatch-app { color:var(--brass); letter-spacing:1.4px; text-transform:uppercase;
+            font-size:10.5px; }
+.hatch-lamp { display:inline-flex; align-items:center; gap:5px; color:#8b95a3;
+             font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; }
+.hatch-lamp i { width:6px; height:6px; border-radius:50%; background:#3b424d; }
+.hatch-lamp.on i     { background:#7fd18a; box-shadow:0 0 7px rgba(127,209,138,.6); }
+.hatch-lamp.busy i   { background:#e0b25e; box-shadow:0 0 7px rgba(224,178,94,.6); }
+.hatch-lamp.bad i    { background:#e07a6b; box-shadow:0 0 7px rgba(224,122,107,.6); }
+.hatch-fact { color:#7b8492; font-size:11px; }
+.hatch-rule { flex:0 0 1px; align-self:stretch; margin:0 4px;
+              background:rgba(255,255,255,.1); }
+.hatch-quiet { color:#5c6675; font-size:11px; }
+/* The build, pushed to the far end of the bar. Dim on purpose: it is read once
+   in the life of an install, by somebody writing down what went wrong. */
+.hatch-build { margin-left:auto; color:#5c6675; font-size:10.5px;
+               letter-spacing:1.2px; font-variant-numeric:tabular-nums; }
+
+/* The scrollback. */
+.hatch-log { flex:1; overflow-y:auto; overscroll-behavior:contain;
+            padding:8px 14px 10px; }
+.hatch-line { display:grid; grid-template-columns:66px 62px 1fr; gap:10px;
+             padding:1px 0; color:#aeb7c3; word-break:break-word; }
+.hatch-line .t { color:#4e5766; white-space:nowrap; }
+.hatch-line .w { color:#6f7a89; text-transform:uppercase; font-size:10.5px;
+                letter-spacing:1px; padding-top:1px; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; }
+.hatch-line.debug { color:#79828f; }
+.hatch-line.warn  .m { color:#e0b25e; }
+.hatch-line.error .m { color:#f0968a; }
+
+/* Where one server ended and the next began. */
+.hatch-since { display:flex; align-items:center; gap:10px; margin:10px 0 8px;
+               color:#6f7a89; font-size:10.5px; letter-spacing:1.6px;
+               text-transform:uppercase; }
+.hatch-since::before, .hatch-since::after {
+  content:""; flex:1; height:1px; background:rgba(255,255,255,.12); }
+
+/* The line you type into. */
+.hatch-say { position:relative; display:flex; align-items:center; gap:8px;
+            padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+            border-top:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.02); }
+/* The prompt, and the way in. It was an ornament — a chevron telling somebody
+   who could see the box that this is where you type — and it is a key now:
+   every command starts with a slash, and on a phone that character is two taps
+   down a keyboard. Sized for a thumb without looking like a button in a row of
+   none. */
+.hatch-mark { color:var(--brass); font:inherit; background:none; cursor:pointer;
+              border:1px solid transparent; border-radius:6px;
+              padding:2px 8px; margin-left:-4px; line-height:1;
+              -webkit-tap-highlight-color:transparent; }
+.hatch-mark:hover, .hatch-mark:focus-visible {
+              border-color:rgba(201,162,39,.35); background:rgba(201,162,39,.10); }
+@media (pointer:coarse) {
+  /* A thumb, and the 44px Apple asks for. */
+  .hatch-mark { padding:8px 12px; margin-left:-8px; }
+}
+.hatch-say input { flex:1; min-width:0; background:transparent; border:0; outline:none;
+                  color:#dbe2ea; font:inherit; padding:2px 0; }
+.hatch-say input::placeholder { color:#4e5766; }
+
+/* What "/" opens: the commands, above the line, because the line is at the
+   bottom of the sheet. */
+/* Capped, and not the width of the window. What a command does has to sit
+   near its name to be read as a pair — stretched across a wide screen the two
+   halves stop belonging to each other, and you find yourself tracking a line
+   with a finger. */
+/* A row of the panel, not a thing floating over it: it may take up to half of
+   what there is and the log keeps the rest, so however many commands there
+   are the panel stays the size it was. dvh rather than vh because a phone
+   with its keyboard up has a smaller viewport than the one vh is measured
+   against, and that is exactly when this list is open. */
+.hatch-hints { flex:0 1 auto; min-height:0; margin:0 14px 8px;
+              max-width:660px; max-height:min(50%, 46dvh); overflow-y:auto;
+              overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+              background:rgba(10,13,19,.97); border:1px solid var(--edge);
+              border-radius:11px; box-shadow:0 -14px 40px rgba(0,0,0,.6);
+              padding:5px; }
+.hatch-hints[hidden] { display:none; }
+.hatch-hint { display:flex; align-items:baseline; gap:16px; width:100%; text-align:left;
+             padding:6px 9px; border:0; border-radius:8px; cursor:pointer;
+             background:transparent; color:#aeb7c3; font:inherit; }
+/* One column for the name, so they line up down the list, and the description
+   immediately after it rather than away at the far edge. */
+.hatch-hint .what { flex:0 0 auto; min-width:172px; }
+.hatch-hint b { color:#e7ecf2; font-weight:500; }
+.hatch-hint em { color:#6f7a89; font-style:normal; }
+.hatch-hint .why { color:#6f7a89; min-width:0; overflow:hidden; text-overflow:ellipsis;
+                   white-space:nowrap; }
+.hatch-hint.on, .hatch-hint:hover { background:rgba(255,255,255,.07); }
+
+/* And the knob it hangs on. The rail sits above the sheet on purpose: the
+   knob that opened it is the obvious thing to press to close it again, and
+   under the sheet it could not be pressed at all.
+
+   A dot when something has gone wrong since you last looked, because a tool
+   nobody remembers is a tool nobody uses. */
+.knob.term { position:relative; }
+/* Dark, and no glow. A bright dot on a dark screen is a notification badge,
+   and a badge is a thing that wants answering — this is a mark on a tool, for
+   somebody who happens to look at it. Anybody who does not is losing nothing:
+   whatever raised it is in the console when they get there. */
+.knob.term.trouble::after { content:""; position:absolute; top:4px; right:4px;
+                            width:5px; height:5px; border-radius:50%;
+                            background:#46201a; }
+
+@media (max-width:620px) {
+  .hatch { height:min(62vh, 560px); }
+  /* Sixteen pixels or a phone zooms the page in on focus, and does not zoom
+     back out afterwards. Nothing to do with how readable the console is. */
+  .hatch-say input { font-size:16px; }
+  .hatch-line { grid-template-columns:62px 1fr; }
+  .hatch-line .w { display:none; }
+  .hatch-hint .why { display:none; }
+}
+
+/* ---- the box ------------------------------------------------------------
+   One object, two screens. The front page shows it shut on a table and the
+   app shows you standing over it open — and they have to be the *same* box,
+   or opening it reads as a cut to somewhere else. So the geometry lives here,
+   in the shared sheet, and each page only says what state it is in.
+
+   Everything is elements: floor, four walls, a hinged lid with a face on each
+   side. That is what keeps the writing on the lid real text.
+------------------------------------------------------------------------- */
+.box { --w:550px; --d:362px; --h:98px;
+       position:relative; width:var(--w); height:var(--d);
+       transform-style:preserve-3d;
+       transform:rotateX(58deg) translateZ(0);
+       animation:hover-idle 7s ease-in-out infinite;
+       transition:transform .9s cubic-bezier(.2,.7,.2,1); }
+@keyframes hover-idle {
+  50% { transform:rotateX(58deg) translateZ(10px); }
+}
+
+.face { position:absolute; background:
+          linear-gradient(150deg, rgba(255,255,255,.05), transparent 45%),
+          linear-gradient(#0d1017, #070910);
+        border:1px solid var(--edge); }
+/* The bottom of the tray, which is the largest interior surface and the one
+   the pills lie on. */
+.floor { inset:0; box-shadow:inset 0 0 60px rgba(0,0,0,.86);
+         background:
+           linear-gradient(150deg, rgba(255,255,255,.045), transparent 45%),
+           linear-gradient(var(--inside), var(--inside-2)); }
+/* Walls: each one hinged along the edge of the floor it belongs to, then
+   stood up ninety degrees.
+
+   The sign matters and is not guessable: rotating the near wall by -90
+   swings it *under* the floor instead of up from it, and the box then draws
+   as a lid floating a wall's height above a body sunk a wall's height below
+   — which looks exactly like a box left open, and was. */
+/* The walls carry no line along the rim — the lid's own border is already
+   there, a pixel or two away, and two of them read as one broken edge. But
+   an unlit face on a black page is not a face at all, so each wall is shaded
+   for the direction it points, and keeps the edges that are the silhouette:
+   the bottom, and the two outer verticals. That is what makes it a box
+   rather than three dark quadrilaterals. */
+.face.w-front, .face.w-back, .face.w-left, .face.w-right { border:0; }
+/* Facing you, and the lightest of the four. */
+.w-front { background:
+             linear-gradient(rgba(255,255,255,.09), transparent 55%),
+             linear-gradient(#171d28, #0a0e15);
+           box-shadow:inset 0 -1px 0 var(--edge),
+                      inset 1px 0 0 rgba(201,162,39,.35),
+                      inset -1px 0 0 rgba(201,162,39,.35); }
+/* Turned away from the light: darker, and graded across so the corner where
+   they meet the front wall reads as a corner. */
+.w-left  { background:
+             linear-gradient(90deg, #0a0e15, #131924);
+           box-shadow:inset 0 -1px 0 var(--edge), inset 1px 0 0 rgba(201,162,39,.30); }
+.w-right { background:
+             linear-gradient(270deg, #0a0e15, #131924);
+           box-shadow:inset 0 -1px 0 var(--edge), inset -1px 0 0 rgba(201,162,39,.30); }
+/* The inside of the back wall, which is what you look at when it is open —
+   and whose top edge is the strip you see along the back of the box when it
+   is shut, because the eye is above it. One element, two faces, so the lining
+   only goes on once the lid is off: burgundy here unconditionally drew a red
+   stripe across a closed box on the front page, which is the inside leaking
+   out. The choose page keeps its box open and says so in its own sheet. */
+.w-back  { background:
+             linear-gradient(rgba(255,255,255,.05), transparent 60%),
+             linear-gradient(#141a24, #0b0f17); }
+/* The lining, as a sheet laid over the three walls you look at from inside.
+ *
+ * A wall here is one element, and one element has one background on both of
+ * its faces. So lining them outright put a burgundy stripe along the back of
+ * the *shut* box, where the eye is above the rim and sees the top of the far
+ * wall — the inside leaking out. Swapping the background by state fixed the
+ * stripe and bought a snap instead: the moment the lid starts down, three
+ * walls change color under it while they are still in full view.
+ *
+ * An overlay can do what a background cannot, which is fade. Nothing is lined
+ * by default, so a box on a table is night all the way round; opening brings
+ * the lining up, shutting takes it away over half a second, and by the time
+ * the top of that wall comes back into view there is nothing on it.
+ */
+.w-back::after, .w-left::after, .w-right::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  opacity:0; transition:opacity .5s ease; }
+.w-back::after  { background:var(--lining); }
+/* Graded across, the same way the walls under them are, so the corner where
+   they meet the front still reads as a corner. */
+.w-left::after  { background:linear-gradient(90deg, var(--inside-2), #33101c); }
+.w-right::after { background:linear-gradient(270deg, var(--inside-2), #33101c); }
+.object.opening .w-back::after,
+.object.opening .w-left::after,
+.object.opening .w-right::after { opacity:1; }
+
+.w-front { left:0; top:100%; width:var(--w); height:var(--h);
+           transform-origin:top center; transform:rotateX(90deg); }
+.w-back  { left:0; bottom:100%; width:var(--w); height:var(--h);
+           transform-origin:bottom center; transform:rotateX(-90deg); }
+.w-left  { top:0; right:100%; width:var(--h); height:var(--d);
+           transform-origin:right center; transform:rotateY(90deg); }
+.w-right { top:0; left:100%; width:var(--h); height:var(--d);
+           transform-origin:left center; transform:rotateY(-90deg); }
+
+/* What is inside, before you can see it properly: three shapes and a light.
+   Enough to promise something; not enough to spoil it. */
+/* What is inside, standing rather than lying flat: propped against the back
+   of the box, their tops clear the rim the moment the lid lifts. Flat on the
+   floor they were invisible until the lid was fully off. */
+/* What is inside. Measured against the wall height, never in fixed pixels:
+   a card taller than the box is deep stands over the rim and shows through
+   a shut lid — which is what a fixed 52px did on a narrow phone, where the
+   walls are only 58 high.
+
+   Tipped toward the camera, not away: the floor is already tilted, and a
+   card tipped the other way ends up edge-on and draws as a line. */
+/* Set well forward of the hinge. Against the back wall they sat directly
+   under the part of the lid that stays nearly touching when it lifts, and
+   at that grazing angle the browser sorts them in front of it — the ghost
+   band across the lid on a phone. Depth between the two planes is what
+   stops it. */
+.contents { position:absolute; left:8%; right:8%; top:44%;
+            height:calc(var(--h) * .72);
+            transform:translateZ(calc(var(--h) * .08)) rotateX(-46deg);
+            transform-origin:bottom center;
+            display:flex; flex-wrap:wrap; align-items:flex-end;
+            align-content:flex-end; justify-content:center; gap:8px 5%;
+            /* Nothing to see through a shut lid. Not a nicety: at some box
+               sizes the browser sorts these cards in front of the lid that
+               covers them, and they ghost through the metal. Kept dark until
+               the lid actually moves, which is the only time they are for. */
+            opacity:0; transition:opacity .45s ease; }
+.object.opening .contents { opacity:1; }
+/* The pills. Each one is what it gives you, so each one has its own color
+   and its own light: purple, and the one that burns. The third is an empty
+   berth — there is room in the box for five. */
+.contents i { width:26%; height:calc(var(--h) * .66); border-radius:7px 7px 4px 4px;
+              opacity:.55;
+              background:
+                linear-gradient(200deg, rgba(255,255,255,.10), transparent 44%),
+                linear-gradient(rgba(var(--pill), .55), rgba(var(--pill), .16));
+              border:1px solid rgba(var(--pill), .5);
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.10),
+                         0 0 22px rgba(var(--pill), .18);
+              transition:opacity .7s ease, box-shadow .7s ease; }
+.contents i:nth-child(1) { --pill:141, 92, 214; }    /* purple */
+.contents i:nth-child(2) { --pill:214, 108, 48; }    /* yellow-red */
+.contents i:nth-child(3) { --pill:120, 130, 150; opacity:.25; }   /* empty berth */
+.object.opening .contents i {
+              opacity:1; box-shadow:inset 0 1px 0 rgba(255,255,255,.12),
+                                    0 0 34px rgba(var(--pill), .45); }
+.object.opening .contents i:nth-child(3) { opacity:.3; }
+.contents i:nth-child(1) { transform:rotate(-5deg); }
+.contents i:nth-child(3) { transform:rotate(4deg); }
+.lamp { position:absolute; inset:0; transform:translateZ(1px); pointer-events:none;
+        background:radial-gradient(60% 45% at 50% 55%, rgba(201,162,39,.28), transparent 72%);
+        opacity:0; transition:opacity .7s ease; }
+
+/* The lid, hinged at the back. Closed it is the whole object; open it is the
+   thing that gets out of the way. */
+.lid { position:absolute; inset:0; transform-origin:top center;
+       transform-style:preserve-3d;
+       transform:translateZ(var(--h)) rotateX(0deg);
+       transition:transform 1s cubic-bezier(.3,.8,.25,1); }
+/* Two faces, because a lid has two. Rotate a single div and you are looking
+   at the back of its front — the engraving comes out mirrored and the light
+   falls from underneath.
+
+   Both carry a transform of their own, and the outer one needs it even though
+   it sits where it is drawn. A face with `backface-visibility: hidden` and no
+   transform is not certainly inside the 3-D context its parent opened, and
+   WebKit takes that literally on a cold paint: the lid comes up with its
+   engraving and its brackets and no lid under them, and stays that way until
+   something forces the layer to be built again. `translateZ(0)` is that
+   something, said once, in the stylesheet.
+
+   Half a pixel rather than none: `translateZ(0)` collapses to a 2-D matrix,
+   which is the state being escaped from. */
+.lid .out, .lid .in { position:absolute; inset:0; backface-visibility:hidden;
+                      -webkit-backface-visibility:hidden;
+                      border:1px solid var(--edge); }
+/* The surface is on a child, not on the face.
+   
+   WebKit will not paint the background of a backface-hidden layer inside a
+   preserve-3d subtree on a cold first composite — but it paints that layer's
+   children, every time. The evidence is what the lid looks like when it goes
+   wrong: engraving, plate, brackets and border all present, and the lid
+   itself see-through behind them. So the timber goes in a box of its own and
+   is painted with the rest of the children.
+
+   Both faces, and only these two: they are the only backface-hidden things in
+   this stylesheet, and the tray's walls — same subtree, same gradients, no
+   backface-visibility — have never once come up empty. */
+.lid .out { transform:translateZ(.5px);
+            box-shadow:0 30px 60px rgba(0,0,0,.6); }
+.lid .out::before { content:""; position:absolute; inset:0; z-index:-1;
+                    background:
+                      linear-gradient(150deg, rgba(255,255,255,.07), transparent 40%),
+                      linear-gradient(#12161f, #0a0d14);
+                    box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
+/* The inside of the lid is lined, the way the lid of a case is — the same
+   burgundy as the tray, so the two halves are one interior and the notes
+   written on it are on a sheet laid into a case rather than printed on more
+   night. The sheen goes warm with it: a cold white slide down a burgundy
+   ground reads as plastic, and the same slide in brass reads as satin. */
+.lid .in { transform:rotateX(180deg) translateZ(1px); }
+/* Behind the sheet, not over it. A positioned pseudo-element paints after
+   the in-flow content it shares a box with, so the lining drawn this way
+   covers whatever is written on it — which on this face is everything the
+   box knows about you. The negative index puts it back where a background
+   was. */
+.lid .in::before { content:""; position:absolute; inset:0; z-index:-1;
+           background:
+             linear-gradient(200deg, rgba(233,206,170,.13), rgba(233,206,170,.03) 46%, transparent 62%),
+             radial-gradient(70% 55% at 50% 40%, rgba(201,162,39,.16), transparent 72%),
+             linear-gradient(var(--inside), var(--inside-2));
+           box-shadow:inset 0 0 40px rgba(0,0,0,.8); }
+/* The fittings. A chest has brass on its corners because that is where it
+   gets dropped; here they are what tells you the lid is a lid. Drawn with
+   two borders each — an L of metal — rather than as a picture. */
+.bracket { position:absolute; width:44px; height:44px; pointer-events:none;
+           border:0 solid rgba(201,162,39,.42); border-radius:3px;
+           background:linear-gradient(140deg, rgba(201,162,39,.14), transparent 62%);
+           box-shadow:inset 0 0 12px rgba(201,162,39,.10); }
+.b1 { top:9px;  left:9px;  border-top-width:1px; border-left-width:1px;  border-top-left-radius:12px; }
+.b2 { top:9px;  right:9px; border-top-width:1px; border-right-width:1px; border-top-right-radius:12px; }
+.b3 { bottom:9px; left:9px;  border-bottom-width:1px; border-left-width:1px;  border-bottom-left-radius:12px; }
+.b4 { bottom:9px; right:9px; border-bottom-width:1px; border-right-width:1px; border-bottom-right-radius:12px; }
+
+/* The cut: one diamond, stroked in brass, used at two sizes. Stretched by
+   preserveAspectRatio rather than redrawn, and the stroke told not to
+   stretch with it, so the line is the same weight on the plate and on the
+   lock. */
+.cut { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+       overflow:visible; }
+.cut path { fill:rgba(201,162,39,.045); stroke:rgba(201,162,39,.42);
+            stroke-width:1; vector-effect:non-scaling-stroke;
+            transition:stroke .5s ease, fill .5s ease; }
+@media (hover: hover) {
+  .object:hover .cut path { stroke:rgba(201,162,39,.75); fill:rgba(201,162,39,.07); } }
+
+/* The name, engraved on the lid rather than printed under the box. */
+.plaque { position:absolute; inset:0; display:grid; place-items:center; }
+.plaque .cut { width:60%; height:54%; }
+.plaque span { position:relative; font-size:15px; font-weight:500; letter-spacing:6px;
+               text-transform:uppercase; color:#d9c79b;
+               text-shadow:0 1px 0 rgba(0,0,0,.85), 0 -1px 0 rgba(255,255,255,.06);
+               transition:color .5s ease; }
+@media (hover: hover) { .object:hover .plaque span { color:var(--brass); } }
+
+/* A line of engraving under the plate, the way a lid is decorated: waves
+   cut into the metal, made of one repeating gradient. */
+.filigree { position:absolute; left:18%; right:18%; bottom:7%; height:8px;
+            opacity:.5;
+            background:
+              repeating-linear-gradient(90deg,
+                transparent 0 5px, rgba(201,162,39,.5) 5px 6px, transparent 6px 11px);
+            mask-image:linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+
+/* The lock, on the front wall where a thumb would go: the same cut, small,
+   with the tongue of the catch across it. */
+.clasp { position:absolute; left:50%; top:50%;
+         width:calc(var(--h) * .62); height:calc(var(--h) * .42);
+         transform:translate(-50%,-50%); }
+.clasp .cut { width:100%; height:100%; }
+.clasp b { position:absolute; left:50%; top:22%; bottom:22%; width:2px;
+           transform:translateX(-50%); border-radius:2px;
+           background:linear-gradient(rgba(201,162,39,.85), rgba(201,162,39,.3)); }
+
+/* An engraved seal rather than a logo: two rings and a line, drawn with
+   borders, because anything more literal turns into a sticker. */
+.seal { position:absolute; inset:0; display:grid; place-items:center; }
+.seal span { width:74px; height:74px; border-radius:50%;
+             border:1px solid rgba(201,162,39,.45);
+             box-shadow:0 0 0 8px rgba(201,162,39,.06), inset 0 0 22px rgba(201,162,39,.12);
+             display:grid; place-items:center; }
+.seal span::after { content:""; width:30px; height:30px; border-radius:50%;
+                    border:1px solid rgba(207,224,242,.35); }
+
+/* Hover turns it in the light and lifts the lid just enough to see that
+   there is something in there. It read as broken glass before, but that was
+   the walls hanging under the floor rather than the lift itself: opened
+   against a body that was not where it looked, the lid cut through it. */
+
+/* On a phone the box turns portrait and sizes itself off the window: a hand
+   holds a tall screen, and a chest deeper than it is wide has room for five
+   things in rows. Shared, because the front page and the app have to show the
+   same object — this rule living in one page was exactly how they drifted
+   apart, one landscape and one portrait. */
+/* The box turns portrait only when the window is: a phone on its side is a
+   short, wide window, and a chest deeper than it is wide simply will not fit
+   in it — it was running off both ends. Orientation decides the shape; the
+   fitter decides the size. */
+@media (orientation: portrait) and (max-width: 700px),
+       (orientation: portrait) and (pointer: coarse) {
+  .box { --w:min(74vw, 320px); --d:calc(min(74vw, 320px) * 1.18); --h:calc(min(74vw, 320px) * .2);
+         transform:rotateX(50deg) translateZ(0); }
+  @keyframes hover-idle { 50% { transform:rotateX(50deg) translateZ(10px); } }
+}
+
+/* On its side: back to a wide, shallow box, sized off the height it has. */
+@media (orientation: landscape) and (max-height: 560px) and (pointer: coarse),
+       (orientation: landscape) and (max-height: 480px) {
+  .box { --w:min(62vw, 440px); --d:calc(min(62vw, 440px) * .62); --h:calc(min(62vw, 440px) * .17);
+         transform:rotateX(54deg) translateZ(0); }
+  @keyframes hover-idle { 50% { transform:rotateX(54deg) translateZ(8px); } }
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+  .contents { left:12%; right:12%; }
+  .contents i { width:38%; }
+  .plaque span { font-size:12px; letter-spacing:4px; }
+  .bracket { width:30px; height:30px; }
+  .filigree { bottom:6%; left:14%; right:14%; }
+}

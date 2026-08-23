@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- No zooming. This is a room drawn to the size of the screen, with a
+     conversation projected onto a pane inside it — pinched to 1.4 it is a
+     corner of a room and a column of type running off the edge, and a phone
+     that zooms in on a focused field leaves it there. The scale is fixed so
+     that what a phone shows is what was laid out for it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- Before any stylesheet: the browser paints the blank canvas between two
+     documents using this, and reads it while parsing the head. Declaring
+     dark in CSS is too late — that is the white flash on navigation. -->
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05060b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- The face this wears everywhere: a tab, a home screen, an installed
+     window. One photograph of a sunset, cut to every size somebody asks for
+     — see shell/static/icons. Flat squares that bleed to the edge, because
+     each platform rounds or masks them its own way; the maskable one is the
+     same picture standing back from its edges so a circular crop takes sky
+     rather than cloud. -->
+<!-- PNG first, .ico last. A browser is entitled to take the first icon it
+     understands, and every one of them understands a PNG; the .ico is here
+     for the ones that ask the root of the site for that name and nothing
+     else. -->
+<link rel="icon" type="image/png" sizes="32x32" href="/shared/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/shared/icons/icon-16.png">
+<link rel="icon" href="/shared/icons/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" sizes="180x180" href="/shared/icons/icon-180.png">
+<link rel="manifest" href="/shared/manifest.webmanifest">
+<title>Lucid Dream</title>
+<!-- Inline, and first: the shared stylesheet is a separate request, and a
+     browser paints a new document before the stylesheet arrives. Without
+     this the first frame of every navigation is white — invisible in
+     Safari, which covers it with a view transition, and a flash in
+     Firefox, which has none. -->
+<style>html{background:#05060b}</style>
+<!-- There is one app, and pressing the box is the only thing this page
+     does, so its page is fetched now rather than when you commit. A
+     browser with no view transition paints its own blank canvas while
+     the next document loads; the shorter that load, the less of it you
+     see. Prefetch only — it fetches bytes and runs nothing. -->
+<link rel="prefetch" href="/lucid-talk/" as="document">
+<link rel="stylesheet" href="/shared/night.css?v=3">
+<style>
+  /* The table an app sits on. One perspective for the whole page, so every
+     object on it agrees about where the viewer is standing — set it per-object
+     and two boxes look like two photographs pasted side by side. */
+  body { height:100vh; height:100dvh; display:flex; flex-direction:column;
+         align-items:stretch; justify-content:center; touch-action:manipulation;
+         overflow:hidden; }
+  /* The same strip along the bottom that the app keeps for its machine
+     drawer. There is nothing down there on this page, but the box has to come
+     out the same size on both, and the only way to guarantee that is for both
+     to be fitted into the same shape of room. */
+  /* The same room as the app's: the same strip along the bottom for the
+     machine drawer, and the same inset at the top. The box is fitted into
+     this, so any difference between the two pages moves the object between
+     them — which is what made arriving at the open box look like a jump. */
+  main { position:relative; z-index:1; text-align:center; width:100%;
+         height:100%; display:flex; align-items:center; justify-content:center;
+         padding:max(20px, env(safe-area-inset-top)) 16px 56px; }
+
+  .table { display:flex; gap:80px; justify-content:center; flex-wrap:wrap;
+           perspective:1900px; perspective-origin:50% 42%; }
+
+  /* ---- an app, as an object you can open ---------------------------------
+     A box seen from above and slightly in front: the floor of it is a plate,
+     four walls stand up off that floor, and the lid is hinged on the far edge.
+     All of it is divs — which is the point. When the lid is up, what is inside
+     is still HTML, so the personas can be real links with real text on them. */
+  .object { display:block; text-decoration:none; color:inherit;
+            touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+            -webkit-user-select:none; user-select:none;
+            transform-style:preserve-3d; cursor:pointer;
+            transform:none;
+            transition:transform .85s cubic-bezier(.22,.7,.16,1); }
+  @media (hover: hover) {
+    .object { transform:rotateX(calc(var(--lean-x, 0) * 1deg))
+                        rotateY(calc(var(--lean-y, 0) * 1deg)); }
+  }
+  /* Opening sinks the object by exactly the overhang of the standing lid —
+     the same number the inside of the box uses to center itself. That is what
+     makes the last frame here and the first frame there the same picture. */
+  .object.opening { transform:translateY(var(--sink, 0px)); }
+  /* Restored from the back button, everything is where it belongs before the
+     first frame: Safari hands the page back exactly as you left it — box open,
+     mid-flight — and without this you watch it shut itself. */
+  .object.priming, .object.priming .box, .object.priming .lid,
+  .object.priming .lamp, .object.priming .contents { transition:none !important; }
+  /* Only where a pointer can really hover. A touch screen reports :hover on
+     the very tap that opens the box, so without this the phone plays the peek
+     and the opening at once — and leaves the peek stuck there afterwards.
+
+     The lid angle is positive, and that matters: hinged along the far edge, a
+     negative angle swings the near edge down through the floor — the lid opens
+     into the box and you see nothing. Up is +. */
+  @media (hover: hover) {
+    .object:hover .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+    .object:hover .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+    .object:hover .lamp { opacity:.65; }
+    .object:hover .contents { opacity:1; }
+    .object:hover .contents i { opacity:.9;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 26px rgba(var(--pill), .32); }
+    .object:hover .contents i:nth-child(3) { opacity:.28; }
+  }
+  /* Keyboard focus gets the same look, on any device. */
+  .object:focus-visible .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+  .object:focus-visible .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+  .object:focus-visible .lamp { opacity:.65; }
+  .object:focus-visible .contents { opacity:1; }
+  .object:focus-visible { outline:none; }
+
+  /* The press: it comes to meet you, filling most of the screen, and only
+     then does the lid go back. --zoom is measured against this window when
+     the page loads, so the box lands the same size on a phone and a monitor. */
+  .object.opening .box { animation:none;
+          transform:rotateX(44deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1));
+          transition:transform .85s cubic-bezier(.22,.7,.16,1); }
+  .object.opening .lid { transform:translateZ(var(--h)) rotateX(108deg);
+          transition:transform .8s cubic-bezier(.3,.8,.25,1) .18s; }
+  .object.opening .lamp { opacity:1; }
+  .object.opening .label { opacity:0; }
+
+  .label { margin-top:34px; text-align:center; transition:opacity .5s ease; }
+
+  .label h2 { margin:0; font-size:15px; font-weight:500; letter-spacing:3px;
+              text-transform:uppercase; color:var(--ink); }
+  .label p { margin:7px 0 0; font-size:12.5px; line-height:1.6; color:var(--star-dim); }
+
+  footer { position:relative; z-index:1; font-size:11px; letter-spacing:2px;
+           text-transform:uppercase; color:#3f4757; }
+
+  /* On a phone the box is the whole room: sized off the window rather than
+     fixed, so it fills the hand without being cropped, and a tap does what a
+     click does — nothing here needs a pointer to hover first.
+
+     It also turns portrait. A hand holds a tall window, and a chest that is
+     deeper than it is wide has room for five things standing in rows rather
+     than one long shelf of them. The camera lies back a little too, or the
+     added depth is foreshortened away and it just looks small. */
+  @media (max-width: 700px), (pointer: coarse) {
+    .table { perspective:1100px; perspective-origin:50% 38%; }
+    .object.opening .box { transform:rotateX(40deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1)); }
+    .object:focus-visible .box { transform:rotateX(46deg) translateZ(20px) scale(1.02); }
+  }
+</style>
+</head>
+<body>
+  <canvas id="sky"></canvas>
+  <main>
+    <div class="table"><!--TILES--></div>
+  </main>
+  <script src="/shared/qr.js?v=3"></script>
+  <script src="/shared/night.js?v=3"></script>
+  <script>
+  // Opening is the transition. The lid goes up, the box comes toward you, and
+  // only then does the address change — so the next page arrives as the inside
+  // of the thing you just opened rather than as a page load.
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sound = window.Lucid && window.Lucid.sound;
+
+  // Coming back to this page — a fresh load, or the back button handing us the
+  // page we left — the box is shut and nothing animates it shut.
+  const settle = () => {
+    document.body.classList.remove('opening');
+    document.querySelectorAll('.object').forEach(obj => {
+      obj.classList.add('priming');
+      obj.classList.remove('opening');
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      document.querySelectorAll('.object').forEach(o => o.classList.remove('priming'))));
+  };
+  addEventListener('pageshow', settle);
+
+  // The size it opens to, worked out by the shared fitter so that this and
+  // the inside of the box are the same object at the same size.
+  // Fitted against the window, not against <main> — main is only as tall as
+  // the box inside it, so measuring against it shrinks the box towards zero.
+  const measure = () => {
+    document.querySelectorAll('.object').forEach(obj =>
+      window.Lucid.fitOpenBox(obj, document.querySelector('main'), 'opening'));
+  };
+  for (const ev of ['resize', 'orientationchange', 'pageshow'])
+    addEventListener(ev, measure);
+  if (window.visualViewport) visualViewport.addEventListener('resize', measure);
+  measure();
+  document.querySelectorAll('.object').forEach(obj => {
+    // The lid creaks when you come near it. That is also how you learn your
+    // speakers are live and at what level, before it ever says anything.
+    // A quiet shift of something heavy as it turns; the lid keeps its own
+    // sound for when it actually opens.
+    obj.addEventListener('pointerenter', () => sound && sound.hover(), {passive: true});
+    obj.addEventListener('click', e => {
+      if (still || e.metaKey || e.ctrlKey || e.shiftKey) return;   // let the browser have it
+      e.preventDefault();
+      // The catch, then the air: a click for the mechanism and a long breath
+      // for the movement it starts, running under the whole transition.
+      if (sound) { sound.latch(); setTimeout(() => sound.whoosh(), 150); }
+      obj.classList.add('opening');
+      document.body.classList.add('opening');
+      setTimeout(() => { location.href = obj.href; }, 760);
+    });
+  });
+  </script>
+</body>
+</html>

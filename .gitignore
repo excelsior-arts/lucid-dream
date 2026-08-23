@@ -1,0 +1,32 @@
+# ---- yours: never commit ----
+# Everything of yours, under one roof: every conversation, what each persona
+# remembers about you, what each room has become, what this machine is tuned
+# to, and the TLS keys that let your phone reach it.
+#
+# One line on purpose, and it stays one line: anything private invented later
+# goes under here rather than beside the code. See shell/paths.py.
+/userdata/
+
+# ---- the models ----
+# Twelve gigabytes of weights that belong to whoever published them, downloaded
+# by setup.sh and kept beside the code so the whole thing is one directory you
+# can move or delete. Never ours to commit.
+/models/
+
+# ---- the voices ----
+# A reference clip is six seconds of somebody's actual voice, and it is the one
+# asset here that cannot be taken back once it is published. So none of them
+# live in git: setup.sh fetches the pack, and a clip contributed in a pull
+# request has nowhere to land -- which is a guarantee rather than something a
+# reviewer has to catch on a tired afternoon. See THIRD-PARTY.md.
+voice.ref.wav
+
+# ---- machine-local ----
+# a sink at the root: scratch tools, logs, anything mid-experiment. Nothing
+# in the program reads it, and nothing in it is expected to survive.
+/tmp/
+# browser screenshots taken while designing the pages
+/.playwright-mcp/
+.venv/
+__pycache__/
+.DS_Store

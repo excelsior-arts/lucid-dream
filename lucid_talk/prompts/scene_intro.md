@@ -1,0 +1,1 @@
+Where the two of you are, still. He is there and can see it, so saying it back to him is the one thing that breaks it — and opening your turn with the surroundings is how that happens. Be in it, and answer what he said. If he has just put you somewhere else — a ship, a car, a field — then you are there, and this note is out of date. Go where he says and let this go.

@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- A calling card, and nothing else.
+     ==============================================================
+     One file, no requests, no build step. Drop it anywhere that
+     serves static files and it works; open it off a thumb drive and
+     it works. The sky, the box and the sounds are lifted from the
+     app itself (shell/static/night.css, night.js, shell/server.py)
+     so the object here is the same object that opens on the desk —
+     minus the console and the corner controls, which have nothing
+     to do on a page that cannot run anything.
+
+     There is no game in here. There cannot be: it is four models on
+     your own silicon. Pressing the box tells you that, and how to
+     go and get the real one.
+
+     The repository address appears six times below: the clone line,
+     the four pills, and the og:image, which has to be absolute and so
+     names the Pages host itself. If the org is ever renamed, that is
+     the whole of the edit — sed for excelsior-arts. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05060b">
+<title>Lucid Dream</title>
+<meta name="description" content="A box of digital drugs for a localhost, uncensored audio experience. Interactive applied art. Take nightly.">
+<meta property="og:title" content="Lucid Dream">
+<meta property="og:description" content="A box of digital drugs for a localhost, uncensored audio experience. Interactive applied art. Take nightly.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://excelsior-arts.github.io/lucid-dream/talk-box-closed.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
+<style>
+/* ---------------------------------------------------------------------------
+   The world everything is lit by. Trimmed from shell/static/night.css: the
+   palette, the sky, and the box. Anything that belonged to the console or the
+   corner furniture is gone.
+--------------------------------------------------------------------------- */
+:root {
+  --void:#05060b; --void-2:#0a0c14;
+  --brass:#c9a227; --brass-dim:#8a6f22; --amber:#c98a3c;
+  --star:#cfe0f2; --star-dim:#6f8298;
+  --ink:#f2e5d0; --ink-dim:#a08f74;
+  --edge:rgba(201,162,39,.28);
+  --rim:rgba(207,224,242,.14);
+  --inside:#2b0d18; --inside-2:#180509;
+  /* The strip along the bottom the object is not allowed into: the two footer
+     lines live there, and an object drawn over them reads as a crop. */
+  --strip:64px;
+  --lining:linear-gradient(rgba(255,255,255,.05), transparent 60%),
+           linear-gradient(#33101c, var(--inside));
+  color-scheme:dark;
+}
+* { box-sizing:border-box; }
+html { -webkit-text-size-adjust:100%; background:var(--void); }
+body { margin:0; background:var(--void); color:var(--ink);
+       font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+       height:100vh; height:100dvh; display:flex; flex-direction:column;
+       align-items:stretch; justify-content:center; touch-action:manipulation;
+       overflow:hidden; }
+::selection { background:rgba(201,162,39,.3); }
+
+/* Width and height explicitly: a canvas is a replaced element, so inset:0
+   alone leaves it at its intrinsic 300x150. */
+#sky { position:fixed; z-index:0; pointer-events:none;
+       left:0; top:0; width:100vw; height:100vh; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration:.001s !important; transition-duration:.001s !important; }
+}
+
+.plate {
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.045), transparent 42%),
+    linear-gradient(#0e1119, #080a10);
+  border:1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 -1px 0 rgba(0,0,0,.6),
+    0 18px 40px rgba(0,0,0,.55);
+}
+
+/* What the box is fitted into once it is open: the window, less the strip the
+   footer line keeps along the bottom. An empty, untouchable rectangle — the
+   fitter measures a room, and this is the room. */
+#stage { position:fixed; left:0; top:0; width:100%;
+         height:calc(100% - var(--strip)); pointer-events:none; z-index:0; }
+
+/* ---- the table ---------------------------------------------------------
+   One perspective for the whole page, so every object on it agrees about
+   where the viewer is standing. */
+main { position:relative; z-index:1; text-align:center; width:100%;
+       height:100%; display:flex; align-items:center; justify-content:center;
+       padding:max(20px, env(safe-area-inset-top)) 16px 56px; }
+
+.table { display:flex; gap:80px; justify-content:center; flex-wrap:wrap;
+         perspective:1900px; perspective-origin:50% 42%; }
+
+/* ---- an app, as an object you can open ---------------------------------
+   A box seen from above and slightly in front: the floor of it is a plate,
+   four walls stand up off that floor, and the lid is hinged on the far edge.
+   All of it is divs — which is the point. */
+.object { display:block; text-decoration:none; color:inherit;
+          background:none; border:0; padding:0; font:inherit;
+          touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+          -webkit-user-select:none; user-select:none;
+          transform-style:preserve-3d; cursor:pointer;
+          transform:none;
+          transition:transform .85s cubic-bezier(.22,.7,.16,1); }
+@media (hover: hover) {
+  .object { transform:rotateX(calc(var(--lean-x, 0) * 1deg))
+                      rotateY(calc(var(--lean-y, 0) * 1deg)); }
+}
+.object.opening { transform:translateY(var(--sink, 0px)); }
+.object.priming, .object.priming .box, .object.priming .lid,
+.object.priming .lamp, .object.priming .contents { transition:none !important; }
+
+/* Only where a pointer can really hover. A touch screen reports :hover on the
+   very tap that opens the box, so without this the phone plays the peek and
+   the opening at once — and leaves the peek stuck there afterwards. */
+@media (hover: hover) {
+  .object:hover .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+  .object:hover .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+  .object:hover .lamp { opacity:.65; }
+  .object:hover .contents { opacity:1; }
+  .object:hover .contents i { opacity:.9;
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 26px rgba(var(--pill), .32); }
+  .object:hover .contents i:nth-child(3) { opacity:.28; }
+}
+.object:focus-visible .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+.object:focus-visible .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+.object:focus-visible .lamp { opacity:.65; }
+.object:focus-visible .contents { opacity:1; }
+.object:focus-visible { outline:none; }
+
+/* The press: it comes to meet you, filling most of the screen, and only then
+   does the lid go back. --zoom is measured against this window on load, so the
+   box lands the same size on a phone and a monitor. */
+.object.opening .box { animation:none;
+        transform:rotateX(44deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1));
+        transition:transform .85s cubic-bezier(.22,.7,.16,1); }
+.object.opening .lid { transform:translateZ(var(--h)) rotateX(108deg);
+        transition:transform .8s cubic-bezier(.3,.8,.25,1) .18s; }
+.object.opening .lamp { opacity:1; }
+
+/* The object refuses selection the way a control does. What is written inside
+   it is writing, though — a license nobody can copy a line out of is a strange
+   thing to link to — so the lining and the card hand selection back. The pills
+   keep refusing it: they are buttons, and a button that smears into a
+   highlight when you press it feels broken. */
+.note, .note *, .drawer .steps, .drawer .steps * {
+  -webkit-user-select:text; user-select:text; }
+.note { cursor:text; }
+.note h1 { cursor:default; }
+.contents .pill, .contents .pill * {
+  -webkit-user-select:none; user-select:none; }
+
+/* ---- the box ------------------------------------------------------------
+   Everything is elements: floor, four walls, a hinged lid with a face on each
+   side. That is what keeps the writing on the lid real text. */
+/* --type is --w, for type only, with a number the fitter is allowed to pull
+   down. Everything written on this box is measured off the box's width, which
+   is what keeps the writing part of the object — and which assumes the writing
+   fits. It very nearly does: the lid is packed to about ninety-five percent of
+   itself at every size, so a browser whose font comes out a few percent taller
+   than the one this was laid out in pushes the spec line off the lid and onto
+   the tray. Safari does exactly that at either end of its zoom range. So the
+   fitter measures what the lid is actually holding and writes it in a smaller
+   hand until it holds it; at every size where it already fits, --hand is 1 and
+   this is the stylesheet it always was. See settleHand below. */
+.box { --w:550px; --d:362px; --h:98px; --hand:1; --type:calc(var(--w) * var(--hand));
+       position:relative; width:var(--w); height:var(--d);
+       transform-style:preserve-3d;
+       transform:rotateX(58deg) translateZ(0);
+       animation:hover-idle 7s ease-in-out infinite;
+       transition:transform .9s cubic-bezier(.2,.7,.2,1); }
+@keyframes hover-idle { 50% { transform:rotateX(58deg) translateZ(10px); } }
+
+.face { position:absolute; background:
+          linear-gradient(150deg, rgba(255,255,255,.05), transparent 45%),
+          linear-gradient(#0d1017, #070910);
+        border:1px solid var(--edge); }
+.floor { inset:0; box-shadow:inset 0 0 60px rgba(0,0,0,.86);
+         background:
+           linear-gradient(150deg, rgba(255,255,255,.045), transparent 45%),
+           linear-gradient(var(--inside), var(--inside-2)); }
+/* The walls carry no line along the rim — the lid's own border is already
+   there, a pixel or two away, and two of them read as one broken edge. */
+.face.w-front, .face.w-back, .face.w-left, .face.w-right { border:0; }
+.w-front { background:
+             linear-gradient(rgba(255,255,255,.09), transparent 55%),
+             linear-gradient(#171d28, #0a0e15);
+           box-shadow:inset 0 -1px 0 var(--edge),
+                      inset 1px 0 0 rgba(201,162,39,.35),
+                      inset -1px 0 0 rgba(201,162,39,.35); }
+.w-left  { background:linear-gradient(90deg, #0a0e15, #131924);
+           box-shadow:inset 0 -1px 0 var(--edge), inset 1px 0 0 rgba(201,162,39,.30); }
+.w-right { background:linear-gradient(270deg, #0a0e15, #131924);
+           box-shadow:inset 0 -1px 0 var(--edge), inset -1px 0 0 rgba(201,162,39,.30); }
+.w-back  { background:
+             linear-gradient(rgba(255,255,255,.05), transparent 60%),
+             linear-gradient(#141a24, #0b0f17); }
+/* The lining, as a sheet laid over the three walls you look at from inside.
+   Nothing is lined by default, so a box on a table is night all the way
+   round; opening brings the lining up. */
+.w-back::after, .w-left::after, .w-right::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  opacity:0; transition:opacity .5s ease; }
+.w-back::after  { background:var(--lining);
+                  box-shadow:inset 0 1px 0 rgba(201,162,39,.30); }
+.w-left::after  { background:linear-gradient(90deg, var(--inside-2), #33101c);
+                  box-shadow:inset 0 1px 0 rgba(201,162,39,.32),
+                             inset 0 -1px 0 var(--edge),
+                             inset 1px 0 0 rgba(201,162,39,.30); }
+.w-right::after { background:linear-gradient(270deg, var(--inside-2), #33101c);
+                  box-shadow:inset 0 1px 0 rgba(201,162,39,.32),
+                             inset 0 -1px 0 var(--edge),
+                             inset -1px 0 0 rgba(201,162,39,.30); }
+.object.opening .w-back::after,
+.object.opening .w-left::after,
+.object.opening .w-right::after { opacity:1; }
+
+.w-front { left:0; top:100%; width:var(--w); height:var(--h);
+           transform-origin:top center; transform:rotateX(90deg); }
+.w-back  { left:0; bottom:100%; width:var(--w); height:var(--h);
+           transform-origin:bottom center; transform:rotateX(-90deg); }
+.w-left  { top:0; right:100%; width:var(--h); height:var(--d);
+           transform-origin:right center; transform:rotateY(90deg); }
+.w-right { top:0; left:100%; width:var(--h); height:var(--d);
+           transform-origin:left center; transform:rotateY(-90deg); }
+
+/* What is inside, standing rather than lying flat: propped against the back
+   of the box, their tops clear the rim the moment the lid lifts. */
+.contents { flex:0 0 auto; height:calc(var(--h) * .62);
+            margin:0 0 calc(var(--h) * .05);
+            display:flex; flex-wrap:nowrap; align-items:flex-end;
+            justify-content:center; gap:calc(var(--w) * .018); }
+/* The pills. In the app each one is a persona and its color is what it gives
+   you; here there is nothing to take, so each is a door out of the box — the
+   writing, the manual, the terms, the source. Same objects, same rake, same
+   light; a label on each, and a real href under it. */
+.contents .pill { width:23%; height:calc(var(--h) * .78);   /* < the berth */ border-radius:7px 7px 4px 4px;
+              display:grid; place-items:start center; text-decoration:none;
+              padding-top:calc(var(--h) * .11);
+              opacity:.55;
+              background:
+                linear-gradient(200deg, rgba(255,255,255,.10), transparent 44%),
+                linear-gradient(rgba(var(--pill), .55), rgba(var(--pill), .16));
+              border:1px solid rgba(var(--pill), .5);
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.10),
+                         0 0 22px rgba(var(--pill), .18);
+              transition:opacity .7s ease, box-shadow .7s ease, transform .35s ease; }
+.contents .pill span { font-size:calc(var(--type) * .0185);
+              letter-spacing:calc(var(--type) * .0028); text-transform:uppercase;
+              color:#f0e6d4; text-shadow:0 1px 2px rgba(0,0,0,.7);
+              transition:color .3s ease; }
+.contents .pill:nth-child(1) { --pill:141, 92, 214; }    /* purple */
+.contents .pill:nth-child(2) { --pill:214, 108, 48; }    /* yellow-red */
+.contents .pill:nth-child(3) { --pill:96, 138, 196; }    /* cold */
+.contents .pill:nth-child(4) { --pill:120, 130, 150;     /* the plain one */
+              background:
+                linear-gradient(200deg, rgba(255,255,255,.08), transparent 44%),
+                linear-gradient(rgba(var(--pill), .30), rgba(var(--pill), .10)),
+                rgba(16,20,29,.94);
+              border-color:rgba(var(--pill), .5); }
+.contents .pill:nth-child(4) span { color:#fff; }
+.object.opening .contents .pill {
+              opacity:1; box-shadow:inset 0 1px 0 rgba(255,255,255,.12),
+                                    0 0 34px rgba(var(--pill), .45); }
+/* Taken: it comes up out of its berth a little, and lights. */
+.contents .pill:hover, .contents .pill:focus-visible {
+              transform:translateY(-6%) scale(1.04); outline:none;
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.18),
+                         0 0 44px rgba(var(--pill), .65); }
+.contents .pill:hover span, .contents .pill:focus-visible span { color:#fff; }
+.contents .pill:nth-child(1) { transform:rotate(-4deg); }
+.contents .pill:nth-child(4) { transform:rotate(3deg); }
+.contents .pill:nth-child(1):hover { transform:rotate(-4deg) translateY(-6%) scale(1.04); }
+.contents .pill:nth-child(4):hover { transform:rotate(3deg) translateY(-6%) scale(1.04); }
+.lamp { position:absolute; inset:0; transform:translateZ(1px); pointer-events:none;
+        background:radial-gradient(60% 45% at 50% 55%, rgba(201,162,39,.28), transparent 72%);
+        opacity:0; transition:opacity .7s ease; }
+
+/* The lid, hinged at the back. Closed it is the whole object; open it is the
+   thing that gets out of the way. */
+.lid { position:absolute; inset:0; transform-origin:top center;
+       transform-style:preserve-3d;
+       transform:translateZ(var(--h)) rotateX(0deg);
+       transition:transform 1s cubic-bezier(.3,.8,.25,1); }
+/* Two faces, because a lid has two. The half-pixel translate is not decorative:
+   WebKit will not certainly build the 3-D layer without it, and the lid comes
+   up as engraving with no metal behind it. */
+.lid .out, .lid .in { position:absolute; inset:0; backface-visibility:hidden;
+                      -webkit-backface-visibility:hidden;
+                      border:1px solid var(--edge); }
+.lid .out { transform:translateZ(.5px);
+            box-shadow:0 30px 60px rgba(0,0,0,.6); }
+.lid .out::before { content:""; position:absolute; inset:0; z-index:-1;
+                    background:
+                      linear-gradient(150deg, rgba(255,255,255,.07), transparent 40%),
+                      linear-gradient(#12161f, #0a0d14);
+                    box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
+.lid .in { transform:rotateX(180deg) translateZ(1px); }
+.lid .in::before { content:""; position:absolute; inset:0; z-index:-1;
+           background:
+             linear-gradient(200deg, rgba(233,206,170,.13), rgba(233,206,170,.03) 46%, transparent 62%),
+             radial-gradient(70% 55% at 50% 40%, rgba(201,162,39,.16), transparent 72%),
+             linear-gradient(var(--inside), var(--inside-2));
+           box-shadow:inset 0 0 40px rgba(0,0,0,.8); }
+/* The fittings. A chest has brass on its corners because that is where it gets
+   dropped; here they are what tells you the lid is a lid. */
+.bracket { position:absolute; width:44px; height:44px; pointer-events:none;
+           border:0 solid rgba(201,162,39,.42); border-radius:3px;
+           background:linear-gradient(140deg, rgba(201,162,39,.14), transparent 62%);
+           box-shadow:inset 0 0 12px rgba(201,162,39,.10); }
+.b1 { top:9px;  left:9px;  border-top-width:1px; border-left-width:1px;  border-top-left-radius:12px; }
+.b2 { top:9px;  right:9px; border-top-width:1px; border-right-width:1px; border-top-right-radius:12px; }
+.b3 { bottom:9px; left:9px;  border-bottom-width:1px; border-left-width:1px;  border-bottom-left-radius:12px; }
+.b4 { bottom:9px; right:9px; border-bottom-width:1px; border-right-width:1px; border-bottom-right-radius:12px; }
+
+/* The cut: one diamond, stroked in brass, used at two sizes. */
+.cut { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+       overflow:visible; }
+.cut path { fill:rgba(201,162,39,.045); stroke:rgba(201,162,39,.42);
+            stroke-width:1; vector-effect:non-scaling-stroke;
+            transition:stroke .5s ease, fill .5s ease; }
+@media (hover: hover) {
+  .object:hover .cut path { stroke:rgba(201,162,39,.75); fill:rgba(201,162,39,.07); } }
+
+/* The name, engraved on the lid rather than printed under the box. */
+.plaque { position:absolute; inset:0; display:grid; place-items:center; }
+.plaque .cut { width:60%; height:54%; }
+.plaque span { position:relative; font-size:15px; font-weight:500; letter-spacing:6px;
+               text-transform:uppercase; color:#d9c79b;
+               text-shadow:0 1px 0 rgba(0,0,0,.85), 0 -1px 0 rgba(255,255,255,.06);
+               transition:color .5s ease; }
+@media (hover: hover) { .object:hover .plaque span { color:var(--brass); } }
+
+.filigree { position:absolute; left:18%; right:18%; bottom:7%; height:8px;
+            opacity:.5;
+            background:
+              repeating-linear-gradient(90deg,
+                transparent 0 5px, rgba(201,162,39,.5) 5px 6px, transparent 6px 11px);
+            mask-image:linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+            -webkit-mask-image:linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+
+/* The lock, on the front wall where a thumb would go. */
+.clasp { position:absolute; left:50%; top:50%;
+         width:calc(var(--h) * .62); height:calc(var(--h) * .42);
+         transform:translate(-50%,-50%); }
+.clasp .cut { width:100%; height:100%; }
+.clasp b { position:absolute; left:50%; top:22%; bottom:22%; width:2px;
+           transform:translateX(-50%); border-radius:2px;
+           background:linear-gradient(rgba(201,162,39,.85), rgba(201,162,39,.3)); }
+
+/* On a phone the box turns portrait and sizes itself off the window: a hand
+   holds a tall screen, and a chest deeper than it is wide has room for five
+   things in rows. */
+@media (orientation: portrait) and (max-width: 700px),
+       (orientation: portrait) and (pointer: coarse) {
+  .box { --w:min(74vw, 320px); --d:calc(min(74vw, 320px) * 1.18); --h:calc(min(74vw, 320px) * .2);
+         transform:rotateX(50deg) translateZ(0); }
+  @keyframes hover-idle { 50% { transform:rotateX(50deg) translateZ(10px); } }
+}
+@media (orientation: landscape) and (max-height: 560px) and (pointer: coarse),
+       (orientation: landscape) and (max-height: 480px) {
+  .box { --w:min(62vw, 440px); --d:calc(min(62vw, 440px) * .62); --h:calc(min(62vw, 440px) * .17);
+         transform:rotateX(54deg) translateZ(0); }
+  @keyframes hover-idle { 50% { transform:rotateX(54deg) translateZ(8px); } }
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .table { perspective:1100px; perspective-origin:50% 38%; }
+  .object.opening .box { transform:rotateX(40deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1)); }
+  .object:focus-visible .box { transform:rotateX(46deg) translateZ(20px) scale(1.02); }
+  .contents { left:12%; right:12%; }
+  .contents i { width:38%; }
+  .plaque span { font-size:12px; letter-spacing:4px; }
+  .bracket { width:30px; height:30px; }
+  .filigree { bottom:6%; left:14%; right:14%; }
+}
+
+/* ---- what is in the box, on a page that cannot run it -------------------
+   In the app, opening the box is a navigation: the next document is the inside
+   of the thing you just opened. There is nowhere to go from here, so what it
+   has to say is written into the box itself — the description on the lining of
+   the lid, the commands on a card standing in the tray. A panel laid over the
+   top would have covered the one thing this page has to show.
+
+   Both are sized off --w rather than in fixed pixels. The box is scaled to
+   whatever window it is in, and type in px would be the one thing on the
+   object that did not grow with it — huge in a phone's box and lost in a
+   monitor's.
+------------------------------------------------------------------------- */
+
+/* Nothing inside the box is there before the lid moves. Not a nicety: at some
+   angles the browser sorts these in front of the lid that covers them, and
+   they ghost through the metal — the same reason the pills are kept dark. */
+.note, .drawer { opacity:0; visibility:hidden;
+                 transition:opacity .5s ease .2s, visibility 0s linear .7s; }
+.object.opening .note, .object.opening .drawer { opacity:1; visibility:visible;
+                 transition:opacity .5s ease .2s, visibility 0s; }
+/* And their backs are as hidden as the faces they are written on. A child of a
+   backface-hidden element does not inherit that: without this the lid is shut
+   and the writing is on the outside of it, mirrored. */
+.note, .note *, .drawer, .drawer * { backface-visibility:hidden;
+                                     -webkit-backface-visibility:hidden; }
+
+/* ---- the top edge of the lid ----
+   Where a hand goes to shut a case, kept as a band across the top of the
+   lining with nothing drawn in it. The lock on the front wall does the same
+   job from the other end; between them there is no need for a handle painted
+   on the inside of the lid, which is all the bar that used to live here was.
+------------------------------------------------------------------------- */
+.lid .in .grip { position:absolute; left:0; right:0; top:0; height:7%;
+                 cursor:pointer; }
+
+/* ---- the lining of the lid ---- */
+.note { position:absolute; inset:7% 8% 6%; display:flex; flex-direction:column;
+        text-align:left; }
+.note h1 { margin:0; text-align:center;
+           font-size:calc(var(--type) * .030); font-weight:500;
+           letter-spacing:calc(var(--type) * .012); text-transform:uppercase;
+           color:#d9c79b;
+           text-shadow:0 1px 0 rgba(0,0,0,.85), 0 -1px 0 rgba(255,255,255,.06); }
+/* The same cut engraving as the lid carries on its outside, on the inside. */
+.note .rule { margin:calc(var(--type) * .018) auto; width:64%;
+              height:calc(var(--w) * .014); opacity:.5;
+              background:
+                repeating-linear-gradient(90deg,
+                  transparent 0 5px, rgba(201,162,39,.5) 5px 6px, transparent 6px 11px);
+              mask-image:linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+              -webkit-mask-image:linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+.note p { margin:0 0 calc(var(--type) * .012);
+          font-size:calc(var(--type) * .0255); line-height:1.55; color:var(--ink-dim); }
+.note p.lede { color:var(--ink); }
+.note b { color:var(--ink); font-weight:500; }
+.note .spec { margin:auto 0 0; text-align:center; line-height:1.75;
+              font-size:calc(var(--type) * .0205); color:var(--star-dim); }
+.note .spec b { color:var(--ink-dim); font-weight:400; }
+
+/* ---- the card standing in the tray ----
+   Raked to the same angle as the pills, which is what turns a plane lying on
+   the floor — where type is foreshortened into a gray band — into one facing
+   the camera. It stands in front of them, so their tops show behind it: things
+   further back in a tray sit higher on the screen. */
+.drawer { position:absolute; left:10%; right:10%; top:12%; bottom:29%;
+          display:flex; flex-direction:column;
+          transform:translateZ(calc(var(--h) * .12)) rotateX(-46deg);
+          transform-origin:bottom center; }
+.drawer .steps { flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
+                 justify-content:center; text-align:left;
+                 padding:calc(var(--w) * .016) calc(var(--w) * .022);
+                 border-radius:3px; background:rgba(0,0,0,.42);
+                 border:1px solid rgba(201,162,39,.20);
+                 box-shadow:inset 0 1px 0 rgba(255,255,255,.05),
+                            0 10px 26px rgba(0,0,0,.5); }
+.steps code { display:block; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:calc(var(--type) * .0195); line-height:1.62; color:#cfe0f2;
+              white-space:nowrap; }
+.steps code::before { content:"$ "; color:var(--brass-dim); }
+.steps code.note-line { color:var(--star-dim); white-space:normal;
+                        font-size:calc(var(--type) * .018); line-height:1.5;
+                        margin-top:calc(var(--type) * .010); }
+.steps code.note-line::before { content:""; }
+/* Take a command by pressing it. Cursor and color are the only notice given. */
+.steps code:not(.note-line) { cursor:copy; transition:color .25s ease; }
+.steps code:not(.note-line):hover { color:#e9dcc4; }
+.steps code.took { color:var(--brass); }
+.steps code.took::after { content:" — copied"; color:var(--brass-dim); }
+
+footer { position:fixed; left:0; right:0; bottom:14px; z-index:1;
+         padding:0 14px; text-align:center; font-size:10.5px; letter-spacing:2px;
+         text-transform:uppercase; color:#3f4757; transition:opacity .5s ease; }
+/* The name, in the same small engraving as the line under it — only lighter.
+   On its own line, because on a phone the two together are wider than the
+   screen and break wherever the words happen to fall. */
+footer b { display:block; font-weight:500; color:#7b8698;
+           margin-bottom:.5em; letter-spacing:3px; }
+/* The second line is as wide as the screen on a small phone, and a hair of
+   tracking is the difference between one line of it and two. */
+@media (max-width: 430px) {
+  footer { font-size:9.5px; letter-spacing:1.4px; }
+  footer b { letter-spacing:2.4px; }
+}
+body.up footer { opacity:0; pointer-events:none; }
+
+/* A phone's box is a third the width of a monitor's, and type measured off
+   that width comes out at nine pixels — correct as a proportion of the object
+   and unreadable as writing. The proportions go up where the object is small;
+   the object is what changes size, not the person holding it. */
+@media (orientation: portrait) and (max-width: 700px),
+       (orientation: portrait) and (pointer: coarse) {
+  .note { inset:7% 7% 6%; }
+  .note h1 { font-size:calc(var(--type) * .046); letter-spacing:calc(var(--type) * .017); }
+  .note .rule { margin:calc(var(--type) * .030) auto; height:calc(var(--w) * .020); }
+  .note p { font-size:calc(var(--type) * .036); margin-bottom:calc(var(--type) * .024);
+            line-height:1.55; }
+  .note .spec { font-size:calc(var(--type) * .029); line-height:1.6; }
+  /* Taller, so more of each pill clears the card standing in front of it, and
+     the word on it is a word rather than a smudge. */
+  .contents { height:calc(var(--h) * 1.16); margin-bottom:calc(var(--h) * .12); }
+  .contents .pill { height:calc(var(--h) * 1.02); }
+  .contents .pill span { font-size:calc(var(--type) * .033); }
+  /* Deeper tray, so the card can stand further back and taller. */
+  .drawer { top:6%; bottom:14%; }
+  .drawer .steps { padding:calc(var(--w) * .030) calc(var(--w) * .034); }
+  /* And the clone line wraps rather than running off the card: it is a URL,
+     with nothing in it to break at, so it may break anywhere. */
+  .steps code { font-size:calc(var(--type) * .034); line-height:1.7;
+                white-space:normal; overflow-wrap:anywhere; }
+  .steps code.note-line { font-size:calc(var(--type) * .029); }
+}
+
+/* A short window gets a short, wide box, and the writing on its lid shrinks
+   with it. The prose can afford a little back — it wraps, so nothing runs off
+   the edge. The commands cannot: they are set on one line each, and the clone
+   line is already as wide as the card it stands on. */
+@media (orientation: landscape) and (max-height: 620px) {
+  .note { inset:6% 7% 5%; }
+  .note h1 { font-size:calc(var(--type) * .032); }
+  .note p { font-size:calc(var(--type) * .026); line-height:1.5;
+            margin-bottom:calc(var(--type) * .013); }
+  .note .spec { font-size:calc(var(--type) * .021); line-height:1.6; }
+}
+
+</style>
+</head>
+<body>
+  <canvas id="sky"></canvas>
+
+  <div id="stage" aria-hidden="true"></div>
+
+  <main>
+    <div class="table">
+      <div class="object" id="box" role="button" tabindex="0"
+           aria-label="Lucid Talk — a box of pills. Take one and dream out loud.">
+        <div class="box">
+          <div class="face floor"></div>
+          <div class="face w-back"></div>
+          <div class="face w-front"><i class="clasp"><svg class="cut" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true"><path d="M50 1.5 Q78 13 98.5 30 Q78 47 50 58.5 Q22 47 1.5 30 Q22 13 50 1.5 Z"/></svg><b></b></i></div>
+          <div class="face w-left"></div><div class="face w-right"></div>
+          <div class="lamp"></div>
+          <div class="drawer">
+            <nav class="contents">
+              <a class="pill" href="https://github.com/excelsior-arts/lucid-dream#readme"><span>Readme</span></a>
+              <a class="pill" href="https://github.com/excelsior-arts/lucid-dream/blob/HEAD/MANUAL.md"><span>Manual</span></a>
+              <a class="pill" href="https://github.com/excelsior-arts/lucid-dream/blob/HEAD/LICENSE"><span>License</span></a>
+              <a class="pill" href="https://github.com/excelsior-arts/lucid-dream"><span>Source</span></a>
+            </nav>
+            <div class="steps">
+              <code>git clone https://github.com/excelsior-arts/lucid-dream</code>
+              <code>cd lucid-dream</code>
+              <code>./setup.sh</code>
+              <code>./run.sh</code>
+              <code class="note-line">setup.sh pulls ~21 GB of models and is safe to
+                run twice. Then open localhost:6969 and say something.</code>
+            </div>
+          </div>
+          <div class="lid">
+            <div class="out">
+              <i class="bracket b1"></i><i class="bracket b2"></i><i class="bracket b3"></i><i class="bracket b4"></i>
+              <div class="plaque"><svg class="cut" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true"><path d="M50 1.5 Q78 13 98.5 30 Q78 47 50 58.5 Q22 47 1.5 30 Q22 13 50 1.5 Z"/></svg><span>Lucid Talk</span></div>
+              <i class="filigree"></i>
+            </div>
+            <div class="in">
+              <i class="grip" aria-hidden="true"></i>
+              <div class="note">
+                <h1>Lucid Talk</h1>
+                <div class="rule"></div>
+                <p class="lede">A box of digital drugs. Take one and you are in a room
+                  with somebody in it — sincere and unguarded, or proud and hard to
+                  impress. Say something out loud; it answers out loud, in a voice of
+                  its own.</p>
+                <p><b>Uncensored, and local</b> — the same fact twice. Nothing
+                  leaves the machine. <b>Lucid Dream</b> is the shelf; this is the
+                  first thing on it.</p>
+                <p class="spec"><b>Apple Silicon Mac</b> · macOS 14+ · 32 GB ·
+                  Python 3.12 · 30 GB free disk · speakers and a microphone<br>
+                  Not Intel, not Windows, not Linux, not a phone on its own.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- The name and what it is, on one line at the foot of the glass: a box on
+       a table says nothing about itself, and a caption under it was one more
+       thing between the two. It steps back when the box opens, where the lid
+       says the same thing better. -->
+  <footer><b>Lucid Dream</b> Interactive applied art. Take nightly.</footer>
+
+<script>
+/* ---------------------------------------------------------------------------
+   The sky. A canvas behind everything, and the only thing here that is not DOM.
+   Stars in three depths; the near ones lag the pointer. That parallax is the
+   whole illusion — a flat field of dots reads as wallpaper, and the same dots
+   at three speeds read as distance.
+--------------------------------------------------------------------------- */
+(() => {
+  const canvas = document.getElementById('sky');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const LAYERS = [
+    {n: 90, r: 0.7, a: 0.35, drift: 0.004, par: 4},   // far
+    {n: 45, r: 1.1, a: 0.55, drift: 0.010, par: 11},
+    {n: 16, r: 1.7, a: 0.85, drift: 0.020, par: 22},  // near, and the ones
+  ];                                                  // that actually twinkle
+  let stars = [], w = 0, h = 0, dpr = 1;
+  let px = 0, py = 0, tx = 0, ty = 0;   // pointer, smoothed
+
+  function seed() {
+    stars = [];
+    LAYERS.forEach((L, depth) => {
+      for (let i = 0; i < L.n; i++) {
+        stars.push({
+          x: Math.random(), y: Math.random(), depth,
+          phase: Math.random() * Math.PI * 2,   // so the twinkle never pulses in unison
+          warm: Math.random() < 0.18,           // a few embers among the cold ones
+        });
+      }
+    });
+  }
+
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    w = canvas.clientWidth; h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function draw(t) {
+    ctx.clearRect(0, 0, w, h);
+    // Two soft clouds of light, one warm and low, one cold and high. Cheap
+    // depth: without them the field is stars on flat paint.
+    const neb = (cx, cy, rad, rgb, alpha) => {
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      g.addColorStop(0, `rgba(${rgb},${alpha})`);
+      g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    };
+    neb(w * 0.5, h * 0.28, Math.max(w, h) * 0.55, '201,138,60', 0.07);
+    neb(w * 0.12, h * 0.85, Math.max(w, h) * 0.45, '90,130,190', 0.05);
+
+    px += (tx - px) * 0.05; py += (ty - py) * 0.05;
+    for (const s of stars) {
+      const L = LAYERS[s.depth];
+      // Wrap rather than respawn: the field is infinite and costs nothing.
+      const x = ((s.x + t * L.drift * 0.00004) % 1) * w + px * L.par;
+      const y = s.y * h + py * L.par;
+      const tw = still ? 1 : 0.65 + 0.35 * Math.sin(t * 0.0013 + s.phase);
+      ctx.globalAlpha = L.a * tw;
+      ctx.fillStyle = s.warm ? '#e6c07a' : '#cfe0f2';
+      ctx.beginPath(); ctx.arc(x, y, L.r * (s.warm ? 1.15 : 1), 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  let raf = null;
+  const frame = t => { draw(t); raf = requestAnimationFrame(frame); };
+  const start = () => { if (!raf && !still) raf = requestAnimationFrame(frame); };
+  const stop = () => { if (raf) cancelAnimationFrame(raf), raf = null; };
+
+  addEventListener('resize', () => { resize(); seed(); draw(0); });
+  document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+  // Only where there is a pointer to follow. On a touch screen every tap is a
+  // pointermove, so the box took a lean from wherever your thumb landed and
+  // kept it — which reads as the box leaning against the side of the window.
+  const hasPointer = matchMedia('(hover: hover)').matches;
+  addEventListener('pointermove', e => {
+    tx = (e.clientX / innerWidth - 0.5) * -1;
+    ty = (e.clientY / innerHeight - 0.5) * -1;
+    if (!hasPointer) return;            // the sky still drifts; the room does not
+    document.documentElement.style.setProperty('--lean-x', (ty * 5).toFixed(2));
+    document.documentElement.style.setProperty('--lean-y', (tx * -6).toFixed(2));
+  }, {passive: true});
+
+  resize(); seed(); draw(0); start();
+})();
+
+/* ---------------------------------------------------------------------------
+   What it sounds like. The latch and the air under the lid, synthesised —
+   there is no audio file to fetch, which is what keeps this one document.
+   Nothing is made until the first press, because a browser will not give you
+   an audio context before a gesture anyway.
+--------------------------------------------------------------------------- */
+const Sound = {
+  level: 0.7, ctx: null, master: null,
+
+  wake(gesture) {
+    if (!this.ctx) {
+      if (!gesture) return null;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.level;
+      this.master.connect(this.ctx.destination);
+      // WebKit wants something actually played inside the gesture before it
+      // considers the context unlocked. One silent frame does it.
+      const s = this.ctx.createBufferSource();
+      s.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+      s.connect(this.master); s.start(0);
+    }
+    if (this.ctx.state !== 'running') {
+      if (gesture) this.ctx.resume();
+      return this.ctx.state === 'running' ? this.ctx : null;
+    }
+    return this.ctx;
+  },
+
+  // A struck sound: a body, a click of noise on the front of it, and a decay.
+  strike({freq = 420, noise = 0.35, decay = 0.09, gain = 0.5, type = 'triangle'} = {}) {
+    const ctx = this.ctx && this.ctx.state === 'running' ? this.ctx : null;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    g.connect(this.master);
+
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.55), t + decay);
+    osc.connect(g); osc.start(t); osc.stop(t + decay + 0.02);
+
+    if (noise > 0) {
+      const n = ctx.createBufferSource();
+      const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.03), ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      n.buffer = buf;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(noise * gain, t);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 1200;
+      n.connect(hp); hp.connect(ng); ng.connect(this.master);
+      n.start(t);
+    }
+  },
+
+  // Moving air, for anything that opens. Brown noise rather than white — white
+  // hisses, brown breathes — swept through a bandpass that rises and falls.
+  whoosh({dur = 0.95, peak = 0.5} = {}) {
+    const ctx = this.ctx && this.ctx.state === 'running' ? this.ctx : null;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const len = Math.ceil(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0, loudest = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.021 * white) / 1.021;      // integrate: brown noise
+      d[i] = last;
+      if (Math.abs(last) > loudest) loudest = Math.abs(last);
+    }
+    // Normalized, because integrated noise comes out at whatever level it
+    // happens to reach and the bandpass then takes most of that away.
+    const lift = loudest ? 1 / loudest : 1;
+    for (let i = 0; i < len; i++) d[i] *= lift;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 0.8;
+    band.frequency.setValueAtTime(260, t);
+    band.frequency.exponentialRampToValueAtTime(1400, t + dur * 0.42);
+    band.frequency.exponentialRampToValueAtTime(380, t + dur);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + dur * 0.36);   // swells
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);        // and goes
+
+    src.connect(band); band.connect(g); g.connect(this.master);
+    src.start(t); src.stop(t + dur + 0.05);
+  },
+
+  latch() { this.strike({freq: 300, noise: 0.7, decay: 0.12, gain: 0.3});
+            setTimeout(() => this.strike({freq: 880, noise: 0.2, decay: 0.07, gain: 0.13}), 55); },
+  hover() { this.strike({freq: 1250, noise: 0.15, decay: 0.03, gain: 0.045, type: 'sine'}); },
+};
+
+/* ---------------------------------------------------------------------------
+   How big the box opens. Lifted from the shared fitter so this page and the
+   real one agree about the size of the same object: it grows the box until it
+   just fits the room, then drops the hinge onto the middle line.
+--------------------------------------------------------------------------- */
+function fitOpenBox(caseEl, roomEl, openWith) {
+  const box = caseEl && caseEl.querySelector('.box');
+  const lid = caseEl && caseEl.querySelector('.lid');
+  if (!box || !lid || !roomEl) return;
+
+  const primed = caseEl.classList.contains('priming');
+  const opened = openWith && !caseEl.classList.contains(openWith);
+  caseEl.classList.add('priming');           // nothing animates while we work
+  if (opened) caseEl.classList.add(openWith);
+
+  // What of the room can actually be seen. Some browsers report a layout
+  // viewport taller than the visible one, and the box was then sized and
+  // centered for space that lives behind the toolbar.
+  const vv = window.visualViewport;
+  const r = roomEl.getBoundingClientRect();
+  const room = {
+    left: Math.max(r.left, 0),
+    right: Math.min(r.right, vv ? vv.width : r.right),
+    top: Math.max(r.top, 0),
+    bottom: Math.min(r.bottom, vv ? vv.height : r.bottom),
+  };
+  const roomW = room.right - room.left, roomH = room.bottom - room.top;
+  if (roomW <= 0 || roomH <= 0) return;
+
+  // The gaps. Proportional, with a floor, so a phone gets air too.
+  const gapX = Math.max(14, roomW * 0.06), gapY = Math.max(14, roomH * 0.05);
+  const middle = room.top + roomH / 2;
+  const tall = roomH - gapY * 2;             // room the whole object has
+  const across = roomW - gapX * 2;
+
+  // How far the object reaches left-to-right, how far above the hinge, and how
+  // far below it. The hinge is the box's own far edge — the line the lid turns
+  // on — which is the top of the box's rectangle.
+  const reach = () => {
+    const b = box.getBoundingClientRect(), l = lid.getBoundingClientRect();
+    const hinge = b.top;
+    return {wide: Math.max(b.right, l.right) - Math.min(b.left, l.left),
+            up: hinge - Math.min(b.top, l.top),
+            down: Math.max(b.bottom, l.bottom) - hinge,
+            hinge};
+  };
+
+  caseEl.style.setProperty('--sink', '0px');
+  let zoom = 1;
+  for (let pass = 0; pass < 4; pass++) {
+    caseEl.style.setProperty('--zoom', zoom.toFixed(3));
+    // The eye steps back as the box grows: perspective is a fixed distance in
+    // CSS, and a box scaled up against a fixed distance is a wide-angle lens
+    // pressed against it — the tray splays out and the thing looks bent.
+    const stage = caseEl.parentElement;
+    if (stage) stage.style.perspective = Math.round(1900 * zoom) + 'px';
+    const at = reach();
+    if (at.wide <= 0 || at.up <= 0 || at.down <= 0) break;
+    const off = Math.min(across / at.wide, tall / (at.up + at.down));
+    if (Math.abs(off - 1) < 0.02) break;
+    zoom = Math.max(0.15, Math.min(zoom * off, 2.4));
+  }
+
+  // And the object onto the middle line — the middle of the whole of it, lid
+  // included, not the hinge it turns on. Damped, because a translate inside the
+  // perspective moves the object further on screen than it is told to.
+  let sink = 0;
+  for (let pass = 0; pass < 4; pass++) {
+    const at = reach();
+    const off = middle - (at.hinge + (at.down - at.up) / 2);
+    if (Math.abs(off) < 1) break;
+    sink += off * 0.72;
+    caseEl.style.setProperty('--sink', Math.round(sink) + 'px');
+  }
+
+  settleHand(caseEl);
+
+  if (opened) caseEl.classList.remove(openWith);
+  // Transitions stay off for a moment after the last fit rather than for a
+  // frame: dragging a window edge fires resize continuously, and each fit would
+  // otherwise start a 0.9s animation the next one interrupts.
+  if (!primed) {
+    clearTimeout(caseEl._settle);
+    caseEl._settle = setTimeout(() => caseEl.classList.remove('priming'), 160);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   And the writing has to fit the lid it is written on.
+
+   Every size on this box is a share of the box's own width, so the sheet on
+   the lid holds together at any size — and it is laid out full: the spec line
+   sits about six percent clear of the bottom edge and no more. That is fine as
+   long as every browser lays the same words out to the same height. They do
+   not, quite. A font that comes out a few percent taller, or a rounding that
+   goes the other way at the far end of a zoom range, is enough to push the
+   last line off the lid and onto the tray — which is exactly what Safari does
+   at either end of its own, and nothing here would have caught it, because
+   there was nothing measuring the result.
+
+   So: ask the lid what it is holding, and if that is more than it has, take
+   the writing down by the difference. Shrink only, and never past two thirds —
+   at any size where it already fits this measures once, finds room, and leaves
+   --hand at 1. It runs inside the fitter, after the box has its final size,
+   because the answer depends on that size.
+--------------------------------------------------------------------------- */
+function settleHand(caseEl) {
+  const box = caseEl && caseEl.querySelector('.box');
+  const note = caseEl && caseEl.querySelector('.note');
+  if (!box || !note) return;
+  const steps = caseEl.querySelector('.steps');
+  let hand = 1;
+  box.style.setProperty('--hand', '1');
+  for (let pass = 0; pass < 4; pass++) {
+    // What the column would like. Not scrollHeight of the note: it is a flex
+    // column, so an overfull one squeezes its own children rather than
+    // overflowing, and the note then reports itself exactly full while the
+    // words spill out of the boxes inside it. Each child's own content height
+    // is the honest number. The spec's top margin is `auto` — the air that
+    // pushes it to the foot of the sheet — and air is not content.
+    const wants = [...note.children].reduce((sum, el) => {
+      const cs = getComputedStyle(el);
+      return sum + el.scrollHeight
+                 + (cs.marginTop === 'auto' ? 0 : parseFloat(cs.marginTop) || 0)
+                 + (parseFloat(cs.marginBottom) || 0);
+    }, 0);
+    const room = note.clientHeight;
+    // The commands are set on one line each and the clone line is already as
+    // wide as the card it stands on, so they overrun sideways rather than down.
+    const wide = steps && steps.clientWidth > 4
+                   ? steps.scrollWidth / steps.clientWidth : 1;
+    const over = Math.max(room > 4 ? wants / room : 1, wide);
+    if (over <= 1.005) break;
+    hand = Math.max(0.66, hand / over);
+    box.style.setProperty('--hand', hand.toFixed(3));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Pressing it. The lid goes back, the box comes toward you, and what is
+   written inside comes up with it once the movement is over.
+--------------------------------------------------------------------------- */
+(() => {
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const obj = document.getElementById('box');
+  // Fitted into the window less the strip along the bottom, so an open box is
+  // never drawn over the edge of the glass.
+  const stage = document.getElementById('stage');
+  let open = false, timer = null;
+
+  const measure = () => fitOpenBox(obj, stage, 'opening');
+  for (const ev of ['resize', 'orientationchange', 'pageshow']) addEventListener(ev, measure);
+  if (window.visualViewport) visualViewport.addEventListener('resize', measure);
+  measure();
+
+  const lift = () => {
+    if (open) return;
+    open = true;
+    Sound.wake(true);
+    // The catch, then the air: a click for the mechanism and a long breath for
+    // the movement it starts, running under the whole opening.
+    Sound.latch(); setTimeout(() => Sound.whoosh(), 150);
+    obj.classList.add('opening');
+    obj.setAttribute('aria-expanded', 'true');
+    // The footer line steps back once there is something in the box to read.
+    clearTimeout(timer);
+    timer = setTimeout(() => document.body.classList.add('up'), still ? 0 : 620);
+  };
+
+  const drop = () => {
+    if (!open) return;
+    open = false;
+    clearTimeout(timer);
+    document.body.classList.remove('up');
+    obj.classList.remove('opening');
+    obj.setAttribute('aria-expanded', 'false');
+    Sound.latch();
+    obj.focus({preventScroll: true});
+  };
+
+  obj.setAttribute('aria-expanded', 'false');
+  // The lid creaks when you come near it. That is also how you learn your
+  // speakers are live, and at what level, before it says anything.
+  obj.addEventListener('pointerenter', () => Sound.hover(), {passive: true});
+  // Shut: press the pull at the top of the lid, or the lock on the front wall
+  // — the two places a hand would go, and the only two that answer. Pressing
+  // the middle of an open case would close it out from under whatever somebody
+  // was reading in it.
+  obj.addEventListener('click', e => {
+    if (!open) { lift(); return; }
+    // A press that ends a text selection is not a press.
+    if (String(getSelection() || '')) return;
+    if (e.target.closest('.grip, .clasp')) drop();
+  });
+  // It is a div wearing a button's clothes, because it has real controls inside
+  // it — so the keyboard part a real button would have given us is written out.
+  obj.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open ? drop() : lift(); }
+  });
+  addEventListener('keydown', e => { if (e.key === 'Escape') drop(); });
+
+  for (const a of document.querySelectorAll('.contents .pill'))
+    a.addEventListener('click', e => e.stopPropagation());
+
+  // Take a command by pressing it. Nothing is said about this anywhere: it is
+  // for the person who tries, and costs the one who does not nothing. The press
+  // is stopped here, or it would also be a press of the box under it.
+  for (const line of document.querySelectorAll('.steps code:not(.note-line)')) {
+    line.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!open) return;                // nothing to copy off a shut box
+      if (String(getSelection() || '')) return;   // they are selecting, not pressing
+      try { await navigator.clipboard.writeText(line.textContent.trim()); }
+      catch { return; }                 // no clipboard (http, or refused): say nothing
+      Sound.strike({freq: 1250, noise: 0.15, decay: 0.03, gain: 0.045, type: 'sine'});
+      line.classList.add('took');
+      clearTimeout(line._took);
+      line._took = setTimeout(() => line.classList.remove('took'), 1400);
+    });
+  }
+})();
+</script>
+</body>
+</html>

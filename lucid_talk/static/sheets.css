@@ -1,0 +1,94 @@
+/* The paperwork sheets: one card in the middle, over whatever is there.
+ *
+ * Centered rather than hung off the panel, because these open from two places
+ * now — a room, where the panel is somewhere off to one side, and the box's
+ * dashboard, where there is no panel at all. A card in the middle means the
+ * same thing on both, and it is the shape a person expects of something that
+ * has to be dealt with before they go on.
+ *
+ * Loaded by both pages; it borrows their palette rather than bringing one.
+ */
+/* Above everything, the console included: a sheet is the answer to what you
+   just asked for, and reading it through a log is no answer at all. The rail
+   goes under it too — while one of these is open it is the only thing to
+   deal with. */
+.sheet { position:fixed; inset:0; z-index:90; display:grid; place-items:center;
+         padding:20px; background:rgba(4,5,9,.55);
+         opacity:0; transition:opacity .16s ease;
+         backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+.sheet.on { opacity:1; }
+/* Shut means gone. `display:grid` above is an author rule and the browser's
+   own `[hidden] { display:none }` is not, so author wins and hiding the sheet
+   did nothing but make it invisible: a full-screen scrim stayed over the page
+   swallowing every click, and the console beneath it went dead until a
+   reload. Anything given `display` needs this line to go with it. */
+.sheet[hidden] { display:none; }
+/* And while it is on its way out, it stops taking presses immediately rather
+   than for the length of the fade. */
+.sheet:not(.on) { pointer-events:none; }
+
+.sheet-card { width:min(560px, 100%); max-height:min(72vh, 640px);
+              display:flex; flex-direction:column; overflow:hidden;
+              border-radius:16px; background:rgba(10,12,18,.97);
+              border:1px solid var(--line, rgba(255,255,255,.12));
+              box-shadow:0 30px 70px rgba(0,0,0,.7),
+                         inset 0 1px 0 rgba(255,255,255,.06);
+              transform:translateY(6px) scale(.99); transition:transform .16s ease; }
+.sheet.on .sheet-card { transform:none; }
+
+.sheet-head { display:flex; align-items:center; gap:12px; padding:12px 14px;
+              border-bottom:1px solid rgba(255,255,255,.08); }
+.sheet-head b { font-weight:500; font-size:12px; letter-spacing:1.6px;
+                text-transform:uppercase; color:var(--brass, #d9a441); }
+.sheet-x { margin-left:auto; width:26px; height:26px; padding:0; display:grid;
+           place-items:center; font-size:18px; line-height:1; cursor:pointer;
+           background:transparent; border:0; border-radius:8px;
+           color:var(--dim, #8b95a3); }
+.sheet-x:hover { color:var(--text, #e7ecf2); background:rgba(255,255,255,.07); }
+
+.sheet-body { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.sheet-wait, .sheet-none { padding:26px 16px; text-align:center;
+                           color:var(--dim, #8b95a3); font-size:13px; }
+.sheet-say { margin:0; padding:14px 16px; font-size:13.5px; line-height:1.6;
+             color:var(--text, #cdd5df); }
+
+/* One conversation. A link, so it can be opened in a new tab or sent to a
+   phone — a conversation has an address. */
+.sheet-row { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+             padding:11px 16px; text-decoration:none; cursor:pointer;
+             border-bottom:1px solid rgba(255,255,255,.06);
+             color:var(--text, #cdd5df); font-size:13px; }
+.sheet-row:last-child { border-bottom:0; }
+.sheet-row:hover { background:rgba(255,255,255,.05); }
+.sheet-row b { font-weight:500; font-variant-numeric:tabular-nums; }
+.sheet-row span { color:var(--dim, #8b95a3); }
+.sheet-row .pv { flex:1 0 100%; overflow:hidden; display:-webkit-box;
+                 -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+
+/* Fills the card's middle band and stops there. It used to be a min-height
+   with nothing above it, so a long memory grew the box past the bottom of the
+   window and took the Save button with it. Now the card is the limit and this
+   scrolls inside it. */
+.sheet-text { display:block; width:100%; height:min(46vh, 380px); resize:none;
+              padding:14px 16px; border:0; outline:none; background:transparent;
+              color:var(--text, #cdd5df); font:inherit; font-size:13.5px;
+              line-height:1.6; }
+
+/* Outside the scrolling part: what you press to keep what you wrote does not
+   scroll away from you. */
+.sheet-foot { flex:0 0 auto; display:flex; align-items:center; gap:10px;
+              padding:11px 14px; border-top:1px solid rgba(255,255,255,.08); }
+.sheet-foot[hidden] { display:none; }
+.sheet-foot span { flex:1; min-width:0; color:var(--dim, #8b95a3); font-size:11.5px; }
+.sheet-foot button { cursor:pointer; font:inherit; font-size:13px;
+                     padding:7px 13px; border-radius:9px;
+                     color:var(--text, #e7ecf2); background:rgba(255,255,255,.07);
+                     border:1px solid var(--line, rgba(255,255,255,.14)); }
+.sheet-foot button:hover { background:rgba(255,255,255,.12); }
+.sheet-foot .danger { color:#f0968a; border-color:rgba(240,150,138,.4); }
+
+@media (max-width:620px) {
+  .sheet { padding:12px; align-items:end; }
+  .sheet-card { max-height:82vh; }
+  .sheet-text { font-size:16px; }        /* iOS zooms anything smaller */
+}

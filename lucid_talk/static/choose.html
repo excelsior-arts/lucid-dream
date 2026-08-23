@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- No zooming. This is a room drawn to the size of the screen, with a
+     conversation projected onto a pane inside it — pinched to 1.4 it is a
+     corner of a room and a column of type running off the edge, and a phone
+     that zooms in on a focused field leaves it there. The scale is fixed so
+     that what a phone shows is what was laid out for it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- Before any stylesheet: the browser paints the blank canvas between two
+     documents using this, and reads it while parsing the head. Declaring
+     dark in CSS is too late — that is the white flash on navigation. -->
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05060b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- The face this wears everywhere: a tab, a home screen, an installed
+     window. One photograph of a sunset, cut to every size somebody asks for
+     — see shell/static/icons. Flat squares that bleed to the edge, because
+     each platform rounds or masks them its own way; the maskable one is the
+     same picture standing back from its edges so a circular crop takes sky
+     rather than cloud. -->
+<!-- PNG first, .ico last. A browser is entitled to take the first icon it
+     understands, and every one of them understands a PNG; the .ico is here
+     for the ones that ask the root of the site for that name and nothing
+     else. -->
+<link rel="icon" type="image/png" sizes="32x32" href="/shared/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/shared/icons/icon-16.png">
+<link rel="icon" href="/shared/icons/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" sizes="180x180" href="/shared/icons/icon-180.png">
+<link rel="manifest" href="/shared/manifest.webmanifest">
+<title>Lucid Talk</title>
+<!-- Inline, and first: the shared stylesheet is a separate request, and a
+     browser paints a new document before the stylesheet arrives. Without
+     this the first frame of every navigation is white — invisible in
+     Safari, which covers it with a view transition, and a flash in
+     Firefox, which has none. -->
+<style>html{background:#05060b}</style>
+<link rel="stylesheet" href="/shared/night.css?v=3">
+<style>
+  /* The same box as the front page, opened.
+
+     The geometry — floor, walls, hinged lid, fittings — comes from the shared
+     sheet, because this has to be the object you just pressed rather than a
+     picture of one. All this page adds is the state it is in, what is lying
+     in it, and what is written on the inside of the lid. */
+  body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
+         overflow:hidden; touch-action:manipulation; }
+
+  /* The room, and nothing under it. The console is the machine's own place —
+     one on every page, reached from the rail — so this page shows the box and
+     what is in it and keeps no dials of its own. */
+  /* Nothing of the box until it has been fitted and the page has had a frame
+     to settle: arriving through a page transition, the first fit can land on a
+     different number than a settled page computes, and you saw it as the box
+     dropping in size and springing back.
+
+     Held back with opacity, not visibility. Flipping visibility on a subtree
+     this size — several 3-D layers — makes Firefox tear down and rebuild the
+     compositing layer, and it paints that layer's backdrop white for a frame
+     while it does. Opacity stays on the compositor and changes nothing about
+     what is laid out.
+
+     On the room, though, and not on the object — which is where it used to be,
+     and where it was quietly wrong. An element with opacity below 1 has to
+     group its descendants to composite them, and grouping them flattens them:
+     `transform-style: preserve-3d` on that element stops meaning anything
+     while it is fading. The box was therefore measured with no perspective in
+     it at all — the lid came out exactly as wide as the box instead of
+     magnified towards the eye, so it read as a tenth shorter than it is, and
+     the fitter grew the whole object by a tenth to make that fit the room.
+     Nothing measured it again once it was visible.
+
+     That was the box arriving a tenth bigger than the one you just watched
+     open on the front page, which never fades and so was always measured
+     properly. Up here the opacity is outside the perspective and the object
+     underneath it keeps its three dimensions while it fades. */
+  #room { position:relative; z-index:0; flex:1; min-height:0;
+          display:flex; align-items:center; justify-content:center;
+          padding:max(20px, env(safe-area-inset-top)) 16px 56px;
+          opacity:0;
+          transition:opacity .2s ease, padding .28s cubic-bezier(.2,.7,.2,1); }
+  body.settled #room { opacity:1; }
+  .table { display:flex; justify-content:center; perspective:1500px;
+           perspective-origin:50% 42%; perspective:1900px; }
+  /* Sunk by however much the standing lid overhangs the box, so the object as
+     a whole is centered rather than the tray it stands in. */
+  /* Arriving, everything is already where it belongs — no transitions until
+     the first frame is on screen. Without this the box animates from the
+     stylesheet's defaults to its fitted size as the page loads, and the whole
+     thing reads as landing on the table a second time, after you have already
+     watched it open on the way here. */
+  .object.priming, .object.priming .box, .object.priming .lid,
+  .object.priming .lamp, .object.priming .contents { transition:none !important; }
+
+  .object { display:block; transform-style:preserve-3d;
+            transform:translateY(var(--sink, 0px));
+            transition:transform .5s cubic-bezier(.2,.7,.2,1); }
+  @media (hover: hover) {
+    .object { transform:translateY(var(--sink, 0px))
+                        rotateX(calc(var(--lean-x, 0) * .6deg))
+                        rotateY(calc(var(--lean-y, 0) * .8deg)); }
+  }
+
+  /* Open, and staying open. The same numbers the front page ends its opening
+     on, so arriving here continues that movement instead of cutting to a new
+     arrangement of the same parts. */
+  /* scale3d, never scale. CSS scale() leaves z alone, so shrinking the box
+     kept its walls at full depth and the projection bent further the smaller
+     it got — measured: the lid's taper went 0.96 → 0.86 → 0.75 as the zoom
+     fell, which is every "gross on mobile" report in this thread. In three
+     dimensions the shape is identical at every size. */
+  .object:not(.shutting) .box { animation:none;
+                 transform:rotateX(44deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1)); }
+  /* Flush with the box, not inset. The phone rule pulls the lid in by a few
+     pixels to cancel the perspective that magnifies it while it sits shut and
+     nearer the eye — open and rotated back, that compensation is simply a lid
+     narrower than the box it belongs to. */
+  /* 108°, and the box lying at 44° rather than 46°, with the eye at 1900
+     instead of 2800. Swept and measured: the lid only reads as a lid when it
+     is well off parallel with the screen, and at 122 it was three degrees of
+     taper — a rectangle pasted on the sky. This pair tapers the lid about 7%
+     and the tray about 10%, close enough to belong to one object and far
+     enough to be a box rather than a drawing of one.
+
+     The older note, still true: two things pull against each other here. At 104 the tray reads 1.66
+     times the height of the lid and the box is bottom-heavy; opening further
+     stands the sheet up and evens them out. But the box is tilted 46°, so a
+     lid at 136 is exactly parallel with the screen — no taper, no perspective,
+     just a rectangle pasted on the sky. 122 keeps fourteen degrees of angle to
+     the eye, which is enough to still read as a lid, and lands the tray at
+     about 1.3 times the lid rather than 1.7. */
+  .object:not(.shutting) .lid { inset:0; transform:translateZ(var(--h)) rotateX(108deg); }
+  .object .lamp { opacity:1; }
+  .object .contents { opacity:1; }
+  /* Shutting it again: the lid comes down, the box goes back to the table —
+     and up out of its sink. Open, the object is pushed down so the hinge sits
+     on the middle line; shut, there is no hinge to line up and the front page
+     shows the box centered. Leaving the sink on ended the close a couple of
+     hundred pixels low, and the front page then appeared to jump. */
+  .object.shutting { transform:translateY(0px); }
+  @media (hover: hover) {
+    .object.shutting { transform:translateY(0px)
+                                 rotateX(calc(var(--lean-x, 0) * .6deg))
+                                 rotateY(calc(var(--lean-y, 0) * .8deg)); }
+  }
+  /* Shut, the box says nothing about its own angle: the shared stylesheet
+     already knows it, and it is not the same on a phone (50°) as on a desk
+     (58°). Naming 58 here meant the close ended seventeen percent shorter
+     than the box the front page then drew. */
+  .object.shutting .lid { inset:0; transform:translateZ(var(--h)) rotateX(0deg); }
+  .object.shutting .lamp { opacity:0; }
+  .object.shutting .contents { opacity:0; }
+
+  /* The inside of the lid is a sheet of notes, the way the lid of a case has
+     a card tucked into it: a ruled header, then what the box knows about you.
+     Its face is flipped in its own space, so the writing stands upright when
+     the lid is back and is hidden when it is shut. */
+  .lid .in { display:block; padding:clamp(34px, 10%, 56px) 7% 5%;
+             backface-visibility:hidden; overflow:hidden; }
+  /* Never vw. Everything in the box is inside a transform that scales with
+     the box, so the type scales with it too — which is what makes the writing
+     part of the object rather than an overlay. In vw it did the opposite of
+     what you expect: browser zoom makes the viewport *narrower* in CSS pixels,
+     so zooming in made the text smaller.
+
+     Ten was the same trap one step further along. The box is fitted to that
+     same narrowing viewport, so ten came out multiplied by the fit and landed
+     at the same size on the glass at every zoom — the whole sheet pinned to
+     the screen while the page around it grew and shrank, which is zooming in
+     to read something and watching it refuse.
+
+     --type is twelve times the zoom, which cancels that: at 100% it is twelve
+     flat, and every other proportion here is a share of it. Twelve rather than
+     the ten this was first drawn at — ten was a squint at a desk. See
+     fitOpenBox in shell/static/night.js, and the fallback is for the frame
+     before it has measured. */
+  .leaf { height:100%; display:flex; flex-direction:column; text-align:left;
+          font-size:var(--type, 12px); }
+  .leaf h1 { margin:0 0 2px; font-size:1.15em; font-weight:500; letter-spacing:.52em;
+             text-transform:uppercase; color:#d9c79b;
+             text-shadow:0 1px 0 rgba(0,0,0,.85); }
+  .leaf .rule { height:1px; margin:0 0 .9em;
+                background:linear-gradient(90deg, rgba(201,162,39,.55), rgba(201,162,39,.08)); }
+  .leaf .note { margin:0 0 2.1em; font-size:.92em; line-height:1.7; color:var(--star-dim); }
+  /* The middle of the sheet: sitting in the center of whatever room the lid
+     has, and scrolling inside it once there are more pills than fit. Auto
+     margins rather than justify-content, which clips the top of an
+     overflowing column in every browser that has ever shipped. */
+  .leaf .body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+                display:flex; -webkit-overflow-scrolling:touch; }
+  /* The record arrives over the socket a moment after the page is drawn, and
+     the sheet is centered — so the lines pushed the writing around as they
+     landed, which is the flicker of text sliding into the box. Nothing on the
+     sheet is shown until it is all there. */
+  .lines, .totals { opacity:0; transition:opacity .25s ease; }
+  .leaf.ready .lines, .leaf.ready .totals { opacity:1; }
+  .leaf .stack { margin:auto 0; width:100%; }
+
+  /* The record: a line per pill, and a total under it. Ruled like a ledger,
+     because that is what it is. */
+  .lines { display:flex; flex-direction:column; gap:.55em; }
+  /* Name on the left, then everything that is a reading of it over on the
+     right: how it is holding you, and the tally. */
+  .line { display:grid; grid-template-columns:auto 1fr auto auto; align-items:baseline;
+          gap:.7em; padding-bottom:.5em;
+          border-bottom:1px solid rgba(201,162,39,.10); }
+  .line .tag { display:flex; align-items:center; gap:.55em;
+               letter-spacing:.22em; text-transform:uppercase; color:var(--ink); }
+  .line .tag i { width:1.5em; height:.62em; border-radius:999px;
+                 background:linear-gradient(100deg, rgba(255,255,255,.8), rgba(var(--pill), .7));
+                 box-shadow:0 0 10px rgba(var(--pill), .5); }
+  .line .said { grid-column:3; text-align:right; font-size:.86em;
+                color:var(--star-dim); letter-spacing:.047em; }
+  .line .count { font-size:.86em; color:#8d9aad; font-variant-numeric:tabular-nums;
+                 letter-spacing:.047em; white-space:nowrap; }
+  /* Each number opens the sheet it is counting, and says so by being
+     underlined — not on hover, always. A thing that only reveals itself as
+     clickable once the pointer is on it is a thing nobody finds, and on a
+     phone there is no hover at all. Framed buttons would shout over the
+     record, which is what somebody came here to read; an underline is the
+     quietest way a piece of text can say it does something. */
+  .line button { font:inherit; color:inherit; letter-spacing:inherit;
+                 background:none; border:0; padding:0; cursor:pointer;
+                 text-decoration:underline; text-decoration-thickness:1px;
+                 text-decoration-color:rgba(201,162,39,.45);
+                 text-underline-offset:3px;
+                 transition:text-decoration-color .15s, color .15s; }
+  .line button:hover, .line button:focus-visible {
+                 color:var(--ink); text-decoration-color:var(--brass); }
+  .totals { padding-top:.8em; display:flex; flex-wrap:wrap;
+            gap:.4em 1.6em; font-size:.84em; letter-spacing:.167em;
+            text-transform:uppercase; color:#6d7a8c;
+            border-top:1px solid rgba(201,162,39,.14); }
+  .totals b { color:var(--ink); font-weight:500; font-variant-numeric:tabular-nums; }
+  /* The dose lives here too, so it can be changed long after the first night. */
+  .totals .dosebox { display:flex; align-items:center; gap:.5em; }
+  .totals .tally { margin-left:auto; text-align:right; }
+  .totals .dosebox button { width:1.7em; height:1.7em; padding:0; font:inherit; cursor:pointer;
+                            line-height:1; color:var(--ink); background:rgba(255,255,255,.06);
+                            border:1px solid var(--rim); border-radius:.45em; }
+  .totals .dosebox button:hover { color:var(--brass); border-color:var(--edge); }
+  /* The lid is not a button any more — there is a sheet on it to read, a
+     dose to set, and a list to scroll. Only its top edge shuts the box, with
+     enough of a strip below the edge to be a thumb rather than a hairline. */
+  /* This box is open and stays open, so the walls wear their lining. See the
+     note in night.css: a wall is one element with two faces, and which of
+     them you are looking at is a fact about the page rather than about the
+     box. Dropped as the lid comes down, so it has faded by the time the top
+     of the far wall is in view again. */
+  .object:not(.shutting) .w-back::after,
+  .object:not(.shutting) .w-left::after,
+  .object:not(.shutting) .w-right::after { opacity:1; }
+  .lid { cursor:default; }
+  .grip { position:absolute; left:0; right:0; top:0; height:clamp(28px, 9%, 48px);
+          cursor:pointer; border:0; padding:0; background:none;
+          display:flex; align-items:flex-start; justify-content:center;
+          touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  /* Percentage margins resolve against width, not height — 14% put this
+     mark a hundred pixels down, in the middle of the header. */
+  .grip::before { content:""; margin-top:9px; width:26%; height:2px; border-radius:2px;
+                  background:rgba(201,162,39,.35); transition:background .25s, width .25s; }
+  .grip:hover::before { background:rgba(201,162,39,.85); width:34%; }
+  .grip:focus-visible { outline:none; }
+  .grip:focus-visible::before { background:var(--brass); width:34%; }
+
+  /* The lock on the front of the box shuts it too — the obvious place to
+     press on a box that is standing open in front of you. */
+  .clasp { cursor:pointer; transition:filter .25s; }
+  .clasp:hover { filter:brightness(1.6); }
+
+  /* ---- what is lying in the box ------------------------------------------
+     In the shared geometry the contents are three blank cards standing against
+     the back of the tray — hints, at hint size. Here they are the pills
+     themselves and have to be read, so they get the room for it. */
+  .contents { top:26%; height:calc(var(--h) * 1.7); gap:3% 4%; }
+  /* A card, backed the way a playing card is: one figure repeated over the
+     whole of it, and the figure is whatever its room is built out of — the
+     parlour's diamonds, the library's spiral floor. Drawn in white and laid
+     over the pill's own color, so one pattern serves every color there
+     will ever be. A pill whose persona names no figure gets a plain card,
+     which is a card and not a fault. */
+  /* Three rows: air, the pill, then what it is called and what it is like.
+     The first row is a share of the card's *height*, which is what pins the
+     emblem: given in fr, the caption's own height bid against it, so the pill
+     with the longest blurb wore its emblem higher than the other — Gold six
+     lines, and its pill a fifth of the way up the card from where Purple's
+     sat. A percentage row does not negotiate.
+
+     Two fifths down, not the middle: dead center reads as a target, a little
+     above it reads as a face, which is where a court card puts its own. */
+  .pill { position:relative; overflow:hidden;
+          display:grid; grid-template-rows:4% auto 1fr;
+          justify-items:center; align-items:start;
+          width:27%; height:100%; padding:7% 6% 8%;
+          text-decoration:none; color:inherit; border-radius:7px 7px 4px 4px;
+          background:linear-gradient(200deg, rgba(255,255,255,.10), transparent 44%),
+                     linear-gradient(rgba(var(--pill), .5), rgba(var(--pill), .14));
+          border:1px solid rgba(var(--pill), .5);
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 22px rgba(var(--pill), .18);
+          transition:transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s;
+          touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  .pill::before { content:''; position:absolute; inset:0; opacity:.5;
+                  background-repeat:repeat; background-position:center 12%;
+                  /* Faded off at the foot, where the words are: a pattern
+                     running under type is a pattern that makes it unreadable,
+                     and a card back stops at the caption anyway. */
+                  -webkit-mask-image:linear-gradient(#000 46%, transparent 78%);
+                  mask-image:linear-gradient(#000 46%, transparent 78%);
+                  pointer-events:none; }
+  .pill[data-figure="diamond"]::before {
+     background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2740%27%20height%3D%2772%27%20viewBox%3D%270%200%2040%2072%27%3E%20%3Cg%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-opacity%3D%27.34%27%20stroke-width%3D%271.5%27%3E%20%3Cpath%20d%3D%27M20%204%20L33%2036%20L20%2068%20L7%2036%20Z%27%2F%3E%3Cpath%20d%3D%27M20%2017%20L26%2036%20L20%2055%20L14%2036%20Z%27%2F%3E%20%3Cpath%20d%3D%27M0%20-32%20L13%200%20L0%2032%20L-13%200%20Z%27%2F%3E%3Cpath%20d%3D%27M40%20-32%20L53%200%20L40%2032%20L27%200%20Z%27%2F%3E%20%3Cpath%20d%3D%27M0%2040%20L13%2072%20L0%20104%20L-13%2072%20Z%27%2F%3E%3Cpath%20d%3D%27M40%2040%20L53%2072%20L40%20104%20L27%2072%20Z%27%2F%3E%20%3C%2Fg%3E%3C%2Fsvg%3E"); background-size:auto 34%; }
+  /* One spiral, not a field of them: the library's floor is a single ribbon
+     turning in on itself, and the back of its card is that floor seen from
+     above. The parlour's is tiled because its walls are — each card is backed
+     with whatever its room actually repeats. */
+  .pill[data-figure="spiral"]::before {
+     background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27100%27%20height%3D%27100%27%20viewBox%3D%270%200%20100%20100%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-linecap%3D%27round%27%3E%3Cpath%20d%3D%27M50.00%20-3.23%20L54.05%20-2.79%20L58.03%20-2.05%20L61.92%20-1.02%20L65.70%200.30%20L69.34%201.90%20L72.84%203.75%20L76.17%205.85%20L79.31%208.19%20L82.24%2010.74%20L84.96%2013.49%20L87.45%2016.42%20L89.69%2019.52%20L91.68%2022.76%20L93.41%2026.12%20L94.86%2029.58%20L96.04%2033.13%20L96.95%2036.73%20L97.57%2040.38%20L97.90%2044.04%20L97.96%2047.69%20L97.74%2051.32%20L97.24%2054.90%20L96.48%2058.42%20L95.46%2061.85%20L94.18%2065.17%20L92.66%2068.37%20L90.91%2071.43%20L88.94%2074.33%20L86.77%2077.06%20L84.41%2079.60%20L81.88%2081.95%20L79.18%2084.08%20L76.35%2086.00%20L73.40%2087.68%20L70.34%2089.13%20L67.20%2090.34%20L63.99%2091.30%20L60.73%2092.01%20L57.45%2092.47%20L54.16%2092.68%20L50.88%2092.64%20L47.63%2092.35%20L44.43%2091.82%20L41.30%2091.06%20L38.25%2090.06%20L35.30%2088.85%20L32.47%2087.42%20L29.77%2085.79%20L27.22%2083.97%20L24.82%2081.98%20L22.60%2079.82%20L20.56%2077.51%20L18.71%2075.07%20L17.06%2072.50%20L15.63%2069.84%20L14.40%2067.09%20L13.40%2064.27%20L12.62%2061.39%20L12.06%2058.49%20L11.73%2055.56%20L11.62%2052.63%20L11.74%2049.72%20L12.08%2046.85%20L12.63%2044.02%20L13.39%2041.26%20L14.36%2038.57%20L15.53%2035.99%20L16.88%2033.51%20L18.40%2031.15%20L20.10%2028.93%20L21.95%2026.85%20L23.94%2024.93%20L26.06%2023.18%20L28.30%2021.60%20L30.64%2020.20%20L33.06%2018.99%20L35.56%2017.97%20L38.11%2017.15%20L40.71%2016.53%20L43.33%2016.10%20L45.96%2015.88%20L48.59%2015.86%20L51.20%2016.04%20L53.77%2016.41%20L56.29%2016.97%20L58.75%2017.72%20L61.13%2018.64%20L63.42%2019.74%20L65.61%2021.00%20L67.69%2022.41%20L69.64%2023.97%20L71.46%2025.67%20L73.13%2027.48%20L74.65%2029.41%20L76.01%2031.44%20L77.21%2033.55%20L78.23%2035.73%20L79.08%2037.97%20L79.76%2040.26%20L80.25%2042.58%20L80.56%2044.92%20L80.70%2047.26%20L80.65%2049.59%20L80.43%2051.90%20L80.03%2054.18%20L79.47%2056.40%20L78.74%2058.57%20L77.85%2060.66%20L76.81%2062.67%20L75.62%2064.58%20L74.30%2066.39%20L72.85%2068.08%20L71.29%2069.65%20L69.62%2071.09%20L67.85%2072.39%20L66.00%2073.55%20L64.08%2074.56%20L62.10%2075.42%20L60.06%2076.12%20L58.00%2076.66%20L55.90%2077.04%20L53.80%2077.26%20L51.69%2077.32%20L49.60%2077.22%20L47.54%2076.97%20L45.51%2076.56%20L43.53%2076.00%20L41.60%2075.30%20L39.75%2074.46%20L37.97%2073.49%20L36.29%2072.39%20L34.70%2071.17%20L33.22%2069.84%20L31.85%2068.41%20L30.60%2066.90%20L29.47%2065.30%20L28.48%2063.62%20L27.62%2061.89%20L26.90%2060.11%20L26.33%2058.29%20L25.89%2056.44%20L25.60%2054.57%20L25.46%2052.70%20L25.45%2050.83%20L25.60%2048.97%20L25.88%2047.14%20L26.29%2045.35%20L26.84%2043.61%20L27.52%2041.92%20L28.32%2040.29%20L29.24%2038.74%20L30.26%2037.27%20L31.40%2035.89%20L32.62%2034.61%20L33.94%2033.43%20L35.33%2032.35%20L36.79%2031.40%20L38.32%2030.56%20L39.89%2029.84%20L41.51%2029.24%20L43.15%2028.78%20L44.82%2028.44%20L46.51%2028.23%20L48.19%2028.14%20L49.87%2028.19%20L51.53%2028.36%20L53.16%2028.65%20L54.76%2029.07%20L56.31%2029.60%20L57.81%2030.24%20L59.24%2030.99%20L60.61%2031.84%20L61.91%2032.79%20L63.12%2033.83%20L64.24%2034.95%20L65.26%2036.15%20L66.19%2037.41%20L67.01%2038.73%20L67.73%2040.11%20L68.33%2041.52%20L68.83%2042.97%20L69.20%2044.45%20L69.47%2045.94%20L69.61%2047.44%20L69.65%2048.94%20L69.57%2050.42%20L69.37%2051.89%20L69.07%2053.33%20L68.66%2054.74%20L68.14%2056.11%20L67.53%2057.42%20L66.82%2058.68%20L66.02%2059.87%20L65.14%2061.00%20L64.17%2062.05%20L63.14%2063.01%20L62.04%2063.89%20L60.89%2064.69%20L59.68%2065.38%20L58.43%2065.98%20L57.15%2066.49%20L55.83%2066.89%20L54.50%2067.19%20L53.16%2067.38%20L51.81%2067.48%20L50.47%2067.47%20L49.13%2067.36%20L47.82%2067.15%20L46.54%2066.85%20L45.28%2066.45%20L44.07%2065.96%20L42.91%2065.38%20L41.80%2064.72%20L40.75%2063.98%20L39.76%2063.17%20L38.85%2062.29%20L38.00%2061.34%20L37.24%2060.35%20L36.56%2059.30%20L35.96%2058.21%20L35.46%2057.09%20L35.04%2055.94%20L34.71%2054.76%20L34.47%2053.57%20L34.33%2052.37%20L34.28%2051.17%20L34.32%2049.98%20L34.45%2048.80%20L34.67%2047.64%20L34.98%2046.51%20L35.37%2045.41%20L35.84%2044.34%20L36.39%2043.32%20L37.01%2042.35%20L37.69%2041.44%20L38.45%2040.58%20L39.26%2039.79%20L40.12%2039.07%20L41.04%2038.42%20L41.99%2037.84%20L42.98%2037.33%20L44.00%2036.91%20L45.05%2036.57%20L46.11%2036.31%20L47.18%2036.13%20L48.26%2036.03%20L49.34%2036.01%20L50.41%2036.08%20L51.46%2036.23%20L52.50%2036.45%20L53.51%2036.75%20L54.48%2037.12%20L55.43%2037.57%20L56.33%2038.08%20L57.18%2038.65%20L57.98%2039.29%20L58.73%2039.98%20L59.42%2040.72%20L60.05%2041.50%20L60.61%2042.33%27%20stroke-opacity%3D%27.34%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M50.00%2011.69%20L52.91%2012.01%20L55.78%2012.54%20L58.58%2013.29%20L61.30%2014.24%20L63.92%2015.38%20L66.44%2016.72%20L68.83%2018.23%20L71.09%2019.91%20L73.20%2021.75%20L75.16%2023.73%20L76.95%2025.84%20L78.56%2028.06%20L79.99%2030.40%20L81.24%2032.82%20L82.28%2035.31%20L83.13%2037.86%20L83.78%2040.45%20L84.23%2043.08%20L84.47%2045.71%20L84.51%2048.34%20L84.35%2050.95%20L84.00%2053.53%20L83.45%2056.06%20L82.71%2058.52%20L81.79%2060.92%20L80.70%2063.22%20L79.44%2065.42%20L78.03%2067.51%20L76.46%2069.47%20L74.76%2071.30%20L72.94%2072.99%20L71.00%2074.53%20L68.96%2075.90%20L66.84%2077.12%20L64.64%2078.16%20L62.37%2079.03%20L60.07%2079.72%20L57.72%2080.23%20L55.36%2080.56%20L52.99%2080.71%20L50.63%2080.68%20L48.30%2080.48%20L45.99%2080.10%20L43.74%2079.55%20L41.54%2078.83%20L39.42%2077.96%20L37.38%2076.93%20L35.44%2075.76%20L33.60%2074.45%20L31.88%2073.01%20L30.28%2071.46%20L28.81%2069.80%20L27.48%2068.04%20L26.30%2066.19%20L25.26%2064.28%20L24.38%2062.30%20L23.66%2060.27%20L23.10%2058.20%20L22.70%2056.11%20L22.46%2054.00%20L22.38%2051.90%20L22.47%2049.80%20L22.71%2047.73%20L23.11%2045.70%20L23.66%2043.71%20L24.35%2041.78%20L25.19%2039.91%20L26.16%2038.13%20L27.26%2036.44%20L28.48%2034.84%20L29.81%2033.34%20L31.25%2031.96%20L32.77%2030.70%20L34.38%2029.56%20L36.07%2028.55%20L37.81%2027.68%20L39.61%2026.95%20L41.45%2026.36%20L43.31%2025.91%20L45.20%2025.61%20L47.09%2025.45%20L48.99%2025.43%20L50.86%2025.56%20L52.71%2025.83%20L54.53%2026.23%20L56.30%2026.77%20L58.01%2027.43%20L59.66%2028.22%20L61.24%2029.13%20L62.73%2030.15%20L64.13%2031.27%20L65.44%2032.49%20L66.64%2033.80%20L67.74%2035.18%20L68.72%2036.64%20L69.58%2038.16%20L70.32%2039.73%20L70.93%2041.35%20L71.41%2042.99%20L71.77%2044.66%20L71.99%2046.34%20L72.09%2048.03%20L72.06%2049.71%20L71.90%2051.37%20L71.61%2053.01%20L71.20%2054.61%20L70.68%2056.17%20L70.04%2057.67%20L69.29%2059.12%20L68.44%2060.49%20L67.49%2061.79%20L66.45%2063.01%20L65.32%2064.14%20L64.12%2065.18%20L62.85%2066.12%20L61.52%2066.95%20L60.13%2067.68%20L58.71%2068.29%20L57.24%2068.80%20L55.75%2069.19%20L54.25%2069.46%20L52.73%2069.62%20L51.22%2069.66%20L49.71%2069.59%20L48.23%2069.41%20L46.77%2069.11%20L45.34%2068.71%20L43.96%2068.21%20L42.62%2067.60%20L41.35%2066.90%20L40.13%2066.11%20L38.99%2065.23%20L37.92%2064.28%20L36.94%2063.25%20L36.04%2062.16%20L35.23%2061.01%20L34.51%2059.80%20L33.90%2058.56%20L33.38%2057.28%20L32.96%2055.96%20L32.65%2054.63%20L32.44%2053.29%20L32.34%2051.94%20L32.34%2050.59%20L32.44%2049.26%20L32.64%2047.94%20L32.94%2046.66%20L33.33%2045.40%20L33.82%2044.18%20L34.40%2043.01%20L35.06%2041.90%20L35.80%2040.84%20L36.61%2039.85%20L37.49%2038.92%20L38.44%2038.07%20L39.44%2037.30%20L40.49%2036.61%20L41.59%2036.01%20L42.72%2035.49%20L43.89%2035.06%20L45.07%2034.73%20L46.28%2034.48%20L47.49%2034.33%20L48.70%2034.27%20L49.90%2034.30%20L51.10%2034.43%20L52.27%2034.64%20L53.42%2034.94%20L54.54%2035.32%20L55.62%2035.78%20L56.65%2036.32%20L57.64%2036.93%20L58.57%2037.62%20L59.44%2038.37%20L60.24%2039.17%20L60.98%2040.03%20L61.65%2040.94%20L62.24%2041.89%20L62.76%2042.88%20L63.19%2043.90%20L63.55%2044.94%20L63.82%2046.01%20L64.01%2047.08%20L64.12%2048.16%20L64.14%2049.23%20L64.08%2050.30%20L63.94%2051.36%20L63.72%2052.40%20L63.43%2053.41%20L63.05%2054.39%20L62.61%2055.34%20L62.10%2056.25%20L61.53%2057.11%20L60.89%2057.91%20L60.20%2058.67%20L59.46%2059.36%20L58.67%2060.00%20L57.83%2060.57%20L56.97%2061.07%20L56.07%2061.50%20L55.14%2061.86%20L54.20%2062.15%20L53.24%2062.37%20L52.27%2062.51%20L51.30%2062.58%20L50.34%2062.57%20L49.38%2062.49%20L48.43%2062.34%20L47.51%2062.12%20L46.61%2061.84%20L45.73%2061.48%20L44.90%2061.07%20L44.10%2060.59%20L43.34%2060.06%20L42.63%2059.47%20L41.97%2058.84%20L41.37%2058.16%20L40.82%2057.45%20L40.33%2056.69%20L39.90%2055.91%20L39.53%2055.10%20L39.23%2054.27%20L39.00%2053.43%20L38.83%2052.57%20L38.72%2051.71%20L38.69%2050.84%20L38.72%2049.99%20L38.81%2049.14%20L38.97%2048.30%20L39.19%2047.49%20L39.47%2046.69%20L39.81%2045.93%20L40.20%2045.20%20L40.65%2044.50%20L41.14%2043.84%20L41.69%2043.22%20L42.27%2042.65%20L42.89%2042.13%20L43.55%2041.66%20L44.24%2041.25%20L44.95%2040.89%20L45.68%2040.58%20L46.44%2040.33%20L47.20%2040.15%20L47.97%2040.02%20L48.75%2039.95%20L49.52%2039.94%20L50.29%2039.98%20L51.05%2040.09%20L51.80%2040.25%20L52.52%2040.46%20L53.23%2040.73%20L53.90%2041.05%20L54.55%2041.42%20L55.17%2041.83%20L55.74%2042.29%20L56.28%2042.79%20L56.78%2043.32%20L57.23%2043.88%20L57.64%2044.48%27%20stroke-opacity%3D%27.22%27%20stroke-width%3D%271.1%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+     background-repeat:no-repeat; background-size:118% auto;
+     background-position:center 22%; }
+
+  /* The pill itself, set into the back above the middle — where the emblem
+     on a card is, which is never the center: a figure at true center reads as
+     a target, and a little above it reads as a face. */
+  .pill .dose { grid-row:2; position:relative;
+                width:46%; aspect-ratio:2.6 / 1; min-height:10px; border-radius:999px;
+                background:linear-gradient(100deg, rgba(255,255,255,.85), rgba(var(--pill), .6));
+                box-shadow:0 0 14px rgba(255,255,255,.35),
+                           0 3px 10px rgba(0,0,0,.35); }
+  .pill .dose i { position:absolute; left:14%; top:22%; width:26%; height:34%;
+                  border-radius:999px; background:rgba(255,255,255,.75); filter:blur(1px); }
+  /* And the caption, on the foot of the card rather than floating in the
+     middle of it. Centered with the pill, a blurb one line longer than the
+     card pushes itself off the bottom edge and is cut mid-word. */
+  /* Not `.face`: that is already a wall of the box in this page, and a card
+     wearing it got the tray's own dark panel painted across its middle. */
+  .pill .caption { grid-row:3; align-self:start; margin-top:9%;
+                   display:flex; flex-direction:column;
+                   align-items:center; gap:.5em; width:100%; }
+  /* Not --type, and deliberately: the sheet is reading matter and takes the
+     page's own size, but a card is a picture of a card. Its blurb is laid out
+     to reach the foot of it and no further, and there are six lines of Gold —
+     given the sheet's size it wraps past the bottom edge and is cut mid-word.
+     These stay a share of the card, which is a share of the box. */
+  .pill b { font-size:10px; font-weight:500; letter-spacing:2.4px;
+            text-transform:uppercase; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .pill em { font-style:normal; font-size:8.5px; line-height:1.45;
+             text-align:center; color:rgba(255,255,255,.78);
+             text-shadow:0 1px 2px rgba(0,0,0,.45); }
+  @media (hover: hover) {
+    .pill:hover { transform:translateY(-6px) scale(1.05);
+                  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 0 40px rgba(var(--pill), .5); }
+  }
+  .pill:focus-visible { outline:2px solid rgba(var(--pill), .9); outline-offset:3px; }
+  /* Taking one. The rest of the box goes out and the chosen card turns and
+     comes at you — which is the gesture the whole page is about, and it used
+     to be a rise of fourteen pixels.
+
+     It turns to edge-on and no further. A playing card flipped right over
+     shows its other side, and this one has no other side: the pattern is the
+     back and there is nothing printed on the front. Stopping at ninety
+     degrees is the trick — the card turns away, thins to a line, and is gone
+     before there is anything to look at, which reads as a flip and needs no
+     second face.
+
+     Forward, meanwhile, on translateZ. The tray has perspective on it, so the
+     card genuinely approaches rather than merely growing; the pill on its
+     back grows with it and carries the eye into the room the page is already
+     loading behind all this. */
+  .contents.taken .pill { opacity:.15; transition:opacity .3s ease; }
+  .contents.taken .pill.chosen { opacity:1; z-index:3;
+                                 transform-style:preserve-3d;
+                                 box-shadow:0 0 70px rgba(var(--pill), .7);
+                                 animation:taking .62s cubic-bezier(.32,.06,.4,1) forwards; }
+  /* The card that was taken does not fly anywhere inside the box, because it
+     cannot: the tray is a 3D subtree with its own perspective, its own
+     clipping and a lid a few hundred pixels above it, so the furthest a card
+     can travel in there is a shrug. What flies is a copy of it, cut loose on
+     a fixed layer over the whole page — see `take` below. The card left
+     behind just goes out. */
+  .contents.taken .pill.chosen { visibility:hidden; }
+
+  /* The layer it flies on. Perspective here rather than on the card: the
+     card is the thing being moved, and a thing that carries its own
+     perspective moves inside its own little world instead of through yours. */
+  /* Over everything, the shell's own rail included: the last thing this does
+     is go black, and a black page with four lit buttons still on it is not a
+     black page. */
+  #taking { position:fixed; inset:0; z-index:2147483000; pointer-events:none;
+            perspective:1100px; perspective-origin:50% 46%; }
+  #taking .flying { position:fixed; transform-style:preserve-3d;
+                    will-change:transform; }
+  /* Two sides, and only ever one of them facing you. The printed side is the
+     card itself, copied; the other is the pill's own color, which is what
+     fills the screen at the end of the turn and what the room then opens
+     behind. A card with one side reads as a picture of a card. */
+  /* No backface-visibility anywhere here, and that is the fix rather than an
+     omission. Culling was never going to decide this: the front face clips
+     its overflow, which exempts it, and the back face ends up under a
+     negative-determinant matrix once the card has turned, which culls it
+     instead — so the two faces swapped exactly the wrong way round. Which
+     side you can see is an opacity, handed to both of them on the same
+     timeline. See `swap` below. */
+  #taking .side { position:absolute; inset:0; margin:0; border-radius:9px; }
+  /* Two things had to be true before the turn would hide this side, and it
+     took both: a face with no transform of its own is not in the 3D context
+     and nothing culls its back, and a face that clips its own overflow — as
+     every card does — is not culled either. So the printed side is a bare
+     face that carries the transform, with the copied card living inside it
+     and doing the clipping one level down. The half-pixel keeps the two
+     faces off each other. */
+  #taking .side.printed { width:100%; height:100%; overflow:visible;
+                          transform:translateZ(.5px); }
+  #taking .side.printed > .pill { position:absolute; inset:0;
+                                  width:100%; height:100%; }
+  /* The back of the card is glass. Not paint of any color: a face of flat
+     pill color at the size this ends up is a wall, and one of the page's own
+     night is invisible against the page's own night. Glass is the only
+     answer that is still a thing when it is small and still a thing when it
+     covers the window — you watch the box through it as it comes, and it
+     goes on being a card the whole way in.
+
+     Which is also what the room behind it is made of. The conversation is
+     read off a pane in there; the card that takes you in is the same
+     material, and nobody has to be told that. */
+  #taking .side.plain { transform:rotateY(180deg) translateZ(.5px);
+                        /* The tint is the glass, not a filter behind it. A
+                           backdrop-filter is the right tool and it is not
+                           available here: inside a preserve-3d subtree the
+                           engine drops it, so a face relying on one is a
+                           sheet of nothing on a dark page. This one carries
+                           its own color, and the page still shows through
+                           because none of it is opaque. */
+                        background:linear-gradient(148deg,
+                                     rgba(var(--pill), .58), rgba(var(--pill), .20) 44%,
+                                     rgba(var(--pill), .46));
+                        /* Edges do most of the work: on a dark page a pane is
+                           legible by its rim long before it is by its fill.
+                           The rim is dark — a bright one made the pane read
+                           as lit from within, which is a screen, not glass.
+                           Dark edge, one thin light along the top for the
+                           thickness of it, and the whole thing sits in front
+                           of the page rather than glowing out of it. */
+                        box-shadow:inset 0 0 0 1.5px rgba(6,4,10,.62),
+                                   inset 0 0 0 2.5px rgba(var(--pill), .22),
+                                   inset 0 2px 0 rgba(255,255,255,.22),
+                                   inset 0 -60px 120px rgba(var(--pill), .26),
+                                   0 30px 90px rgba(0,0,0,.6),
+                                   0 0 46px rgba(var(--pill), .22); }
+  /* The one thing that keeps glass from reading as a tinted hole: a highlight
+     that is clearly on its surface rather than behind it. */
+  #taking .side.plain::after { content:''; position:absolute;
+                        left:0; right:0; top:0; height:46%;
+                        border-radius:9px 9px 40% 40% / 9px 9px 18% 18%;
+                        background:linear-gradient(rgba(255,255,255,.26),
+                                                   rgba(255,255,255,0)); }
+  /* The pill itself is the one thing that survives the turn: it is handed to
+     the room's page, which picks it up under the same name. */
+  .contents.taken .pill.chosen .dose { view-transition-name:mirror; }
+  /* Somebody who has asked not to be moved gets the old lift instead — the
+     card still says which one was taken, and nothing flies at them. */
+  @media (prefers-reduced-motion: reduce) {
+    .contents.taken .pill.chosen { animation:none;
+                                   transform:translateY(-14px) scale(1.12); }
+  }
+
+  /* Written on the floor of the tray, bottom right: room reserved for what is
+     not made yet. Flat on the floor rather than standing like the pills, so it
+     reads as a note in the box rather than another thing to take. */
+  .soon { position:absolute; right:6%; bottom:15%; margin:0;
+          transform:translateZ(1px);
+          font-size:8.5px; letter-spacing:2px;
+          text-transform:uppercase; color:rgba(201,162,39,.42);
+          text-shadow:0 1px 0 rgba(0,0,0,.7); pointer-events:none; }
+  [hidden] { display:none !important; }
+
+  /* The press-here for shutting the box lives outside the 3-D scene; the
+     script puts it over the lid's own edge. */
+  #shutzone { position:fixed; z-index:4; padding:0; border:0; background:none;
+              cursor:pointer; touch-action:manipulation;
+              -webkit-tap-highlight-color:transparent; }
+
+  /* A phone on its side is simply a short window. It used to get its own
+     flatter box and a lid at 96°, which made the lid a hard-foreshortened
+     trapezoid — the thing looked broken rather than small. The ordinary
+     angles, scaled down to fit, read as the same object seen from further
+     away, which is what it is. */
+
+  @media (max-width: 700px), (pointer: coarse) {
+    #room { padding:max(12px, env(safe-area-inset-top)) 8px 56px; }
+    .deck { gap:12px; padding:2px 12px 10px; }
+    /* The sheet is set in ems off this one number, so the whole ledger comes
+       up with it. On a phone it is the same sheet at arm's length in a column
+       a quarter as wide, and it has always wanted a little more here than the
+       desk asks for.
+
+       A share of --type rather than a number of its own, or browser zoom would
+       stop reaching the sheet the moment a window measured under 700 pixels. */
+    .leaf { font-size:calc(var(--type, 12px) * 1.042); }
+    /* Two pills in a box a third the width: at 27% each they were the size of
+       a thumbnail with four lines of type in them. Wider, and the tray deeper
+       to match — a card wider than it is tall is not a card, and the blurb
+       ran off the bottom of the short one.
+
+       The rows change here too. On a desk there is air above the emblem and
+       room under it; on a phone the same fractions left the longest blurb —
+       Gold's, six lines of it — a line and a half short of the bottom edge,
+       so it lost the word "earned". Less air, a longer caption row, and type
+       a hint smaller: the emblem stays above the middle and the words fit. */
+    .contents { height:calc(var(--h) * 2.5); }
+    /* Padding in pixels here, not percent. A percentage padding resolves
+       against the *tray's* width rather than the card's, so these cards were
+       carrying twenty pixels a side on a hundred-pixel card — two thirds of
+       the width was margin, the blurb wrapped every three words, and Gold
+       ran a line and a half past the bottom edge. */
+    .contents .pill { width:41%; padding:11px 9px 12px;
+                      grid-template-rows:13% auto 1fr; }
+    .pill .caption { margin-top:5%; gap:.4em; }
+    .pill b { font-size:10.5px; letter-spacing:1.8px; }
+    /* The last hint down. Pinning the emblem at a fixed share of the card
+       takes that share from the caption, and six lines of Gold have to fit
+       under it — the two are one budget and every change to either spends the
+       other. */
+    .pill em { font-size:8.6px; line-height:1.36; }
+    /* And two rows to a pill instead of four columns. Four columns of a
+       phone's width leaves each about eight characters, which is narrower
+       than the shortest label in here -- so every one of them wrapped, and a
+       ledger that wraps is a ledger nobody reads. Name and standing on the
+       first line, what it has given you on the second. */
+    .line { grid-template-columns:auto 1fr; gap:.3em .7em; padding-bottom:.7em; }
+    .line > span:not([class]) { display:none; }     /* the desk's spacer */
+    .line .tag { grid-column:1; }
+    .line .said { grid-column:2; text-align:right; font-size:.92em; }
+    .line .count { grid-column:1 / -1; text-align:left; font-size:.92em; }
+    .totals { font-size:.9em; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="sky"></canvas>
+
+  <div id="room">
+    <div class="table">
+      <div class="object priming" id="case">
+        <div class="box">
+          <div class="face floor"></div>
+          <div class="face w-back"></div>
+          <div class="face w-front"><i class="clasp" id="clasp" role="button" tabindex="0"
+            aria-label="shut the box">
+            <svg class="cut" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M50 1.5 Q78 13 98.5 30 Q78 47 50 58.5 Q22 47 1.5 30 Q22 13 50 1.5 Z"/>
+            </svg><b></b></i></div>
+          <div class="face w-left"></div><div class="face w-right"></div>
+          <div class="lamp"></div>
+
+          <div class="contents" id="pills"><!--TILES--></div>
+          <!-- Lying in the corner of the tray, where the next ones will go. -->
+          <p class="soon" aria-hidden="true">More pills coming soon&hellip;</p>
+
+          <div class="lid" id="lid">
+            <div class="out">
+              <i class="bracket b1"></i><i class="bracket b2"></i>
+              <i class="bracket b3"></i><i class="bracket b4"></i>
+              <div class="plaque">
+                <svg class="cut" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M50 1.5 Q78 13 98.5 30 Q78 47 50 58.5 Q22 47 1.5 30 Q22 13 50 1.5 Z"/>
+                </svg><span>Lucid Talk</span>
+              </div>
+              <i class="filigree"></i>
+            </div>
+            <div class="in">
+              <button class="grip" id="grip" type="button" aria-label="shut the box"></button>
+              <div class="leaf">
+                <h1>Lucid Talk</h1>
+                <div class="rule"></div>
+                <div class="body">
+                  <div class="stack">
+                    <p class="note" id="lidcopy">Take one. Each pill has a voice of its own,
+                      remembers what you told it last time, and takes you somewhere it chooses.</p>
+                    <div class="lines" id="lines"></div>
+                  </div>
+                </div>
+                <div class="totals" id="totals"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The press-here for shutting the box, living outside the 3-D scene.
+       Safari's hit-testing inside a preserve-3d subtree is unreliable: the
+       strip drawn on the lid takes clicks on a Mac and none at all on an
+       iPhone. This is a plain rectangle in plain 2-D, moved to sit exactly
+       over the lid's top edge each time the box is fitted. -->
+  <button id="shutzone" type="button" aria-label="shut the box"></button>
+
+  <link rel="stylesheet" href="assets/sheets.css">
+  <script src="assets/sheets.js"></script>
+  <script src="/shared/qr.js?v=3"></script>
+  <script src="/shared/night.js?v=3"></script>
+  <script>
+  const $ = id => document.getElementById(id);
+  const sound = () => window.Lucid && window.Lucid.sound;
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Exactly what the front page does at the end of its opening, from the
+  // same shared fitter: this has to be that box, at that size.
+  // Fit the box, then park the shut-zone over the top edge of its lid.
+  const measure = () => {
+    window.Lucid.fitOpenBox($('case'), $('room'));
+    const lid = $('lid').getBoundingClientRect(), z = $('shutzone').style;
+    const deep = Math.max(30, Math.min(lid.height * 0.2, 60));   // a thumb, not a hairline
+    z.left = Math.round(lid.left) + 'px';
+    z.top = Math.round(lid.top) + 'px';
+    z.width = Math.round(lid.width) + 'px';
+    z.height = Math.round(deep) + 'px';
+  };
+
+  // Fit first, paint once, and only then let anything be allowed to move.
+  // The same on the way back: the browser hands this page back mid-shut or
+  // with a pill still lit, and it has to be sitting open again before it is
+  // shown.
+  const settle = () => {
+    const obj = $('case');
+    obj.classList.add('priming');
+    obj.classList.remove('shutting');
+    $('pills').classList.remove('taken');
+    $('pills').querySelectorAll('.chosen').forEach(el => el.classList.remove('chosen'));
+    measure();
+    requestAnimationFrame(() => {
+      measure();                                  // once more, on a settled page
+      requestAnimationFrame(() => {
+        obj.classList.remove('priming');
+        document.body.classList.add('settled');   // and only now is it shown
+      });
+    });
+  };
+  addEventListener('pageshow', settle);
+  // Arriving through a cross-document transition: fit again once it is over,
+  // since a page mid-transition does not measure the same as a settled one.
+  addEventListener('pagereveal', e => {
+    if (e.viewTransition) e.viewTransition.finished.then(settle, settle);
+  });
+  // On the next frame, not during parsing. Fitting forces a handful of
+  // layouts, and doing that before the first paint holds the whole page back —
+  // long enough, in a browser without transitions, to show its blank canvas
+  // instead. Painting the empty room first costs nothing: it is dark, and the
+  // box is not shown until it has been fitted anyway.
+  requestAnimationFrame(settle);
+  addEventListener('resize', measure);
+  measure();
+
+  // ---- the socket: the same one the conversation uses ----------------------
+  let ws, retry = null, running = false;
+  // How long a dose lasts, as the lid last had it. Held here rather than read
+  // back off the sheet: the sheet is redrawn from the ledger, and a number
+  // that lives in what gets redrawn is a number that can arrive stale.
+  let dose = 15;
+  const pending = [];
+  const send = o => {
+    if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; }
+    pending.push(o); return false;
+  };
+
+  Sheets.use({send});
+
+  function connect() {
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    clearTimeout(retry); retry = null;
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}${location.pathname.replace(/[^/]*$/, '')}ws`);
+    ws.onopen = () => pending.splice(0).forEach(o => ws.send(JSON.stringify(o)));
+    ws.onmessage = e => handle(JSON.parse(e.data));
+    ws.onclose = () => { retry = setTimeout(connect, 1000); };
+  }
+
+  // ---- the sheet inside the lid ------------------------------------------
+  // What the box knows about you, kept as a record rather than a score: how
+  // many doses each pill has given you, what it remembers, and how it is
+  // holding you now.
+  function ledger(m) {
+    const lines = $('lines'), totals = $('totals');
+    lines.innerHTML = '';
+    let remembered = 0;
+    for (const p of m.pills) {
+      remembered += p.remembered;
+      const row = document.createElement('div');
+      row.className = 'line';
+      row.style.setProperty('--pill', p.color);
+      /* One word, like every standing it stands in for -- frozen, cool,
+         even, devoted. "Not yet decided about you" was a sentence in a column
+         eight characters wide, so on a phone it broke into three lines and
+         shoved the tally off the end of the row. */
+      const said = p.doses ? (p.standing || 'undecided') : 'never taken';
+      /* Each of the three is a way in as well as a number. How it is taking
+         you opens the sheet that puts that back to nothing; the doses open
+         the conversations you have had, and any of them opens where you left
+         off; what it remembers opens the note it keeps and lets you write in
+         it. The numbers were already here and already the right ones to
+         press — they only needed to be pressable. */
+      row.innerHTML = `<span class="tag"><i></i>${p.name}</span><span></span>`
+        + `<button type="button" class="said" data-do="forget"`
+        + ` title="how ${p.name} is taking you — press to start from nothing">${said}</button>`
+        + `<span class="count">`
+        + `<button type="button" data-do="history"`
+        + ` title="conversations you have had with ${p.name}">${p.doses || 'no'} doses</button>`
+        + ` · <button type="button" data-do="memory"`
+        + ` title="what ${p.name} remembers about you">`
+        // "memories", not "notes": it is the word the rest of this speaks —
+        // the box counts what it has Remembered, the sheet is a memory, and a
+        // pill remembering you is the thing the whole app is about.
+        + `${p.remembered ? p.remembered + (p.remembered === 1 ? ' memory' : ' memories')
+                          : 'no memories'}</button></span>`;
+      row.querySelectorAll('[data-do]').forEach(b => b.onclick = e => {
+        e.stopPropagation();                     // not a press on the lid
+        Sheets[b.dataset.do](p.slug, p.name);
+      });
+      lines.appendChild(row);
+    }
+
+    // The one control on this sheet goes first; the tally, which is only
+    // something to read, sits away on the right.
+    totals.innerHTML =
+      `<span class="dosebox">Strength`
+      + `<button type="button" data-step="-5" aria-label="weaker">&minus;</button>`
+      + `<b id="dosenow">${dose}</b> min`
+      + `<button type="button" data-step="5" aria-label="stronger">+</button></span>`
+      // One element, not two: as separate spans they wrapped independently and
+      // "Remembered" ended up on its own line under the strength control.
+      + `<span class="tally">Doses <b>${m.doses}</b> &middot; `
+      + `Remembered <b>${remembered}</b></span>`;
+    totals.querySelectorAll('[data-step]').forEach(b => b.onclick = e => {
+      e.stopPropagation();                       // not a press on the lid
+      const now = dose;
+      const next = Math.max(5, Math.min(now + +b.dataset.step, 120));
+      dose = next;
+      $('dosenow').textContent = next;
+      send({cmd: 'setup', minutes: next});
+      if (sound()) sound().tick();
+    });
+    document.querySelector('.leaf').classList.add('ready');
+    // Nobody has taken anything yet: say so plainly rather than showing zeros.
+    if (!m.doses) {
+      $('lidcopy').textContent = 'Nothing taken yet. Whatever happens under one '
+        + 'is written down here and nowhere else — what it learns about you, and '
+        + 'how it comes to hold you.';
+    }
+  }
+
+  function handle(m) {
+    // The shared sheets get first refusal on what they asked for.
+    if (window.Sheets && Sheets.take(m)) return;
+    switch (m.type) {
+      case 'ledger': ledger(m); break;
+      /* The strength, which the lid asks for and nothing else does. It can
+         land after the ledger has been drawn, so the number on the sheet is
+         corrected as well as the one held here. */
+      case 'setup':
+        dose = m.minutes || 15;
+        if ($('dosenow')) $('dosenow').textContent = dose;
+        break;
+      // What the machine is doing is the console's to show, on every page at
+      // once. What this page needs from a tick is one fact: whether taking a
+      // pill has to wake anything.
+      case 'tick': running = !!m.running; break;
+      case 'log': log(m.text); break;
+    }
+  }
+
+  /* Said in the console, which is where everything else this machine says
+     goes. A page that keeps its own log keeps a second timeline that has to be
+     read against the first. */
+  function log(text, level) {
+    if (!text) return;
+    if (window.Hatch) Hatch.say(text, level || 'info');
+    else console.log('lucid:', text);
+  }
+
+  const pills = $('pills');
+
+  /* ---- taking one --------------------------------------------------------
+   *
+   * The card comes up out of the box, turns over, and arrives in your face:
+   * by the end it is the only thing on the screen, and what the room opens
+   * behind is the pill's own color rather than a page.
+   *
+   * It is a copy that flies, not the card. The card is three levels deep in a
+   * preserve-3d tray with a lid over it — anything it does happens inside that
+   * box and at the box's scale, which is the length of a shrug. The copy is
+   * fixed to the viewport, starts life exactly where the card is, and owes the
+   * box nothing.
+   *
+   * Returns how long to wait before leaving, so the two cannot drift apart.
+   */
+  function take(card) {
+    const r = card.getBoundingClientRect();
+    const layer = document.createElement('div');
+    layer.id = 'taking';
+    const fly = document.createElement('div');
+    fly.className = 'flying';
+    fly.style.cssText = `left:${r.left}px; top:${r.top}px; `
+                      + `width:${r.width}px; height:${r.height}px; `
+                      + `--pill:${getComputedStyle(card).getPropertyValue('--pill')}`;
+    const printed = document.createElement('div');
+    printed.className = 'side printed';
+    const copy = card.cloneNode(true);
+    copy.classList.remove('chosen');
+    copy.removeAttribute('href');
+    copy.removeAttribute('aria-label');
+    printed.appendChild(copy);
+    const plain = document.createElement('div');
+    plain.className = 'side plain';
+    fly.append(printed, plain);
+    layer.appendChild(fly);
+    document.body.appendChild(layer);
+
+    /* Where it is going: the middle of the screen, big enough that the far
+       side covers it. A card is a tall rectangle and a screen is a wide one,
+       so the scale is whichever of the two dimensions needs more — plus a
+       little, because a card arriving exactly the size of the window shows
+       its corners. */
+    const dx = innerWidth / 2 - (r.left + r.width / 2);
+    const dy = innerHeight / 2 - (r.top + r.height / 2);
+    const full = Math.max(innerWidth / r.width, innerHeight / r.height) * 1.3;
+    const MS = 900;
+    /* Turn first, then come. The two cannot overlap: a card that is already
+       the size of the screen and also edge-on is a bright bar across your
+       view. So the flip happens while it is still card-sized and near the
+       box, it arrives at the middle of the screen by the time it is face-on
+       again, and only then does it rush the last of the way and cover
+       everything. */
+    fly.animate([
+      {transform: 'translate(0px, 0px) rotateY(0deg) scale(1)', offset: 0,
+       easing: 'cubic-bezier(.2,.7,.35,1)'},
+      /* Up out of the tray, barely turning: the rise is what says it was
+         lifted rather than zoomed. */
+      {transform: `translate(${(dx * .1).toFixed(0)}px, ${(dy * .1 - 30).toFixed(0)}px) `
+                + 'rotateY(-24deg) scale(1.16)', offset: .2,
+       easing: 'cubic-bezier(.5,0,.5,1)'},
+      // edge-on, still small, halfway to the middle
+      {transform: `translate(${(dx * .5).toFixed(0)}px, ${(dy * .5).toFixed(0)}px) `
+                + 'rotateY(-90deg) scale(1.5)', offset: .42,
+       easing: 'cubic-bezier(.4,0,.55,1)'},
+      // over, and now facing you with its own color
+      {transform: `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) `
+                + 'rotateY(-180deg) scale(2.1)', offset: .64,
+       easing: 'cubic-bezier(.6,0,.85,.6)'},
+      /* Covering the window, and covering it *before* the fade begins — a
+         card still short of the edges shows the box in two bars down the
+         sides, and the whole point of the last third is that there is nothing
+         left to see but the pill. */
+      {transform: `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) `
+                + `rotateY(-180deg) scale(${full.toFixed(3)})`,
+       opacity: 1, offset: .8, easing: 'cubic-bezier(.3,.5,.5,1)'},
+      /* And then gone. It goes on growing while it goes, so it leaves the way
+         it arrived rather than dissolving on the spot, and what is underneath
+         by then is black — the box has been covered for a third of a second,
+         and the room opens out of the dark instead of out of a wall of
+         color. */
+      {transform: `translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) `
+                + `rotateY(-180deg) scale(${(full * 1.3).toFixed(3)})`,
+       opacity: 0, offset: 1},
+      /* Linear overall, with the shaping on the keyframes themselves. An
+         easing on the animation warps where the offsets land — under a curve
+         like this one, "two thirds of the way through" arrives at nine
+         tenths, so the card covered the screen a third of a second before it
+         was meant to and then sat there. Offsets are read in eased time; put
+         the curve on the steps and they are read in real time. */
+    ], {duration: MS, easing: 'linear', fill: 'forwards'});
+
+    /* Which side is facing you, said outright. `backface-visibility` is the
+       proper way to do this and it does not survive the trip: the printed
+       face is a card, a card clips its own overflow, and a clipping face is
+       not culled — so the turn showed the front again, mirrored, all the way
+       round. Swapping the two at the moment the card is edge-on costs one
+       animation each and cannot be argued with.
+
+       The instant is .42, which is where the rotation passes ninety degrees.
+       Both numbers are here rather than one here and one in the keyframes,
+       because if they ever drift the card turns into its own back. */
+    const EDGE = .42;
+    const swap = (el, from, to) => el.animate([
+      {opacity: from, offset: 0}, {opacity: from, offset: EDGE - .001},
+      {opacity: to, offset: EDGE}, {opacity: to, offset: 1},
+    ], {duration: MS, easing: 'linear', fill: 'forwards'});
+    swap(printed, 1, 0);
+    swap(plain, 0, 1);
+
+    /* The dark it fades into. Painted on the layer under the card rather than
+       left to the page, because the page under it is a lit box on a starfield
+       — fading the card out over that just puts the box back. It comes in
+       while the card still covers everything, so nobody sees it arrive. */
+    layer.animate([
+      {background: 'rgba(0,0,0,0)', offset: 0},
+      {background: 'rgba(0,0,0,0)', offset: .62},
+      {background: 'rgba(0,0,0,1)', offset: .82},
+      {background: 'rgba(0,0,0,1)', offset: 1},
+    ], {duration: MS, easing: 'linear', fill: 'forwards'});
+    // Leaving on the black, not on the color: the card is gone by then and
+    // the room's own page is dark, so the two join without a seam.
+    return MS;
+  }
+
+  // ---- taking one ---------------------------------------------------------
+  pills.querySelectorAll('.pill').forEach(p => {
+    p.addEventListener('pointerenter', () => sound() && sound().hover(), {passive: true});
+    p.addEventListener('click', e => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      // Taking one starts the machine. The room's page asks again if this never lands
+      // — typing or turning the mic on starts it too — but by then the models
+      // are usually already on their way up.
+      send({cmd: 'start'});
+      if (sound()) { sound().latch(); setTimeout(() => sound().whoosh({dur: .9}), 120); }
+      p.classList.add('chosen'); pills.classList.add('taken');
+      setTimeout(() => { location.href = p.href; }, still ? 0 : take(p));
+    });
+  });
+
+  // ---- shutting the box ---------------------------------------------------
+  // The lid is the way back: press it and it comes down, then the front page.
+  const shut = () => {
+    // Back to the stylesheet's viewing distance as well. The fitter moves the
+    // eye with the size of the open box; shutting it at that distance left the
+    // closed box a little smaller than the one the front page draws, so it
+    // grew as you arrived.
+    document.querySelector('.table').style.perspective = '';
+    if (sound()) { sound().whoosh({dur: .7, peak: .38}); setTimeout(() => sound().shut && sound().shut(), 420); }
+    $('case').classList.add('shutting');
+    setTimeout(() => { location.href = '../'; }, still ? 0 : 620);
+  };
+  for (const el of [$('grip'), $('clasp'), $('shutzone')]) {
+    el.addEventListener('click', shut);
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); shut(); }
+    });
+    el.addEventListener('pointerenter', () => sound() && sound().hover(), {passive: true});
+  }
+
+  // Every way a window can change shape, and immediately: a rotation, a
+  // dragged edge, a toolbar sliding away. The fitter turns transitions off
+  // while it works, so none of these animate.
+  for (const ev of ['resize', 'orientationchange', 'pageshow'])
+    addEventListener(ev, measure);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', measure);
+    visualViewport.addEventListener('scroll', measure);
+  }
+
+  connect();
+  </script>
+</body>
+</html>

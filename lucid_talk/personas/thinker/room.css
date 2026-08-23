@@ -1,0 +1,95 @@
+/* Thinker's dressing.
+ *
+ * The room is next door in room.js. What is left for this file is the flat
+ * part — and here that is most of the idea, because in this room the
+ * conversation is not written on anything. It is thrown.
+ *
+ * There is no glass in Thinker's room and no gap in the stacks: the words
+ * land on the spines of the books, the way a picture lands on a wall that was
+ * never meant to take one. So none of this has a background. Every line is
+ * light added to what is already there — `screen` blending, which can only
+ * brighten — and the shelf behind it goes on showing through. Where a shelf
+ * edge crosses a line, the line crosses the shelf edge.
+ */
+
+:root {
+  --room-accent: 214, 150, 84;           /* brass */
+  --room-warm: 255, 176, 102;            /* lamplight */
+
+  /* The case has the left of the room, so the panel stands right of center —
+     over the table, which is the part of the floor that is still a floor. */
+  --panel-x: 62%;
+}
+
+/* ---- the conversation, thrown ---------------------------------------------
+   The blending is on the page as a whole rather than on each line of it: a
+   transformed element is its own stacking context, so anything inside it can
+   only blend with the rest of the inside. Put it here and the whole
+   projection is added to the room behind it — which is what a projector does,
+   and it means black is not a color the page can paint with. Only while
+   there is a room to add it to: with no room there is nothing behind it but
+   the page's own ground, and it would only wash out. */
+html:not(.flat) #glass { mix-blend-mode: screen; }
+
+/* Each line still has a box round it — but it is thrown rather than drawn,
+   so the box is a lit panel rather than a dark one. Screen blending can only
+   add: a pale wash is a rectangle of light standing off the shelf, and the
+   spines go on showing through it. A dark fill here would be nothing at all. */
+.msg.pill,
+.msg.you {
+  /* Thrown a little out of focus, and thrown by something with a bulb in it. */
+  text-shadow:
+    0 0 1px rgba(var(--room-warm), .5),
+    0 0 10px rgba(var(--room-accent), .35),
+    0 0 26px rgba(var(--room-accent), .18);
+}
+.msg.pill {
+  color: #ffdcae;
+  background: linear-gradient(200deg,
+    rgba(var(--room-warm), .17), rgba(var(--room-accent), .07));
+  border: 1px solid rgba(var(--room-warm), .3);
+}
+/* Yours is the fainter of the two — you are the one holding the projector. */
+.msg.you {
+  color: #cfd6cd;
+  background: linear-gradient(200deg,
+    rgba(212, 224, 214, .1), rgba(212, 224, 214, .035));
+  border: 1px solid rgba(212, 224, 214, .18);
+}
+.msg .who { color: rgba(var(--room-warm), .8); letter-spacing: .06em; }
+.note { color: rgba(var(--room-accent), .5); }
+
+/* The lamp housing: brighter in the middle of the throw, falling off to the
+   corners, and never quite square to the shelf it is landing on. */
+#glass::before {
+  content: "";
+  position: absolute;
+  inset: -4%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(58% 46% at 46% 40%, rgba(var(--room-warm), .11), transparent 72%),
+    linear-gradient(96deg, rgba(var(--room-accent), .05), transparent 46%);
+}
+
+/* There is no grain layer here on purpose. There was one — two fine
+   gradients crossed over the page, for the roughness of a wall that was never
+   meant to take a picture. But the page is scaled up onto the case by the
+   projection, and a pattern that is a hair's breadth on the page is a screen
+   of dots on the shelf. The books are the roughness. */
+
+/* ---- the panel -----------------------------------------------------------
+   Same shape as every room's; only the light on it is ours. */
+#panel {
+  border-color: rgba(var(--room-accent), .3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .07),
+    0 26px 60px rgba(0, 0, 0, .65),
+    0 0 70px rgba(var(--room-warm), .1);
+}
+#send.primary,
+#session.primary {
+  background: linear-gradient(200deg, rgba(var(--room-warm), .95), rgba(var(--room-accent), .92));
+  border-color: transparent;
+  color: #1c1206;
+}

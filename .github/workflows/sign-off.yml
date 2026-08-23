@@ -1,0 +1,38 @@
+# Every commit in a pull request carries a Signed-off-by line.
+#
+# Not ceremony: that line is the Developer Certificate of Origin, and together
+# with the grant in CONTRIBUTING.md it is what keeps this project able to
+# change its own license later. A patch merged without it is a line of code
+# that can never go into anything commercial — and nobody notices for years.
+name: sign-off
+
+on:
+  pull_request:
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Every commit is signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          missing=0
+          for sha in $(git rev-list "$BASE..$HEAD"); do
+            if ! git show -s --format=%B "$sha" |
+                 grep -qiE '^Signed-off-by: .+ <.+@.+>'; then
+              echo "::error::$(git show -s --format='%h %s' "$sha") has no Signed-off-by line"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo
+            echo "Sign off with:  git commit -s   (amend with: git commit -s --amend)"
+            echo "Why, and what else travels with a patch: CONTRIBUTING.md"
+            exit 1
+          fi

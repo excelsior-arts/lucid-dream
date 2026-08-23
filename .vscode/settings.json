@@ -1,0 +1,31 @@
+{
+  // This codebase is hand-set. The line breaks carry meaning: numbers that
+  // belong together sit on one line, comments are wrapped to the prose, and a
+  // room's spec is laid out to be read as a description rather than as data.
+  // A formatter undoes all of that in one save, so it is off here.
+  "editor.formatOnSave": false,
+  "editor.formatOnPaste": false,
+  "editor.formatOnType": false,
+  "editor.defaultFormatter": null,
+  "prettier.enable": false,
+  "[javascript]": { "editor.formatOnSave": false, "editor.defaultFormatter": null },
+  "[html]": { "editor.formatOnSave": false, "editor.defaultFormatter": null },
+  "[css]": { "editor.formatOnSave": false, "editor.defaultFormatter": null },
+  "[python]": { "editor.formatOnSave": false, "editor.defaultFormatter": null },
+  "[json]": { "editor.formatOnSave": false, "editor.defaultFormatter": null },
+  "[markdown]": { "editor.formatOnSave": false, "editor.defaultFormatter": null },
+
+  // US English, in the prose and in the identifiers. The words below are ours
+  // or a library's rather than misspellings — everything else the dictionary
+  // flags in this repository probably is one.
+  "cSpell.language": "en,en-US",
+  "cSpell.words": [
+    "Chatterbox", "dtype", "dvh", "huggingface", "lucid", "mlx", "Parakeet",
+    "Polyform", "pyproject", "Qwen", "safetensors", "starlette", "uvicorn",
+    "venv", "webmanifest"
+  ],
+
+  // Trailing whitespace and final newlines are fine to keep tidy.
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
+}
