@@ -60,7 +60,8 @@ RAM="$(( $(sysctl -n hw.memsize) / 1073741824 ))"
 want "memory" "$RAM GB"
 if [ "$RAM" -lt 32 ]; then
     say "  ^ 32 GB is the floor. Measured on the app's own meter, the default"
-    say "    set holds about 31 GB mid-reply. It will run, and it will swap."
+    say "    set holds about 23 GB mid-reply, and macOS wants the rest of it."
+    say "    It will run, and it will swap."
 fi
 
 FREE="$(df -g . | tail -1 | awk '{print $4}')"

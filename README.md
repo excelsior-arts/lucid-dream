@@ -61,10 +61,10 @@ in as a second screen — see ON THE MACHINE — but it is not the machine that 
 this.
 
 **How much memory really matters.** Measured on the app's own meter, the set-up
-holds about 31 GB mid-reply: a 4-bit 27B language model, a speech recognizer,
-and a voice. That is the floor, not a comfortable middle — 32 GB runs it with
-the desktop kept quiet, and everything is unloaded on request, with the console
-telling you what is held. Somebody who wants room to spare, or a larger model
+holds about 23 GB mid-reply: a 4-bit 27B language model, a speech recognizer,
+and a voice. What is left over is what macOS, a browser and the prompt cache
+have to live in, which is why 32 GB is the number rather than 24 — everything is
+unloaded on request, with the console telling you what is held. Somebody who wants room to spare, or a larger model
 than the one that ships, wants 48.
 
 **A word about speed.** It thinks before it speaks — about four seconds before

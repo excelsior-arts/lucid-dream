@@ -8,8 +8,8 @@ is a working `./run.sh` with the models on disk and `userdata/config.json`
 pointing at them.
 
 **Requirements:** Apple Silicon Mac, macOS 14+, Python 3.12, ~30 GB disk, and
-enough RAM to hold the models — the app's own meter reports ~31 GB mid-reply
-with the default 27B 4-bit LLM, so 32 GB is the floor. Verify before starting:
+enough RAM to hold the models — the app's own meter reports ~23 GB mid-reply
+with the default 27B 4-bit LLM, so 32 GB is the floor once macOS has its share. Verify before starting:
 
 ```sh
 uname -m                                  # expect arm64

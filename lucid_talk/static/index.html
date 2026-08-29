@@ -43,7 +43,7 @@
      Safari, which covers it with a view transition, and a flash in
      Firefox, which has none. -->
 <style>html{background:#05060b}</style>
-<link rel="stylesheet" href="/shared/night.css?v=3">
+<link rel="stylesheet" href="/shared/night.css?v=4">
 <style>
   :root {
     /* The same room as the shell, named the way this page already speaks:
@@ -439,6 +439,21 @@
   /* Nothing to replay or delete until the line is finished — mid-stream they
      read as controls that do not work. */
   .msg.streaming .tools { display:none; }
+  /* A reply still arriving has to look like one: without this the streaming
+     class only hid the two buttons above, so a reply that stalled mid-sentence
+     was pixel-identical to one that had finished on that word. The caret rides
+     the end of the text, needs no layout of its own, and leaves with the class. */
+  .msg.streaming .body::after {
+    content:''; display:inline-block; width:.42em; height:1.05em;
+    margin-left:.1em; vertical-align:-.16em; border-radius:1px;
+    background:currentColor; opacity:.5;
+    animation:blink 1.05s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Still shown, just not blinking: the fact that it is there is the signal,
+       and the movement is only what makes it noticeable. */
+    .msg.streaming .body::after { animation:none; opacity:.42; }
+  }
 
   .msg.you { align-self:flex-end; background:var(--you); border-bottom-right-radius:4px;
              border:1px solid rgba(201,162,39,.16);
@@ -483,7 +498,7 @@
      window: the keys still look pressable and nothing they do would reach
      this conversation. A page that has stopped meaning anything should say
      so rather than go quiet. */
-  #taken, #gone { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  #taken, #gone, #adrift { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
            padding:8px 12px; border-radius:9px; font-size:12.5px;
            color:#e9c98f; background:rgba(120,80,20,.22);
            border:1px solid rgba(217,164,65,.32); }
@@ -689,6 +704,14 @@
     <div id="gone" hidden>
       <span>this conversation is not here</span>
       <button type="button" id="goback">back to the box</button>
+    </div>
+    <!-- And the third: the machine is there, this page just cannot reach it.
+         No button, because the page is already retrying every second and a
+         key that duplicates what is happening anyway is a key that lies about
+         being needed. Said in the amber of something temporary rather than
+         the red of something wrong -- this one comes back. -->
+    <div id="adrift" hidden>
+      <span>the machine is not answering &mdash; still trying</span>
     </div>
     <div id="deck">
       <button id="t-back" class="key" title="say the last line again — useful when a cough cut it off">
@@ -926,8 +949,8 @@
 <script>window.LucidWhere = 'room';</script>
 <link rel="stylesheet" href="assets/sheets.css">
 <script src="assets/sheets.js"></script>
-<script src="/shared/qr.js?v=3"></script>
-  <script src="/shared/night.js?v=3"></script>
+<script src="/shared/qr.js?v=4"></script>
+  <script src="/shared/night.js?v=4"></script>
 <script>
 const $ = id => document.getElementById(id);
 // A phone has no push-to-talk, and claims the audio for itself.
@@ -1087,6 +1110,7 @@ function connect() {
   const base = location.pathname.replace(/[^/]*$/, '');
   ws = new WebSocket(`${proto}://${location.host}${base}ws`);
   ws.onopen = () => {
+    setAdrift(false);
     reconciled = false;                  // a fresh socket, a fresh reckoning
     // Said first, and on every reconnect: the server holds one persona, and
     // this page is the one thing that knows who was asked for. It is ignored
@@ -1117,7 +1141,11 @@ function connect() {
     if (queued.length) log('reconnected — sent that');
   };
   ws.onmessage = e => handle(JSON.parse(e.data));
-  ws.onclose = () => { retry = setTimeout(connect, 1000); log('disconnected — retrying'); };
+  ws.onclose = () => {
+    retry = setTimeout(connect, 1000);
+    log('disconnected — retrying');
+    setAdrift(true);
+  };
 }
 
 // Restart the server with this page open and every command vanished here: the
@@ -1135,6 +1163,12 @@ function connect() {
  */
 const STILL_ALLOWED = new Set(['open', 'sessions', 'memory_get', 'memory_save',
                                'relation_reset']);
+/* A sentence is not a command. Everything else here can wait for the socket
+   and arrive late without surprising anybody, but a line typed into a
+   conversation cleared the field and then went into a queue nobody could see
+   -- so the words were gone from the screen and had not been said. They stay
+   in the field instead, and submit() leaves them there; see the note on it. */
+const NEVER_QUEUED = new Set(['say']);
 const send = o => {
   if (elsewhere && !STILL_ALLOWED.has(o.cmd)) {
     /* Silently for the ones that repeat. An open microphone sends a packet
@@ -1147,7 +1181,7 @@ const send = o => {
   }
   if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; }
   if (!TRANSIENT.has(o.cmd)) {
-    if (pending.length < 8) pending.push(o);
+    if (pending.length < 8 && !NEVER_QUEUED.has(o.cmd)) pending.push(o);
     log('not connected — sending when it reconnects');
   }
   connect();
@@ -1394,33 +1428,28 @@ function handle(m) {
       // It arrived. Stop holding a copy of it.
       if (m.text.trim() === stored(UNSENT)) store(UNSENT, '');
       clearHeard();
+      /* A reply still draining its voice is over the moment you speak. */
+      if (doneText !== null) settle(doneText);
       if (streaming) streaming.classList.remove('streaming');   // its is over
       bubble('You', m.text);
       streaming = null;
       break;
     case 'assistant_delta':
       clearMusing();
+      /* Continuous mode writes the next turn while the last one's voice is
+         still draining. Its words belong in a bubble of their own. */
+      if (doneText !== null) settle(doneText);
       if (!streaming) {
         streaming = bubble(personaName, '');
         streaming._raw = '';
         streaming.classList.add('streaming');
       }
-      streaming._raw += m.text;
-      streaming.querySelector('.body').innerHTML = render(streaming._raw);
-      keepDown();
+      pace(m.text);
       break;
     case 'assistant_done':
       clearMusing();
-      // the final text can differ in length from what streamed, so settle again
-      if (streaming) {
-        if (m.text) {
-          streaming.querySelector('.body').innerHTML = render(m.text);
-          streaming._raw = m.text;
-        }
-        streaming.classList.remove('streaming');   // now there is a line to replay
-      }
-      keepDown();
-      streaming = null; break;
+      replyDone(m.text);
+      break;
     case 'log':
       // "heard 1.2s but no usable speech" — nothing is coming, take it down
       // "no usable speech", "too short to hear", "STT failed" — nothing is
@@ -1440,6 +1469,7 @@ function handle(m) {
       if (m.minutes) { tapeMinutes = m.minutes; paintCounter(); }
       break;
     case 'audio': playWav(m.pcm, m.rate); break;
+    case 'audio_chars': creditChars(m.chars); break;
     /* Steering rather than stopping: the line being spoken lands, and what
        was queued behind it is dropped. Cutting a voice off mid-word to answer
        somebody reads as a machine glitching; the half second it costs to let
@@ -1738,10 +1768,14 @@ function submit() {
      visibly wrong — everything after would queue behind a paused element and
      never be heard. */
   if (held) holdWav(false);
+  /* Emptied only once it has actually gone. It used to empty first and send
+     afterwards, so a socket that was down -- or a machine held by another
+     window -- took the words off the screen and gave nothing back for them.
+     Left in the field they are still there to send, or to change. */
+  if (!send({cmd: 'say', text: t})) return;
   store(UNSENT, t);            // cleared when the server echoes it back
   $('text').value = '';
   saveDraft();
-  send({cmd: 'say', text: t});
 }
 function talking() { return state === 'speaking' || state === 'thinking'; }
 /* No Send. Return sends, which is what everybody's hands already do, and on a
@@ -2016,7 +2050,7 @@ function stopCapture() {
 // rate differs from the context's. An <audio> element counts as media, so it
 // ignores the switch and decodes a WAV on its own terms.
 const wavQueue = [];
-let wavEl = null, wavBusy = false;
+let wavEl = null, wavBusy = false, wavPlaying = null;
 let wavUrl = '';     // the chunk in hand, so stopping can give it back
 let queuedS = 0, playingS = 0;
 
@@ -2154,7 +2188,11 @@ function wavPlayNext() {
   // resume that arrives first should do nothing rather than throw.
   if (held || wavBusy || !wavEl || !wavQueue.length) return;
   wavBusy = true;
+  // Something is actually coming out of the speaker, so there is now a voice
+  // for the text to keep pace with. Until this, there is not.
+  heardAny = true;
   const blob = wavQueue.shift();
+  wavPlaying = blob;
   playingS = blob.secs || 0;
   queuedS = Math.max(0, queuedS - playingS);
   /* Held where stopping can reach it. A chunk that is cut off never runs
@@ -2166,6 +2204,10 @@ function wavPlayNext() {
     URL.revokeObjectURL(url);
     if (wavUrl === url) wavUrl = '';
     wavBusy = false;
+    playedS += playingS;
+    spokenChars += (wavPlaying && wavPlaying.chars) || 0;
+    if (playedS > 1.5 && spokenChars > 40) voiceChps = spokenChars / playedS;
+    wavPlaying = null;
     playingS = 0;
     audioStatus();
     reportAudio();
@@ -2245,6 +2287,142 @@ $('chat').addEventListener('click', (e) => {
 document.addEventListener('lucid:hush', (e) => {
   if (!e.detail) $('chat').querySelectorAll('.unheard').forEach(m => m.remove());
 });
+
+/* Text, at the speed of the voice.
+ *
+ * The model writes faster than anyone speaks. Measured on this machine, one
+ * reply: 119 words streamed over 13.4s while the audio of it ran 30.0s -- so
+ * the last word was readable sixteen seconds before it was audible, and the
+ * whole reply sat finished on screen while a third of it had been said. A
+ * thing whose first sentence is "You are heard aloud, not read" was spoiling
+ * every line with its own subtitles.
+ *
+ * No constant to tune: what is held is released at whatever rate empties it
+ * as the queued audio empties. A faster model fills the buffer sooner and the
+ * text still lands with the voice; a slower one never fills it at all and
+ * nothing is held back.
+ *
+ * Two ways this must not strand the words. Sound that never plays -- muted,
+ * blocked by the browser, a voice that failed -- must not hold text hostage,
+ * so pacing engages only once something has actually been heard. And a reply
+ * whose sound has stopped -- or never started -- releases the remainder
+ * outright the moment it ends.
+ */
+let withheld = '', heardAny = false, pacer = null;
+let spokenChars = 0, playedS = 0;   // what the voice has actually said, this reply
+/* How far in front of the voice the words may run. Matching the rate alone
+   preserves whatever lead exists when pacing starts -- and text flows freely
+   until the first sound, so that lead was a sentence or two and stayed there
+   all reply. Pacing to the audio's position makes the lead a number rather
+   than an accident: about a sentence of speech, which reads as being slightly
+   ahead rather than as subtitles. */
+const LEAD_S = 1.5;   // seconds of speech, not sentences -- these are short
+
+/* How fast the voice says these characters, measured from audio that has
+ * played against the characters the server says it covered.
+ *
+ * Estimating this from the streamed text instead cannot be made to work, and
+ * the failure is one-directional: the text carries markup that is stripped
+ * before synthesis, so every estimate reads high, and a pacer running on a
+ * high rate opens a gap that widens for as long as the reply lasts. Only the
+ * server knows what it handed the voice. It survives the reply that measured
+ * it, so a session pays the cost once. */
+let voiceChps = 0;               // characters a second, measured
+
+/* Characters of reply that the audio just queued will speak. It arrives after
+   its audio, so it lands on the last chunk queued -- and is banked only when
+   that chunk finishes playing, since a chunk that is queued has not been said
+   yet. */
+function creditChars(n) {
+  const last = wavQueue.length ? wavQueue[wavQueue.length - 1] : wavPlaying;
+  if (last) last.chars = (last.chars || 0) + (n || 0);
+}
+
+function reveal(n) {
+  if (!streaming || n <= 0) return;
+  streaming._raw += withheld.slice(0, n);
+  withheld = withheld.slice(n);
+  streaming.querySelector('.body').innerHTML = render(streaming._raw);
+  keepDown();
+}
+
+function paceAll() {
+  reveal(withheld.length);
+  /* reveal() needs a bubble, and a barge-in can have taken it already. Words
+     that had nowhere to go must not sit here and open the next reply. */
+  withheld = '';
+  clearInterval(pacer); pacer = null;
+  heardAny = false;
+}
+
+/* The reply's final text, parked while the voice finishes saying it. null is
+   "no reply is waiting"; the empty string still means a reply ended. */
+let doneText = null;
+
+/* The reply is over on the screen's terms: everything held is released, the
+   final text (which can differ in length from what streamed) goes in, and the
+   bubble stops being the streaming one. */
+function settle(text) {
+  doneText = null;
+  paceAll();
+  if (streaming) {
+    if (text) {
+      streaming.querySelector('.body').innerHTML = render(text);
+      streaming._raw = text;
+    }
+    streaming.classList.remove('streaming');   // now there is a line to replay
+  }
+  keepDown();
+  streaming = null;
+}
+
+/* The model finishes writing long before the voice finishes speaking --
+   measured above, sixteen seconds before. Settling here handed the whole back
+   half of every reply to the screen in one piece, which is the gap that
+   widened down the message however well the pacer held mid-stream: the pacer
+   was already dead. So while sound is still coming out, the settle waits and
+   the pacer walks the tail; the moment nothing is sounding -- finished,
+   stopped, or never started -- waiting would hold the words hostage, and the
+   remainder goes out at once. */
+function replyDone(text) {
+  if (streaming && withheld && heardAny && voiceChps && sounding()) {
+    doneText = text || '';
+    startPacer();          // the last delta can land before the first sound
+    return;
+  }
+  settle(text);
+}
+
+function startPacer() {
+  if (pacer) return;
+  pacer = setInterval(() => {
+    // A reply that has ended settles when its words run out or its sound
+    // does -- and sound stopping is also every barge-in and Stop, so this is
+    // what keeps a cut-off reply from waiting on audio that was thrown away.
+    if (doneText !== null && (!withheld || !sounding())) return settle(doneText);
+    if (!streaming || !withheld) return;
+    // Where the voice has got to, plus the lead. Absolute rather than
+    // incremental, so a gap opened earlier in the reply closes itself
+    // instead of being carried to the end of it.
+    if (!voiceChps) return reveal(withheld.length);
+    // Characters said, plus where the chunk in progress has got to.
+    const into = wavBusy && wavEl ? (wavEl.currentTime || 0) : 0;
+    const at = spokenChars + voiceChps * into;
+    const want = Math.round(at + voiceChps * LEAD_S) - streaming._raw.length;
+    if (want > 0) reveal(want);
+  }, 70);
+}
+
+function pace(text) {
+  if (!withheld && !streaming._raw) spokenChars = playedS = 0;   // a new one
+  withheld += text;
+  /* Two ways there is nothing to pace against, and both want the words now:
+     nothing heard yet (muted, blocked, or the sound still coming), and no rate
+     yet, which is every first reply. Holding words against a rate that does
+     not exist stops them arriving at all. */
+  if (!heardAny || !voiceChps) return reveal(withheld.length);
+  startPacer();
+}
 
 function playWav(b64, rate) {
   if (hushed()) { markUnheard(); return; }
@@ -2352,6 +2530,7 @@ function stopWav() {
   }
   if (wavUrl) { URL.revokeObjectURL(wavUrl); wavUrl = ''; }
   wavBusy = false;
+  wavPlaying = null;               // dropped, so its characters were never said
   audioStatus();
 }
 
@@ -2658,6 +2837,31 @@ document.querySelectorAll('.key i[data-icon]').forEach(
  * conversation, went on asking after the one in its address, turned away
  * every word of the one it was actually in, and put up a banner blaming
  * another window that was not open. */
+/* Nothing on the other end. Every key that needs the machine goes gray,
+ * which is the whole point: a page that keeps its keys bright while the
+ * socket is dead answers every press with nothing at all, and reads as a
+ * program that has crashed rather than one that is waiting. The audio already
+ * queued goes on playing -- it left the server long ago -- so Pause keeps
+ * working, and is deliberately left bright. A key that still does its job
+ * should still look like it does. */
+let adrift = false;
+function setAdrift(on) {
+  if (on === adrift) return;
+  adrift = on;
+  const bar = $('adrift');
+  if (bar) bar.hidden = !on;
+  /* A reply in flight is over, whatever it had left to say: assistant_done is
+     coming down the socket that just went. Without this the bubble never
+     settles -- the pacer walks the tail as far as the audio in hand reaches,
+     the audio runs out, and the last words sit withheld under a caret that
+     blinks for as long as the page is open. Said this way rather than by
+     revealing outright, the words that do have sound left keep pace with it,
+     and the settle happens when the sound stops. The audio already queued is
+     not touched: it left the server long ago and is owed its ending. */
+  if (on && streaming) replyDone('');
+  lockDeck();
+}
+
 let nowhere = false;
 function setGone(on) {
   if (on === nowhere) return;
@@ -2680,6 +2884,15 @@ function lockDeck() {
   if (nowhere) {
     for (const id of ['t-play', 't-pause', 't-stop', 't-skip', 't-back',
                       't-rec', 't-type']) {
+      $(id).disabled = true;
+    }
+    $('text').disabled = true;
+    return;
+  }
+  if (adrift) {
+    // Everything the machine has to answer. Pause is not in this list: the
+    // sound it holds is already in this browser.
+    for (const id of ['t-play', 't-stop', 't-skip', 't-back', 't-rec', 't-type']) {
       $(id).disabled = true;
     }
     $('text').disabled = true;

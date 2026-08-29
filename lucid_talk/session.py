@@ -2459,6 +2459,14 @@ class Session:
                         if self.stop_reply.is_set():
                             return
                         self.speaker.play(samples, rate)
+                    # What that audio just covered, in characters of the reply
+                    # as written. The page paces the text against the voice,
+                    # and it cannot work this out for itself: speak() strips
+                    # bracketed tags and every asterisk before synthesis, so
+                    # counting the characters it streamed would count markup
+                    # that is never said, and read the voice as faster than it
+                    # is. The +1 is the whitespace this chunk was split on.
+                    self.emit("audio_chars", chars=len(chunk) + 1)
                 except Exception as e:
                     self.emit("log", level="warn", text=f"TTS failed: {e}")
             buffer = rest

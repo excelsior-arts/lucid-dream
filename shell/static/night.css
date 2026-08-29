@@ -159,11 +159,37 @@ body {
               over a plain fixed one whatever the z-index says, which is how
               these vanished behind the open box on a phone. */
            transform:translateZ(0); }
-/* The rail they hang on: top right, and only as wide as a knob. */
+/* The rail they hang on: top right, and only as wide as a knob.
+
+   It takes presses itself, over a gutter wider than the knobs, and the margin
+   pulls the box back out so nothing moves on screen. The knobs are small on
+   purpose, and a press that missed one used to fall through the gaps between
+   them to the room underneath -- where landing on nothing is a real gesture,
+   pointing at the floor, which takes the pill's turn away from it. Missing a
+   button should cost nothing at all; it is the one press with no intention
+   in it. */
 .rail { position:absolute; top:max(18px, env(safe-area-inset-top));
         right:max(20px, env(safe-area-inset-right));
         display:flex; flex-direction:column; align-items:flex-end; gap:9px;
-        pointer-events:none; }
+        /* Out to the screen on the two sides it is already against, and a wide
+           margin on the two it is not. The negative margins pull the box back
+           out again, so the knobs sit exactly where they did. */
+        padding:18px 20px 120px 120px; margin:-18px -20px -120px -120px;
+        pointer-events:auto; }
+/* Except where the conversation has come up under it. On a wide screen the
+   rail hangs over the room, and a press it swallows is one that would have
+   gone nowhere anybody meant. Narrow, the glass is beneath it instead -- and
+   the glass is a scroller, so the same gutter is a patch where a thumb can
+   neither tap a line nor drag the log. Measured: 120px takes 44% of the
+   conversation's width on a phone. Below the width where the two stop
+   overlapping it goes back to a knuckle's worth. */
+@media (max-width: 1120px) {
+  /* Above stays generous: it is the edge of the screen, and on a phone that
+     the notch has pushed the rail down from, the strip over it belongs to
+     nothing else. The same expression as `top`, so the knobs do not move. */
+  .rail { padding:max(20px, env(safe-area-inset-top)) 20px 26px 26px;
+          margin:calc(-1 * max(20px, env(safe-area-inset-top))) -20px -26px -26px; }
+}
 /* Each fitting is only as big as its own knob. Its panel is taken out of the
    flow: hidden, it still had size, and a wide invisible rectangle lying
    across the page swallowed every press meant for what was under it. */

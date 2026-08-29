@@ -356,6 +356,10 @@ def _shutdown(*_):
 # cold, and a low ink for what is only there to be read once.
 BRASS, EDGE = "\033[38;2;201;162;39m", "\033[38;2;108;87;27m"
 STAR, INK, OFF = "\033[38;2;207;224;242m", "\033[38;2;160;143;116m", "\033[0m"
+# The one instruction in the box rather than a fact about the machine, in the
+# colour of the first pill on the shelf so it does not read as a fourth line
+# of state.
+PILL = "\033[38;2;205;111;184m"
 
 
 def colors() -> bool:
@@ -373,7 +377,7 @@ def paint(text: str, color: str) -> str:
 
 
 def banner(blocks: list[tuple[str, list[str], list[str]]],
-           state: str | list[str] = "") -> str:
+           state: str | list[str] = "", lead: str = "") -> str:
     """The one thing this program says before it goes quiet.
 
     Worth a box, and worth all of it being in the box. It is read once, in a
@@ -413,6 +417,11 @@ def banner(blocks: list[tuple[str, list[str], list[str]]],
                       + paint(TITLE, BRASS) + paint(f"   {V.NOW}", INK),
                       len(head) + (wide - 4 - len(head)) // 2),
            "  " + row("", 0)]
+    if lead:
+        # On its own, in its own colour, with air under it: an instruction
+        # stacked with the state lines reads as a fourth fact about the
+        # machine, and gets skimmed with them.
+        out += ["  " + row(paint(lead, PILL), len(lead)), "  " + row("", 0)]
     if extra:
         out += ["  " + row(paint(x, BRASS), len(x)) for x in extra]
         out += ["  " + row("", 0)]
@@ -428,6 +437,8 @@ def banner(blocks: list[tuple[str, list[str], list[str]]],
     out += ["  " + row("", 0), "  " + paint("╰" + "─" * wide + "╯", EDGE), ""]
     return "\n".join(out)
 
+
+PLAY_IN_A_BROWSER = "to play, open the address below in a browser"
 
 TITLE = "L U C I D   D R E A M"
 
@@ -505,7 +516,10 @@ def main():
     state = ("certificates on — every address here is https"
              if scheme == "https" else
              "no certificates — http, which is all this Mac needs")
-    print(banner(blocks, [whose(), state]))
+    # First line in the box, before players or certificates: on a first run it
+    # is the only line that matters, and a box drawn in a terminal reads as an
+    # interface unless something says otherwise.
+    print(banner(blocks, [whose(), state], lead=PLAY_IN_A_BROWSER))
 
     ssl_args = {"ssl_certfile": cert, "ssl_keyfile": key} if secure(cfg) else {}
     uvicorn.run(create_app(), host=host, port=port, log_level="warning", **ssl_args)

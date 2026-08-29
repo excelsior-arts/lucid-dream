@@ -20,12 +20,17 @@ import requests
 from . import paths, prompts
 from shell import log as LOG
 
-HOME = Path.home()
 VENV_BIN = paths.ROOT / ".venv" / "bin"    # replaced by config's llm.venv on start
-LLM_4BIT = HOME / "Models" / "Qwen3.8-27B-Uncensored-MLX" / "4-bit"
-LLM_6BIT = HOME / "Models" / "Qwen3.8-27B-Uncensored-MLX-6bit" / "6-bit"
-STT_PATH = HOME / "Models" / "parakeet-tdt-0.6b-v2"
-TTS_PATH = CB_PATH = HOME / "Models" / "Chatterbox-fp16"
+# Where setup.sh puts them. Only fallbacks -- apply_config replaces both from
+# the config on start -- but a fallback should describe the ordinary install
+# rather than one machine's home directory.
+#
+# The LLM has no fallback on purpose. Its path is the one config decides
+# outright, quantisation and all, and every caller passes it: a constant here
+# saying "4-bit" read as though the code chose that, which setup.sh does.
+MODELS = paths.ROOT / "models"
+STT_PATH = MODELS / "parakeet-tdt-0.6b-v2"
+TTS_PATH = CB_PATH = MODELS / "Chatterbox-Turbo-fp16"
 # Fallback clip, used only when a persona has no clip of its own.
 VOICE_REF = paths.PERSONAS / "lover" / "voice.ref.wav"
 
@@ -396,7 +401,7 @@ def last_words(path, lines: int = 12) -> list[str]:
 class LLMServer:
     """Supervises mlx_vlm.server as a child process we can actually kill."""
 
-    def __init__(self, model_path: Path | str = LLM_4BIT, log_path: Path | None = None):
+    def __init__(self, model_path: Path | str, log_path: Path | None = None):
         self.model_path = Path(model_path)
         self.server = str(LLM_OPTS.get("server") or "mlx_lm")
         self.proc: subprocess.Popen | None = None
