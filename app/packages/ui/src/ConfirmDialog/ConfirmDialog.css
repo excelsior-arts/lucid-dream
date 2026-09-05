@@ -1,0 +1,18 @@
+/* The question, drawn. Moved out of the room page's own stylesheet, rule for
+ * rule and comment for comment; `.askbox` and `.askrow` are under the
+ * dialog's own root, which adds nothing to their weight.
+ *
+ * What the dangerous button looks like is still the page's: `button.danger`
+ * belongs to whatever this is asked on top of, and the dialog only asks.
+ */
+/* Asking before something cannot be undone. In the page's own colors,
+   because a browser dialog arrives in a different typeface wearing the
+   name of the machine. */
+#ask { position:fixed; inset:0; z-index:20; display:flex; align-items:center;
+       justify-content:center; background:rgba(0,0,0,.6); padding:20px; }
+:where(#ask) .askbox { max-width:420px; background:var(--panel); color:var(--text);
+          border:1px solid var(--line); border-radius:14px; padding:18px 20px;
+          box-shadow:0 18px 50px rgba(0,0,0,.6); }
+:where(#ask) .askbox h2 { margin:0 0 8px; font-size:15px; font-weight:600; }
+:where(#ask) .askbox p { margin:0 0 16px; font-size:13px; line-height:1.5; color:var(--dim); }
+:where(#ask) .askrow { display:flex; justify-content:flex-end; gap:10px; }

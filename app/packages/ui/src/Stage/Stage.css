@@ -1,0 +1,65 @@
+/* The stage, and the two states a room can be in before there is one.
+ *
+ * Moved out of the room page's own stylesheet, rule for rule and comment for
+ * comment: the comments are the accumulated reasons, and rewriting the rules
+ * would throw them away with the numbers they explain.
+ *
+ * Nothing here is scoped to a page any more. Every selector is rooted in
+ * #stage or #waking, which are this component's own elements and exist
+ * nowhere else, or in the `flat` and `waking` marks on <html> that this
+ * component puts there — so each rule keeps exactly the specificity it had
+ * and reaches exactly as far.
+ */
+/* ---- the room ---------------------------------------------------------
+   The room is rendered, not laid out: engine/room3d.js builds it in WebGL
+   from the numbers in engine/rooms/<slug>.js. What is left here is the
+   canvas it draws on, and the one piece of the app that is HTML.
+*/
+#stage { position:fixed; inset:0; z-index:0; }
+#stage canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+/* The void closing in from the edges of the picture. Centered on the heart of
+   the room rather than on the middle of the browser window, because the
+   composition is what it belongs to — the engine keeps --eye-x/y pointed at
+   it. Drawn over the canvas and under the conversation, so the words stay
+   out of it. */
+#stage.vignetted::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(ellipse var(--vig-w, 120%) var(--vig-h, 120%)
+               at var(--eye-x, 50%) var(--eye-y, 50%),
+             transparent var(--vig-hold, 30%), var(--void, #07050c) 100%);
+}
+/* No room.
+   Some machine somewhere has no WebGL, or the room throws, or the graphics
+   context is taken away mid-conversation. None of that should cost anybody
+   the conversation — so the glass stops being a plane in a room and becomes
+   what it already nearly is: a column of text down the middle of the screen.
+   One class, and the projection stands down (--px back to 1, no transform).
+   It is a perfectly good chat, which is the point. */
+html.flat #stage { display:none; }
+html.flat body { background:var(--room-ground, #07050c); }
+/* Waking.
+   Until the room has been tried there is no telling which of the two this
+   is, and the glass looks wrong in the meantime — a page with no projection
+   on it yet is a column of text stretched down the screen. So both are held
+   back behind a mark that says the place is opening, and whichever it turns
+   out to be arrives already looking like itself. */
+html.waking #stage { opacity:0; transition:none; }   /* see Glass.css: no fade out */
+#stage { transition:opacity .45s ease; }
+#waking { position:fixed; inset:0; z-index:5; display:grid; place-items:center;
+          pointer-events:none; transition:opacity .3s ease; }
+html:not(.waking) #waking { opacity:0; visibility:hidden; }
+/* What a room shows while it is being built: its own figure, breathing.
+   The parlour's is a diamond, which is what its walls are ruled with; the
+   library's is the spiral its floor is. Both are the same mark the card in
+   the box was backed with, so the thing you pressed is the thing that keeps
+   you waiting — and there is no third state to design, because a room that
+   names no figure gets the diamond, which is the house shape. */
+#waking i { display:block; width:26px; height:26px; transform:rotate(45deg);
+            border:1px solid rgba(var(--room-accent, 141,92,214), .55);
+            animation:opening 1.7s ease-in-out infinite; }
+@keyframes opening {
+  0%, 100% { opacity:.25; transform:rotate(45deg) scale(.82); }
+  50%      { opacity:.9;  transform:rotate(45deg) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #waking i { animation:none; opacity:.6; } }

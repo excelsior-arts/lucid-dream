@@ -1,0 +1,139 @@
+/* The console sheet, as a module. Moved from the shared night sheet; the knob
+   it hangs on lives in the rail and keeps its styles there. */
+
+/* ---- the console ---------------------------------------------------------
+   A sheet down from the top, over whatever is there. Called a hatch and not a
+   deck, because a game already had a `.deck` — the tray its cards lie in — and
+   this sheet inherited its centering and came out as a narrow column in the
+   middle of the page. Second time a shared name has done that; the rule is in
+   the volume panel's comment and it applies here too.
+
+    Not a popover: this is
+   where somebody goes when the evening is not working, and it wants the width
+   of the window and a scrollback they can actually read.
+
+   Monospace and plain on purpose. Everything else in this program is dressed;
+   this is the one surface that should look like what it is.
+--------------------------------------------------------------------------*/
+.hatch { position:fixed; left:0; right:0; top:0; z-index:60;
+        height:min(46vh, 460px); display:flex; flex-direction:column;
+        background:rgba(7,9,13,.94); color:#c8d0da;
+        border-bottom:1px solid var(--edge);
+        box-shadow:0 26px 60px rgba(0,0,0,.6);
+        backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+        font:12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+        transform:translateY(-101%); transition:transform .26s cubic-bezier(.2,.7,.2,1);
+        padding-top:env(safe-area-inset-top); }
+.hatch.open { transform:none; }
+
+/* The top bar: what is running, and how it is. The one thing in here worth
+   seeing without reading. */
+/* The right-hand end of this bar is under the rail: the fittings are fixed to
+   the top-right corner of the page and the console opens across the top of it,
+   so anything sitting at that end reads through a speaker icon. The padding
+   clears the rail's offset and a knob, with a gap after it. */
+.hatch-bar { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px;
+            padding:9px calc(72px + env(safe-area-inset-right, 0px)) 9px 14px;
+            border-bottom:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.02); }
+.hatch-app { color:var(--brass); letter-spacing:1.4px; text-transform:uppercase;
+            font-size:10.5px; }
+.hatch-lamp { display:inline-flex; align-items:center; gap:5px; color:#8b95a3;
+             font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; }
+.hatch-lamp i { width:6px; height:6px; border-radius:50%; background:#3b424d; }
+.hatch-lamp.on i     { background:#7fd18a; box-shadow:0 0 7px rgba(127,209,138,.6); }
+.hatch-lamp.busy i   { background:#e0b25e; box-shadow:0 0 7px rgba(224,178,94,.6); }
+.hatch-lamp.bad i    { background:#e07a6b; box-shadow:0 0 7px rgba(224,122,107,.6); }
+.hatch-fact { color:#7b8492; font-size:11px; }
+.hatch-rule { flex:0 0 1px; align-self:stretch; margin:0 4px;
+              background:rgba(255,255,255,.1); }
+.hatch-quiet { color:#5c6675; font-size:11px; }
+/* The build, pushed to the far end of the bar. Dim on purpose: it is read once
+   in the life of an install, by somebody writing down what went wrong. */
+.hatch-build { margin-left:auto; color:#5c6675; font-size:10.5px;
+               letter-spacing:1.2px; font-variant-numeric:tabular-nums; }
+
+/* The scrollback. */
+.hatch-log { flex:1; overflow-y:auto; overscroll-behavior:contain;
+            padding:8px 14px 10px; }
+.hatch-line { display:grid; grid-template-columns:66px 62px 1fr; gap:10px;
+             padding:1px 0; color:#aeb7c3; word-break:break-word; }
+.hatch-line .t { color:#4e5766; white-space:nowrap; }
+.hatch-line .w { color:#6f7a89; text-transform:uppercase; font-size:10.5px;
+                letter-spacing:1px; padding-top:1px; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; }
+.hatch-line.debug { color:#79828f; }
+.hatch-line.warn  .m { color:#e0b25e; }
+.hatch-line.error .m { color:#f0968a; }
+
+/* Where one server ended and the next began. */
+.hatch-since { display:flex; align-items:center; gap:10px; margin:10px 0 8px;
+               color:#6f7a89; font-size:10.5px; letter-spacing:1.6px;
+               text-transform:uppercase; }
+.hatch-since::before, .hatch-since::after {
+  content:""; flex:1; height:1px; background:rgba(255,255,255,.12); }
+
+/* The line you type into. */
+.hatch-say { position:relative; display:flex; align-items:center; gap:8px;
+            padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+            border-top:1px solid rgba(255,255,255,.07);
+            background:rgba(255,255,255,.02); }
+/* The prompt, and the way in. It was an ornament — a chevron telling somebody
+   who could see the box that this is where you type — and it is a key now:
+   every command starts with a slash, and on a phone that character is two taps
+   down a keyboard. Sized for a thumb without looking like a button in a row of
+   none. */
+.hatch-mark { color:var(--brass); font:inherit; background:none; cursor:pointer;
+              border:1px solid transparent; border-radius:6px;
+              padding:2px 8px; margin-left:-4px; line-height:1;
+              -webkit-tap-highlight-color:transparent; }
+.hatch-mark:hover, .hatch-mark:focus-visible {
+              border-color:rgba(201,162,39,.35); background:rgba(201,162,39,.10); }
+@media (pointer:coarse) {
+  /* A thumb, and the 44px Apple asks for. */
+  .hatch-mark { padding:8px 12px; margin-left:-8px; }
+}
+.hatch-say input { flex:1; min-width:0; background:transparent; border:0; outline:none;
+                  color:#dbe2ea; font:inherit; padding:2px 0; }
+.hatch-say input::placeholder { color:#4e5766; }
+
+/* What "/" opens: the commands, above the line, because the line is at the
+   bottom of the sheet. */
+/* Capped, and not the width of the window. What a command does has to sit
+   near its name to be read as a pair — stretched across a wide screen the two
+   halves stop belonging to each other, and you find yourself tracking a line
+   with a finger. */
+/* A row of the panel, not a thing floating over it: it may take up to half of
+   what there is and the log keeps the rest, so however many commands there
+   are the panel stays the size it was. dvh rather than vh because a phone
+   with its keyboard up has a smaller viewport than the one vh is measured
+   against, and that is exactly when this list is open. */
+.hatch-hints { flex:0 1 auto; min-height:0; margin:0 14px 8px;
+              max-width:660px; max-height:min(50%, 46dvh); overflow-y:auto;
+              overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+              background:rgba(10,13,19,.97); border:1px solid var(--edge);
+              border-radius:11px; box-shadow:0 -14px 40px rgba(0,0,0,.6);
+              padding:5px; }
+.hatch-hints[hidden] { display:none; }
+.hatch-hint { display:flex; align-items:baseline; gap:16px; width:100%; text-align:left;
+             padding:6px 9px; border:0; border-radius:8px; cursor:pointer;
+             background:transparent; color:#aeb7c3; font:inherit; }
+/* One column for the name, so they line up down the list, and the description
+   immediately after it rather than away at the far edge. */
+.hatch-hint .what { flex:0 0 auto; min-width:172px; }
+.hatch-hint b { color:#e7ecf2; font-weight:500; }
+.hatch-hint em { color:#6f7a89; font-style:normal; }
+.hatch-hint .why { color:#6f7a89; min-width:0; overflow:hidden; text-overflow:ellipsis;
+                   white-space:nowrap; }
+.hatch-hint.on, .hatch-hint:hover { background:rgba(255,255,255,.07); }
+
+
+@media (max-width:620px) {
+  .hatch { height:min(62vh, 560px); }
+  /* Sixteen pixels or a phone zooms the page in on focus, and does not zoom
+     back out afterwards. Nothing to do with how readable the console is. */
+  .hatch-say input { font-size:16px; }
+  .hatch-line { grid-template-columns:62px 1fr; }
+  .hatch-line .w { display:none; }
+  .hatch-hint .why { display:none; }
+}

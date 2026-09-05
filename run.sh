@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lucid Dream — the shell, and the apps it opens. http://127.0.0.1:6969
+# Lucid Dream — the machine, and the apps it opens. http://127.0.0.1:6969
 #
 #   ./run.sh                     you, on your own wifi address
 #   ./run.sh --user pete         somebody else: their own conversations,
@@ -11,7 +11,7 @@
 # account, no password. A name nobody has used yet is made on the spot, starting from this
 # machine's settings and none of anybody's memories. Without --user you are
 # "player1", which is what a fresh machine calls whoever never typed a name.
-# See shell/paths.py.
+# See machine/paths.py.
 #
 # The port belongs to the run and is written down nowhere: 6969 unless --port
 # says otherwise, and everything handed out — the wifi addresses, the phone's
@@ -59,13 +59,13 @@ while [ $# -gt 0 ]; do
 done
 
 # One read of the machine's config for the three things this script needs,
-# through shell/paths.py rather than a fixed path -- and a name nobody has used
+# through machine/paths.py rather than a fixed path -- and a name nobody has used
 # yet is made here, before anything looks for their directory.
 SETTINGS="$(python3 - <<'EOF'
 import json
 import os
 
-from shell import paths as P
+from machine import paths as P
 
 mine = P.welcome(P.WHO)
 
@@ -101,7 +101,7 @@ for cand in "$VENV/python" "./.venv/bin/python" "$(command -v python3)"; do
 done
 if [ -z "$PY" ]; then
     echo "no Python found. Set llm.venv in config.json to the directory"
-    echo "holding mlx_vlm.server (see AGENTS.md), or make a .venv here."
+    echo "holding mlx_lm.server (see AGENTS.md), or make a .venv here."
     exit 1
 fi
 export PATH="$(cd "$(dirname "$PY")" && pwd):$PATH"
@@ -136,7 +136,7 @@ fi
 # actually reach us. The flag lives out here, so it has to be handed in.
 [ -n "$PHONE" ] || export LUCID_PHONE=0
 
-"$PY" -u -m shell &
+"$PY" -u -m machine &
 APP=$!
 trap 'kill $APP $BRIDGE 2>/dev/null' EXIT INT TERM
 

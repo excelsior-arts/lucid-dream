@@ -1,6 +1,6 @@
 """Cut every icon this thing is asked for, from one photograph.
 
-    python tools/cut_icons.py shell/static/icons/source.jpg shell/static/icons
+    python tools/cut_icons.py machine/static/icons/source.jpg machine/static/icons
 
 The source photograph is kept beside what it produced, so the set can be cut
 again — a size nobody asked for last year, a crop that turned out to be wrong

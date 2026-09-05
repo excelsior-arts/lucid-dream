@@ -1,0 +1,41 @@
+/* The two things a door can be while it is not a page: on its way, and not
+   coming. Both are the shell's own furniture -- brass on near-black, one lit
+   edge -- because a game that has not arrived cannot dress them. */
+
+/* A single lit point, breathing. Nothing that reads as a percentage: this is
+   a chunk off a local disk, so the honest thing to say is "a moment", and a
+   spinner over a wait that is usually one frame is more alarming than the
+   wait. */
+.wait {
+  position: fixed; inset: 0; z-index: 1;
+  display: grid; place-items: center;
+  pointer-events: none;
+}
+.wait i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 14px rgba(201, 162, 39, .55);
+  animation: door-breathe 1.7s ease-in-out infinite;
+}
+@keyframes door-breathe {
+  0%, 100% { opacity: .22; transform: scale(.7); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+.gone {
+  position: fixed; z-index: 1;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: min(30rem, 86vw);
+  padding: 1.1rem 1.3rem;
+  text-align: center;
+}
+.gone b { display: block; color: var(--ink); font-size: .95rem; letter-spacing: .02em; }
+.gone p { margin: .5rem 0 .9rem; color: var(--ink-dim); font-size: .8rem; line-height: 1.5; }
+.gone button {
+  font: inherit; font-size: .8rem;
+  padding: .4rem 1.1rem;
+  color: var(--brass); background: transparent;
+  border: 1px solid var(--edge); border-radius: 2px;
+  cursor: pointer;
+}
+.gone button:hover { background: rgba(201, 162, 39, .1); }

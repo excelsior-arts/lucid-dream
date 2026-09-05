@@ -1,0 +1,41 @@
+/* The ground the whole app stands on: the palette, and the few rules that are
+   true of every page in it. */
+@import './tokens.css';
+
+/* Antique futuristic: engraved metal and cold glass, no wood grain and no
+   drop-shadowed leather. The trick is that every surface is nearly the same
+   dark, and only the *edges* carry light — that is what makes brass read as
+   brass without a single texture file. */
+.plate {
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.045), transparent 42%),
+    linear-gradient(#0e1119, #080a10);
+  border:1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),      /* the lit top edge */
+    inset 0 -1px 0 rgba(0,0,0,.6),
+    0 18px 40px rgba(0,0,0,.55);
+}
+.engraved { text-shadow:0 1px 0 rgba(0,0,0,.75), 0 -1px 0 rgba(255,255,255,.05); }
+
+::selection { background:rgba(201,162,39,.3); }
+
+/* Padding inside the width, everywhere. This was lost when the box geometry
+   moved into this file, and <main> came out 422px wide in a 390px window —
+   the box then sat 32px right of center, leaning on the wall. */
+* { box-sizing:border-box; }
+
+/* The dark goes on the root element, not only on the body. A browser paints a
+   document's root background before any of its content — with the color only
+   on <body> that first paint is the default white, which is the flash Firefox
+   used to show on every navigation. Safari hides it behind a view transition;
+   Firefox has none to hide it. */
+html { -webkit-text-size-adjust:100%; background:var(--void); }
+body {
+  margin:0; background:var(--void); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration:.001s !important; transition-duration:.001s !important; }
+}

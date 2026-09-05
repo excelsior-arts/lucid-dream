@@ -1,0 +1,32 @@
+/* The readout: a small dark window set into the panel, the digits lit in
+   it, and the ghost of every segment that is not. Drawn in the deck's own
+   dark rather than in calculator grey, so it is one more part of the deck
+   and not a thing stuck onto it; one look whatever the theme, since it is a
+   piece of hardware and not a piece of type. */
+/* As tall as the keys beside it -- stretched to the row rather than told a
+   height, so it matches them on any screen -- with the digits smaller than
+   the window, the way a readout sits inside its bezel. Less room on the
+   right than the left: the lean of the digits already leaves some there. */
+.lcd { display:inline-flex; align-items:center; flex:0 0 auto; align-self:stretch;
+       padding:0 2px 0 5px; border-radius:4px;
+       background:linear-gradient(#0f0d13, #08070b);
+       /* A well and no rim: the panel's dark goes down into it, and only the
+          shadow inside says how deep. A lit edge round it made it a key. */
+       border:0;
+       box-shadow:inset 0 1px 3px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.5);
+       user-select:none; }
+.lcd svg { height:22px; width:auto; display:block; }
+/* Lit, but not bright: it is read, not looked at. */
+.lcd path.on, .lcd rect { fill:#b9995f; }
+/* The ghost: every segment that could light, faintly, the way an unlit
+   eight sits behind each digit on the real thing. */
+.lcd path.off { fill:#fff; fill-opacity:.045; }
+/* Held, or run out: the digits step back, so a stopped clock is legible as
+   stopped rather than as one between blinks. */
+.lcd.dim path.on, .lcd.dim rect { fill-opacity:.4; }
+.lcd.running .colon { animation:lcd-tick 1s steps(1, end) infinite; }
+@keyframes lcd-tick { 0%, 49% { opacity:1; } 50%, 100% { opacity:.1; } }
+@media (prefers-reduced-motion: reduce) { .lcd.running .colon { animation:none; } }
+/* The digits as words, off screen: for a reader, and for a test. */
+.lcd-said { position:absolute; width:1px; height:1px; overflow:hidden;
+            clip:rect(0 0 0 0); white-space:nowrap; }

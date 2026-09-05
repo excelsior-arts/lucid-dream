@@ -9,27 +9,28 @@ something has already gone wrong.
 One directory per thing being tested, named after it, the way userdata/ is:
 
     tests/
-      shell/          the shell itself: the console, where things live
-      lucid_talk/     the first app
-      live/           the old scripts that need a running server and the
-                      models; minutes rather than seconds, run by hand
+      machine/          the machine: the console, the models' surface,
+                      where things live, and the storage it lends a game
 
-A second app is a directory here and nothing else — no runner to edit, no list
-to extend. The shell is supposed to be able to carry an app it knows nothing
-about, and that has to be true of its checks too.
+There is one directory because there is one program left in Python. What a
+game *is* — the conversation, the prompts it assembles, the arithmetic behind
+how a character holds you — runs in the browser and is checked there, under
+app/. The machine is supposed to be able to carry a game it knows nothing
+about; what is checked in here is that it can, against the one game this
+checkout ships.
 
 ---- why this package sets an environment variable on import -----------------
 
-`shell/paths.py` reads LUCID_USERDATA once, at import, and every module that
-keeps things on disk binds its directory from it at import too (store.py does
-`from .paths import SESSIONS as DIR`). So the switch has to be thrown before
-the first `import lucid_talk.anything` — after that it is far too late.
+`machine/paths.py` reads LUCID_USERDATA once, at import, and everything that
+keeps things on disk is handed a directory built from it. So the switch has to
+be thrown before the first `import machine.anything` — after that it is far too
+late.
 
 This package is imported before any test in it, whichever way the tests are
 started, which makes this the one place that is always early enough. It is
 also not optional: a test suite that writes conversations, memory and standing
 into the real userdata/ is not a test suite, it is a lossy edit of somebody's
-diary. That has happened here once already, which is why shell/paths.py
+diary. That has happened here once already, which is why machine/paths.py
 carries the guard it does and why this file refuses to go on if the switch has
 not taken.
 """
@@ -52,7 +53,7 @@ from pathlib import Path
 # standing, and every one of those is somebody's if it is not thrown away.
 os.environ["LUCID_USERDATA"] = tempfile.mkdtemp(prefix="lucid-tests-")
 
-from shell import paths as _paths                              # noqa: E402
+from machine import paths as _paths                              # noqa: E402
 
 SCRATCH = Path(os.environ["LUCID_USERDATA"]).resolve()
 REAL = (Path(__file__).resolve().parents[1] / "userdata").resolve()

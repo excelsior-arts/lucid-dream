@@ -1,0 +1,14 @@
+{
+  "name": "@lucid/machine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@lucid/audio": "*",
+    "@lucid/shell": "*"
+  }
+}

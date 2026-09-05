@@ -1,0 +1,24 @@
+/* A banner: one line above the controls saying the page has stopped meaning
+ * anything, and — where there is one — the thing that still works.
+ *
+ * Moved out of the room page's own stylesheet, rule for rule and comment for
+ * comment. What was three ids there is one class here, because which banners
+ * a game has is the game's: it keeps the ids, and anything it wants to say in
+ * a different color it says against its own (see `#gone` in Room.css).
+ */
+/* Said once, above the keys, when the machine has been taken to another
+   window: the keys still look pressable and nothing they do would reach
+   this conversation. A page that has stopped meaning anything should say
+   so rather than go quiet. */
+.banner { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+         padding:8px 12px; border-radius:9px; font-size:12.5px;
+         color:#e9c98f; background:rgba(120,80,20,.22);
+         border:1px solid rgba(217,164,65,.32); }
+/* hidden means hidden. The `display:flex` above is an author rule and the
+   browser's own [hidden] is not, so a banner told to go stayed on screen. */
+.banner[hidden] { display:none; }
+/* And only where there is a button to push away from: a banner that offers
+   nothing is one line of text, and stretching it would put the sentence and
+   the box round it in different places on the two. */
+.banner span:not(:only-child) { flex:1; min-width:120px; }
+.banner button { padding:5px 10px; font-size:12px; }

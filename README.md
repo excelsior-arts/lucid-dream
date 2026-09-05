@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="shell/static/icons/icon-512.png" width="168" alt="Lucid Dream">
+  <img src="machine/static/icons/icon-512.png" width="168" alt="Lucid Dream">
 </p>
 
 <h1 align="center">L U C I D &nbsp; D R E A M</h1>
 
-<p align="center"><b>Interactive applied art. Take nightly.</b></p>
+<p align="center"><b>Local AI Games</b></p>
 
 ## LUCID TALK
 
-A box of digital drugs for a localhost, uncensored audio experience.
+A box of digital drugs for an audio experience with gaming elements.
 
 <p align="center">
   <img src="docs/talk-box-closed.webp" width="48%" alt="The closed Lucid Talk box">
@@ -45,42 +45,67 @@ Read this part like it is 1996, because it matters as much as it did then.
 
 |              | REQUIRED                                   |
 | ------------ | ------------------------------------------ |
-| **Machine**  | Apple Silicon Mac                          |
+| **Computer** | Apple Silicon Mac                          |
 | **System**   | macOS 14 or later                          |
-| **Memory**   | 32 GB unified                              |
-| **Disk**     | 30 GB free, for the models                 |
-| **Runtime**  | Python 3.12                                |
+| **Memory**   | 16 GB unified; 32 GB for the large model   |
+| **Disk**     | 40 GB free, for the models                 |
+| **Runtime**  | Python 3.12, and Node 24 to build the page |
 | **Display**  | any browser from this decade               |
 | **Sound**    | speakers or headphones — headphones better |
 | **Network**  | once, to download the models. Never again  |
 | **Graphics** | none — Apple Silicon is the graphics card  |
 
+The language model ships in three sizes. All three are installed; setup
+picks by memory, `/ai_model_size` in the console switches any time.
+Memory and standing stay — only the writer changes.
+
+|        | model      | holds  | needs | first word |
+| ------ | ---------- | ------ | ----- | ---------- |
+| **lg** | 27B, 4-bit | ~23 GB | 32 GB | ~3-4 s     |
+| **md** | 9B, 4-bit  | ~12 GB | 16 GB | under 1 s  |
+| **sm** | 4B, 4-bit  | ~9 GB  | 8 GB  | under 1 s  |
+
+Holds = language model + recognizer + voice, on the app's own meter;
+leftover is macOS, a browser, the prompt cache. Mic off → no recognizer;
+muted room → no voice. The large one starts speaking as soon as the first
+sentence exists.
+
+They are not three speeds of the same model.
+
+- **lg — immersion (32 GB).** The model the game was written for.
+  Character, place, and what you just introduced stay true together.
+  The model plays along: a surprise is answered in character, not
+  refused. More than two people hold. It reads the kind of moment you
+  are in, not every sentence as a command.
+- **md — balanced (16 GB).** Fast enough to feel like a conversation,
+  and it uses what it remembers. The register narrows — jealous, one
+  note. Spring something mid-scene and it closes on the first try,
+  usually as something done to the model; standing jumps. Name the
+  premises before you start.
+- **sm — fastest (8 GB).** Instant, long, and the model is gone:
+  invents, repeats, narrates from outside, same narrow jealous note.
+  A core voice shows up; the rest of the persona does not. Rooms and
+  voice still run. Not an evening.
+
 **Not supported:** Intel Macs, Windows, Linux, phones on their own. The whole
 thing is built on Apple's MLX, which is Apple Silicon or nothing. A phone joins
-in as a second screen — see ON THE MACHINE — but it is not the machine that runs
+in as a second screen — see ON YOUR MAC — but it is not the Mac that runs
 this.
-
-**How much memory really matters.** Measured on the app's own meter, the set-up
-holds about 23 GB mid-reply: a 4-bit 27B language model, a speech recognizer,
-and a voice. What is left over is what macOS, a browser and the prompt cache
-have to live in, which is why 32 GB is the number rather than 24 — everything is
-unloaded on request, with the console telling you what is held. Somebody who wants room to spare, or a larger model
-than the one that ships, wants 48.
-
-**A word about speed.** It thinks before it speaks — about four seconds before
-the first word, and a minute or so for a long one, though it starts speaking as
-soon as the first sentence exists. A smaller model answers in a second and is
-worse company; `llm.model` is where you disagree.
 
 ---
 
 ## WHAT'S IN THE BOX
 
-- **Lucid Dream shell** — a browser console, and the apps it carries.
-- **Lucid Talk app** — the box of pills, and the rooms behind them.
-- **The wiring** — recognizer, language model, and voice, fetched at install,
-  joined so they behave like a single thing you can communicate with.
-- **A phone remote**, for talking to a pill from the other end of the sofa.
+- **The Lucid Dream machine** — one language model, one ear, one voice, and a console to
+  watch them by. It knows nothing about any game.
+- **A shelf of games.** So far: **Lucid Talk**, the box of pills and the rooms
+  behind them.
+- **The rooms** — drawn in 3D in your browser, lit by how the pill is holding
+  you, with things in them you can move.
+- **The wiring** — ear, mind and voice joined so they behave like one person
+  you can talk over, interrupt, and be interrupted by.
+- **The same game on your phone**, running its own conversation from the other
+  end of the sofa.
 - **Every conversation on disk**, in a directory you can copy, carry or burn.
 
 ---
@@ -94,33 +119,36 @@ cd lucid-dream
 ./run.sh
 ```
 
-`setup.sh` checks the machine first, then the venv, then ~21 GB of models, then
-the tests. Safe to run twice: it skips what is already there. `./setup.sh --check`
-only reports.
+`setup.sh` checks the Mac, the venv, ~31 GB of models (three language
+sizes, the recognizer, the voice), the page, then the tests. Safe twice:
+skips what is there; a newer model fetches only that. `--check` reports;
+`--prune` removes what nothing uses.
 
 No account for the default models (Apache-2.0 / CC-BY-4.0). A gated model of
 your own needs a Hugging Face login; the script says so if it hits one.
 
-Open the address marked **this Mac** — `http://localhost:6969`. The models
-take a few seconds to warm, then about four seconds before it starts speaking
-each time. See A WORD ABOUT SPEED, above.
+`run.sh` prints two addresses; open the one marked **this Mac**,
+`http://localhost:6969`, in your browser. Models take a few seconds to warm;
+first word is in the table above.
 
 By hand, or with an agent: **[AGENTS.md](AGENTS.md)**.
 
-> Read AGENTS.md in this repository and set the app up on my machine.
+> Read AGENTS.md in this repository and set the app up on my Mac.
 
 ---
 
-## ON THE MACHINE
+## ON YOUR MAC
 
 - **Microphone** — off until you turn it on. Typing always works.
 - **Headphones** — better. On speakers, Safari and Chrome cancel echo; Firefox
   on a Mac currently does not.
-- **Phone** — remote out of the box. For it to *hear* you, `./tools/phone.sh`
-  and the [three taps](MANUAL.md#your-phone).
+- **Phone** — the whole page over wifi, out of the box: another player at
+  the same Mac. For it to *hear* you,
+  `./tools/phone.sh` and the [three taps](MANUAL.md#your-phone).
 - **Another player** — `./run.sh --user pete`. Separate memories, no password.
-- **Your own** — a character is one markdown file; a voice is a six-second clip
-  you have the rights to. Both re-read between replies.
+- **Your own** — a character is tuned in the game: `/persona_set` opens its
+  words, `/persona_tune` its settings, and what you write is yours, kept beside
+  your memories. A voice is a six-second clip you have the rights to.
 
 **[MANUAL.md](MANUAL.md)** — play, write, remember, the phone, where yours
 lives on disk.
@@ -135,6 +163,10 @@ lives on disk.
 [Parakeet](https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v2) ·
 [Chatterbox](https://huggingface.co/mlx-community/chatterbox-turbo-fp16) ·
 any [MLX chat model](https://huggingface.co/mlx-community) you like.
+
+In the browser: [React](https://react.dev) ·
+[three.js](https://threejs.org) · [Rapier](https://rapier.rs) ·
+[Vite](https://vite.dev).
 
 They do not talk to each other. This is the wiring: barge-in, speaking before
 the sentence is done, not answering its own voice, remembering when the window

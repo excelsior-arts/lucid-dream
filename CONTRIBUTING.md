@@ -8,10 +8,10 @@ way: made rather than assembled. None of that is an unfinished edge in want of
 a plugin API. It is the thing itself.
 
 The engineering underneath is a different matter, and it is real engineering:
-four models kept in step on one machine, a game drawn in CSS rather than WebGL
-so that its words stay words, and a memory budget that has to hold all of it
-and still answer before you lose the thread. There the door is open, and help is
-genuinely wanted.
+four models kept in step on one machine, a room drawn in WebGL with the
+conversation laid on real HTML inside it so that its words stay words, and a
+memory budget that has to hold all of it and still answer before you lose the
+thread. There the door is open, and help is genuinely wanted.
 
 ## What travels well
 
@@ -91,15 +91,26 @@ Point 2 is the whole of it. Everything else follows the license.
 
 ## The rest
 
-- `./check.sh` before every commit. The fast tier needs nothing installed; the
-  rooms tier wants a browser and a running server, and says so if it cannot
-  run — see **[AGENTS.md](AGENTS.md)**, *The checks*.
+- `./check.sh` before every commit. Three tiers: Python — the machine and the
+  shelf — which needs nothing installed; the page's own under `app/`, which is
+  most of the program and needs node; and the rooms, in a real browser against
+  a running server. The last two say so if they cannot run — see
+  **[AGENTS.md](AGENTS.md)**, *The checks*.
+- Anything under `app/` is typed. `npm run typecheck` is where a page that
+  would not have run says so, and it is the reason there is no test asking
+  whether it parses.
 - **US English**, in the writing and in the names of things.
 - Comments say **why**, not what, and never what things used to be. The files
   here are their own documentation; match the voice of what you are editing.
 - Nothing private goes beside the code. It belongs under `userdata/` — see
-  `shell/paths.py`, which explains why that guarantee is one line in
+  `machine/paths.py`, which explains why that guarantee is one line in
   `.gitignore` rather than a list somebody has to remember to extend.
+- A game is a package under `app/packages/` and a directory under the player's:
+  its manifest, its characters, its prompts, and the words it has for what it
+  keeps. Nothing in `machine/` may name one, or name anything one keeps — a
+  test says so (`tests/machine/test_wiring.py`), because `machine/` is the
+  machine, and it is supposed to be able to carry a game it has never heard
+  of.
 
 *This file is not legal advice. If you are contributing on behalf of an
 employer, check that you may.*

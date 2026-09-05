@@ -1,0 +1,316 @@
+/* The box, imported by the shelf and by the open-box page: the geometry is
+   shared, and each page only says what state it is in. */
+
+/* ---- the box ------------------------------------------------------------
+   One object, two screens. The front page shows it shut on a table and the
+   app shows you standing over it open — and they have to be the *same* box,
+   or opening it reads as a cut to somewhere else. So the geometry lives here,
+   in the shared sheet, and each page only says what state it is in.
+
+   Everything is elements: floor, four walls, a hinged lid with a face on each
+   side. That is what keeps the writing on the lid real text.
+------------------------------------------------------------------------- */
+.box { --w:550px; --d:362px; --h:98px;
+       position:relative; width:var(--w); height:var(--d);
+       transform-style:preserve-3d;
+       transform:rotateX(58deg) translateZ(0);
+       animation:hover-idle 7s ease-in-out infinite;
+       transition:transform .9s cubic-bezier(.2,.7,.2,1); }
+@keyframes hover-idle {
+  50% { transform:rotateX(58deg) translateZ(10px); }
+}
+
+.face { position:absolute; background:
+          linear-gradient(150deg, rgba(255,255,255,.05), transparent 45%),
+          linear-gradient(#0d1017, #070910);
+        border:1px solid var(--edge); }
+/* The bottom of the tray, which is the largest interior surface and the one
+   the pills lie on. */
+.floor { inset:0; box-shadow:inset 0 0 60px rgba(0,0,0,.86);
+         background:
+           linear-gradient(150deg, rgba(255,255,255,.045), transparent 45%),
+           linear-gradient(var(--inside), var(--inside-2)); }
+/* Walls: each one hinged along the edge of the floor it belongs to, then
+   stood up ninety degrees.
+
+   The sign matters and is not guessable: rotating the near wall by -90
+   swings it *under* the floor instead of up from it, and the box then draws
+   as a lid floating a wall's height above a body sunk a wall's height below
+   — which looks exactly like a box left open, and was. */
+/* The walls carry no line along the rim — the lid's own border is already
+   there, a pixel or two away, and two of them read as one broken edge. But
+   an unlit face on a black page is not a face at all, so each wall is shaded
+   for the direction it points, and keeps the edges that are the silhouette:
+   the bottom, and the two outer verticals. That is what makes it a box
+   rather than three dark quadrilaterals. */
+.face.w-front, .face.w-back, .face.w-left, .face.w-right { border:0; }
+/* Facing you, and the lightest of the four. */
+.w-front { background:
+             linear-gradient(rgba(255,255,255,.09), transparent 55%),
+             linear-gradient(#171d28, #0a0e15);
+           box-shadow:inset 0 -1px 0 var(--edge),
+                      inset 1px 0 0 rgba(201,162,39,.35),
+                      inset -1px 0 0 rgba(201,162,39,.35); }
+/* Turned away from the light: darker, and graded across so the corner where
+   they meet the front wall reads as a corner. */
+.w-left  { background:
+             linear-gradient(90deg, #0a0e15, #131924);
+           box-shadow:inset 0 -1px 0 var(--edge), inset 1px 0 0 rgba(201,162,39,.30); }
+.w-right { background:
+             linear-gradient(270deg, #0a0e15, #131924);
+           box-shadow:inset 0 -1px 0 var(--edge), inset -1px 0 0 rgba(201,162,39,.30); }
+/* The inside of the back wall, which is what you look at when it is open —
+   and whose top edge is the strip you see along the back of the box when it
+   is shut, because the eye is above it. One element, two faces, so the lining
+   only goes on once the lid is off: burgundy here unconditionally drew a red
+   stripe across a closed box on the front page, which is the inside leaking
+   out. The choose page keeps its box open and says so in its own sheet. */
+.w-back  { background:
+             linear-gradient(rgba(255,255,255,.05), transparent 60%),
+             linear-gradient(#141a24, #0b0f17); }
+/* The lining, as a sheet laid over the three walls you look at from inside.
+ *
+ * A wall here is one element, and one element has one background on both of
+ * its faces. So lining them outright put a burgundy stripe along the back of
+ * the *shut* box, where the eye is above the rim and sees the top of the far
+ * wall — the inside leaking out. Swapping the background by state fixed the
+ * stripe and bought a snap instead: the moment the lid starts down, three
+ * walls change color under it while they are still in full view.
+ *
+ * An overlay can do what a background cannot, which is fade. Nothing is lined
+ * by default, so a box on a table is night all the way round; opening brings
+ * the lining up, shutting takes it away over half a second, and by the time
+ * the top of that wall comes back into view there is nothing on it.
+ */
+.w-back::after, .w-left::after, .w-right::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  opacity:0; transition:opacity .5s ease; }
+.w-back::after  { background:var(--lining); }
+/* Graded across, the same way the walls under them are, so the corner where
+   they meet the front still reads as a corner. */
+.w-left::after  { background:linear-gradient(90deg, var(--inside-2), #33101c); }
+.w-right::after { background:linear-gradient(270deg, var(--inside-2), #33101c); }
+.object.opening .w-back::after,
+.object.opening .w-left::after,
+.object.opening .w-right::after { opacity:1; }
+
+.w-front { left:0; top:100%; width:var(--w); height:var(--h);
+           transform-origin:top center; transform:rotateX(90deg); }
+.w-back  { left:0; bottom:100%; width:var(--w); height:var(--h);
+           transform-origin:bottom center; transform:rotateX(-90deg); }
+.w-left  { top:0; right:100%; width:var(--h); height:var(--d);
+           transform-origin:right center; transform:rotateY(90deg); }
+.w-right { top:0; left:100%; width:var(--h); height:var(--d);
+           transform-origin:left center; transform:rotateY(-90deg); }
+
+/* What is inside, before you can see it properly: three shapes and a light.
+   Enough to promise something; not enough to spoil it. */
+/* What is inside, standing rather than lying flat: propped against the back
+   of the box, their tops clear the rim the moment the lid lifts. Flat on the
+   floor they were invisible until the lid was fully off. */
+/* What is inside. Measured against the wall height, never in fixed pixels:
+   a card taller than the box is deep stands over the rim and shows through
+   a shut lid — which is what a fixed 52px did on a narrow phone, where the
+   walls are only 58 high.
+
+   Tipped toward the camera, not away: the floor is already tilted, and a
+   card tipped the other way ends up edge-on and draws as a line. */
+/* Set well forward of the hinge. Against the back wall they sat directly
+   under the part of the lid that stays nearly touching when it lifts, and
+   at that grazing angle the browser sorts them in front of it — the ghost
+   band across the lid on a phone. Depth between the two planes is what
+   stops it. */
+.contents { position:absolute; left:8%; right:8%; top:44%;
+            height:calc(var(--h) * .72);
+            transform:translateZ(calc(var(--h) * .08)) rotateX(-46deg);
+            transform-origin:bottom center;
+            display:flex; flex-wrap:wrap; align-items:flex-end;
+            align-content:flex-end; justify-content:center; gap:8px 5%;
+            /* Nothing to see through a shut lid. Not a nicety: at some box
+               sizes the browser sorts these cards in front of the lid that
+               covers them, and they ghost through the metal. Kept dark until
+               the lid actually moves, which is the only time they are for. */
+            opacity:0; transition:opacity .45s ease; }
+.object.opening .contents { opacity:1; }
+/* What is lying in it, at hint size. Each one has its own color and its own
+   light, because each is a different thing to take. The third is an empty
+   berth — there is room in the box for five, and a shut box says so. */
+.contents i { width:26%; height:calc(var(--h) * .66); border-radius:7px 7px 4px 4px;
+              opacity:.55;
+              background:
+                linear-gradient(200deg, rgba(255,255,255,.10), transparent 44%),
+                linear-gradient(rgba(var(--card), .55), rgba(var(--card), .16));
+              border:1px solid rgba(var(--card), .5);
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.10),
+                         0 0 22px rgba(var(--card), .18);
+              transition:opacity .7s ease, box-shadow .7s ease; }
+.contents i:nth-child(1) { --card:141, 92, 214; }    /* purple */
+.contents i:nth-child(2) { --card:214, 108, 48; }    /* yellow-red */
+.contents i:nth-child(3) { --card:120, 130, 150; opacity:.25; }   /* empty berth */
+.object.opening .contents i {
+              opacity:1; box-shadow:inset 0 1px 0 rgba(255,255,255,.12),
+                                    0 0 34px rgba(var(--card), .45); }
+.object.opening .contents i:nth-child(3) { opacity:.3; }
+.contents i:nth-child(1) { transform:rotate(-5deg); }
+.contents i:nth-child(3) { transform:rotate(4deg); }
+.lamp { position:absolute; inset:0; transform:translateZ(1px); pointer-events:none;
+        background:radial-gradient(60% 45% at 50% 55%, rgba(201,162,39,.28), transparent 72%);
+        opacity:0; transition:opacity .7s ease; }
+
+/* The lid, hinged at the back. Closed it is the whole object; open it is the
+   thing that gets out of the way. */
+.lid { position:absolute; inset:0; transform-origin:top center;
+       transform-style:preserve-3d;
+       transform:translateZ(var(--h)) rotateX(0deg);
+       transition:transform 1s cubic-bezier(.3,.8,.25,1); }
+/* Two faces, because a lid has two. Rotate a single div and you are looking
+   at the back of its front — the engraving comes out mirrored and the light
+   falls from underneath.
+
+   Both carry a transform of their own, and the outer one needs it even though
+   it sits where it is drawn. A face with `backface-visibility: hidden` and no
+   transform is not certainly inside the 3-D context its parent opened, and
+   WebKit takes that literally on a cold paint: the lid comes up with its
+   engraving and its brackets and no lid under them, and stays that way until
+   something forces the layer to be built again. `translateZ(0)` is that
+   something, said once, in the stylesheet.
+
+   Half a pixel rather than none: `translateZ(0)` collapses to a 2-D matrix,
+   which is the state being escaped from. */
+.lid .out, .lid .in { position:absolute; inset:0; backface-visibility:hidden;
+                      -webkit-backface-visibility:hidden;
+                      border:1px solid var(--edge); }
+/* The surface is on a child, not on the face.
+   
+   WebKit will not paint the background of a backface-hidden layer inside a
+   preserve-3d subtree on a cold first composite — but it paints that layer's
+   children, every time. The evidence is what the lid looks like when it goes
+   wrong: engraving, plate, brackets and border all present, and the lid
+   itself see-through behind them. So the timber goes in a box of its own and
+   is painted with the rest of the children.
+
+   Both faces, and only these two: they are the only backface-hidden things in
+   this stylesheet, and the tray's walls — same subtree, same gradients, no
+   backface-visibility — have never once come up empty. */
+.lid .out { transform:translateZ(.5px);
+            box-shadow:0 30px 60px rgba(0,0,0,.6); }
+.lid .out::before { content:""; position:absolute; inset:0; z-index:-1;
+                    background:
+                      linear-gradient(150deg, rgba(255,255,255,.07), transparent 40%),
+                      linear-gradient(#12161f, #0a0d14);
+                    box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
+/* The inside of the lid is lined, the way the lid of a case is — the same
+   burgundy as the tray, so the two halves are one interior and the notes
+   written on it are on a sheet laid into a case rather than printed on more
+   night. The sheen goes warm with it: a cold white slide down a burgundy
+   ground reads as plastic, and the same slide in brass reads as satin. */
+.lid .in { transform:rotateX(180deg) translateZ(1px); }
+/* Behind the sheet, not over it. A positioned pseudo-element paints after
+   the in-flow content it shares a box with, so the lining drawn this way
+   covers whatever is written on it — which on this face is everything the
+   box knows about you. The negative index puts it back where a background
+   was. */
+.lid .in::before { content:""; position:absolute; inset:0; z-index:-1;
+           background:
+             linear-gradient(200deg, rgba(233,206,170,.13), rgba(233,206,170,.03) 46%, transparent 62%),
+             radial-gradient(70% 55% at 50% 40%, rgba(201,162,39,.16), transparent 72%),
+             linear-gradient(var(--inside), var(--inside-2));
+           box-shadow:inset 0 0 40px rgba(0,0,0,.8); }
+/* The fittings. A chest has brass on its corners because that is where it
+   gets dropped; here they are what tells you the lid is a lid. Drawn with
+   two borders each — an L of metal — rather than as a picture. */
+.bracket { position:absolute; width:44px; height:44px; pointer-events:none;
+           border:0 solid rgba(201,162,39,.42); border-radius:3px;
+           background:linear-gradient(140deg, rgba(201,162,39,.14), transparent 62%);
+           box-shadow:inset 0 0 12px rgba(201,162,39,.10); }
+.b1 { top:9px;  left:9px;  border-top-width:1px; border-left-width:1px;  border-top-left-radius:12px; }
+.b2 { top:9px;  right:9px; border-top-width:1px; border-right-width:1px; border-top-right-radius:12px; }
+.b3 { bottom:9px; left:9px;  border-bottom-width:1px; border-left-width:1px;  border-bottom-left-radius:12px; }
+.b4 { bottom:9px; right:9px; border-bottom-width:1px; border-right-width:1px; border-bottom-right-radius:12px; }
+
+/* The cut: one diamond, stroked in brass, used at two sizes. Stretched by
+   preserveAspectRatio rather than redrawn, and the stroke told not to
+   stretch with it, so the line is the same weight on the plate and on the
+   lock. */
+.cut { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+       overflow:visible; }
+.cut path { fill:rgba(201,162,39,.045); stroke:rgba(201,162,39,.42);
+            stroke-width:1; vector-effect:non-scaling-stroke;
+            transition:stroke .5s ease, fill .5s ease; }
+@media (hover: hover) {
+  .object:hover .cut path { stroke:rgba(201,162,39,.75); fill:rgba(201,162,39,.07); } }
+
+/* The name, engraved on the lid rather than printed under the box. */
+.plaque { position:absolute; inset:0; display:grid; place-items:center; }
+.plaque .cut { width:60%; height:54%; }
+.plaque span { position:relative; font-size:15px; font-weight:500; letter-spacing:6px;
+               text-transform:uppercase; color:#d9c79b;
+               text-shadow:0 1px 0 rgba(0,0,0,.85), 0 -1px 0 rgba(255,255,255,.06);
+               transition:color .5s ease; }
+@media (hover: hover) { .object:hover .plaque span { color:var(--brass); } }
+
+/* A line of engraving under the plate, the way a lid is decorated: waves
+   cut into the metal, made of one repeating gradient. */
+.filigree { position:absolute; left:18%; right:18%; bottom:7%; height:8px;
+            opacity:.5;
+            background:
+              repeating-linear-gradient(90deg,
+                transparent 0 5px, rgba(201,162,39,.5) 5px 6px, transparent 6px 11px);
+            mask-image:linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+
+/* The lock, on the front wall where a thumb would go: the same cut, small,
+   with the tongue of the catch across it. */
+.clasp { position:absolute; left:50%; top:50%;
+         width:calc(var(--h) * .62); height:calc(var(--h) * .42);
+         transform:translate(-50%,-50%); }
+.clasp .cut { width:100%; height:100%; }
+.clasp b { position:absolute; left:50%; top:22%; bottom:22%; width:2px;
+           transform:translateX(-50%); border-radius:2px;
+           background:linear-gradient(rgba(201,162,39,.85), rgba(201,162,39,.3)); }
+
+/* An engraved seal rather than a logo: two rings and a line, drawn with
+   borders, because anything more literal turns into a sticker. */
+.seal { position:absolute; inset:0; display:grid; place-items:center; }
+.seal span { width:74px; height:74px; border-radius:50%;
+             border:1px solid rgba(201,162,39,.45);
+             box-shadow:0 0 0 8px rgba(201,162,39,.06), inset 0 0 22px rgba(201,162,39,.12);
+             display:grid; place-items:center; }
+.seal span::after { content:""; width:30px; height:30px; border-radius:50%;
+                    border:1px solid rgba(207,224,242,.35); }
+
+/* Hover turns it in the light and lifts the lid just enough to see that
+   there is something in there. It read as broken glass before, but that was
+   the walls hanging under the floor rather than the lift itself: opened
+   against a body that was not where it looked, the lid cut through it. */
+
+/* On a phone the box turns portrait and sizes itself off the window: a hand
+   holds a tall screen, and a chest deeper than it is wide has room for five
+   things in rows. Shared, because the front page and the app have to show the
+   same object — this rule living in one page was exactly how they drifted
+   apart, one landscape and one portrait. */
+/* The box turns portrait only when the window is: a phone on its side is a
+   short, wide window, and a chest deeper than it is wide simply will not fit
+   in it — it was running off both ends. Orientation decides the shape; the
+   fitter decides the size. */
+@media (orientation: portrait) and (max-width: 700px),
+       (orientation: portrait) and (pointer: coarse) {
+  .box { --w:min(74vw, 320px); --d:calc(min(74vw, 320px) * 1.18); --h:calc(min(74vw, 320px) * .2);
+         transform:rotateX(50deg) translateZ(0); }
+  @keyframes hover-idle { 50% { transform:rotateX(50deg) translateZ(10px); } }
+}
+
+/* On its side: back to a wide, shallow box, sized off the height it has. */
+@media (orientation: landscape) and (max-height: 560px) and (pointer: coarse),
+       (orientation: landscape) and (max-height: 480px) {
+  .box { --w:min(62vw, 440px); --d:calc(min(62vw, 440px) * .62); --h:calc(min(62vw, 440px) * .17);
+         transform:rotateX(54deg) translateZ(0); }
+  @keyframes hover-idle { 50% { transform:rotateX(54deg) translateZ(8px); } }
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+  .contents { left:12%; right:12%; }
+  .contents i { width:38%; }
+  .plaque span { font-size:12px; letter-spacing:4px; }
+  .bracket { width:30px; height:30px; }
+  .filigree { bottom:6%; left:14%; right:14%; }
+}

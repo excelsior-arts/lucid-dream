@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    {"path": "./packages/audio"},
+    {"path": "./packages/machine"},
+    {"path": "./packages/shell"},
+    {"path": "./packages/talk"},
+    {"path": "./packages/ui"},
+    {"path": "./packages/world"},
+    {"path": "./tsconfig.app.json"},
+    {"path": "./tsconfig.node.json"}
+  ]
+}

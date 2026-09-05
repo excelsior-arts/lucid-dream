@@ -7,7 +7,7 @@
      One file, no requests, no build step. Drop it anywhere that
      serves static files and it works; open it off a thumb drive and
      it works. The sky, the box and the sounds are lifted from the
-     app itself (shell/static/night.css, night.js, shell/server.py)
+     app itself (app/packages/shell/src/styles/ and shell/sky.ts)
      so the object here is the same object that opens on the desk —
      minus the console and the corner controls, which have nothing
      to do on a page that cannot run anything.
@@ -24,18 +24,18 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#05060b">
 <title>Lucid Dream</title>
-<meta name="description" content="A box of digital drugs for a localhost, uncensored audio experience. Interactive applied art. Take nightly.">
+<meta name="description" content="Lucid Dream: local AI games. Lucid Talk is the first — a box of digital drugs, an audio experience with gaming elements, on your own Mac.">
 <meta property="og:title" content="Lucid Dream">
-<meta property="og:description" content="A box of digital drugs for a localhost, uncensored audio experience. Interactive applied art. Take nightly.">
+<meta property="og:description" content="Lucid Dream: local AI games. Lucid Talk is the first — a box of digital drugs, an audio experience with gaming elements, on your own Mac.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://excelsior-arts.github.io/lucid-dream/talk-box-closed.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
 <style>
 /* ---------------------------------------------------------------------------
-   The world everything is lit by. Trimmed from shell/static/night.css: the
-   palette, the sky, and the box. Anything that belonged to the console or the
-   corner furniture is gone.
+   The world everything is lit by. Trimmed from app/packages/shell/src/styles/
+   (tokens.css and box.css): the palette, the sky, and the box. Anything that
+   belonged to the console or the corner furniture is gone.
 --------------------------------------------------------------------------- */
 :root {
   --void:#05060b; --void-2:#0a0c14;
@@ -553,8 +553,8 @@ body.up footer { opacity:0; pointer-events:none; }
               <code>cd lucid-dream</code>
               <code>./setup.sh</code>
               <code>./run.sh</code>
-              <code class="note-line">setup.sh pulls ~21 GB of models and is safe to
-                run twice. Then open localhost:6969 and say something.</code>
+              <code class="note-line">~31 GB of models come down once. Then open
+                localhost:6969 in your browser and say something.</code>
             </div>
           </div>
           <div class="lid">
@@ -568,15 +568,14 @@ body.up footer { opacity:0; pointer-events:none; }
               <div class="note">
                 <h1>Lucid Talk</h1>
                 <div class="rule"></div>
-                <p class="lede">A box of digital drugs. Take one and you are in a room
-                  with somebody in it — sincere and unguarded, or proud and hard to
-                  impress. Say something out loud; it answers out loud, in a voice of
-                  its own.</p>
-                <p><b>Uncensored, and local</b> — the same fact twice. Nothing
-                  leaves the machine. <b>Lucid Dream</b> is the shelf; this is the
-                  first thing on it.</p>
-                <p class="spec"><b>Apple Silicon Mac</b> · macOS 14+ · 32 GB ·
-                  Python 3.12 · 30 GB free disk · speakers and a microphone<br>
+                <p class="lede">A box of digital drugs: an audio experience with gaming
+                  elements. Take a pill and you are in a room with somebody in it —
+                  sincere and unguarded, or proud and hard to impress.</p>
+                <p><b>A local AI game.</b> Every model runs on your Mac and nothing
+                  leaves it — not a word, not a voice. <b>Lucid Dream</b> is the
+                  shelf; Lucid Talk is the first game on it.</p>
+                <p class="spec"><b>Apple Silicon Mac</b> · macOS 14+ · 16 GB, 32 for the
+                  large model · Python 3.12 · 40 GB free disk · speakers and a microphone<br>
                   Not Intel, not Windows, not Linux, not a phone on its own.</p>
               </div>
             </div>
@@ -590,7 +589,7 @@ body.up footer { opacity:0; pointer-events:none; }
        a table says nothing about itself, and a caption under it was one more
        thing between the two. It steps back when the box opens, where the lid
        says the same thing better. -->
-  <footer><b>Lucid Dream</b> Interactive applied art. Take nightly.</footer>
+  <footer><b>Lucid Dream</b> Local AI games. Take nightly.</footer>
 
 <script>
 /* ---------------------------------------------------------------------------

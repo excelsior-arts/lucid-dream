@@ -1,5 +1,5 @@
 # What Lucid Dream needs to run. Installed into the venv that also holds
-# mlx_lm.server -- see AGENTS.md, and llm.venv in lucid_talk/config.json.
+# mlx_lm.server -- see AGENTS.md, and llm.venv in userdata/config.json.
 #
 #   uv pip install --python .venv/bin/python -r requirements.txt
 
@@ -8,22 +8,20 @@ mlx
 mlx-lm            # the language model, and the prompt-cache server it runs in
 mlx-audio         # speech to text
 mlx-vlm           # the alternative model server
-sentencepiece
+sentencepiece     # mlx-lm's own; nothing here imports it
 huggingface-hub
 
 # the app
 fastapi
 uvicorn
-websockets
+websockets        # what uvicorn serves /machine/tts and the console on
 requests
 numpy
-scipy
-pyyaml            # persona frontmatter
+scipy             # mlx-audio's own; nothing here imports it
 
 # ---- development only; nothing at runtime imports these -------------------
-# Used to check work, not to do it: segno and reedsolo are reference
-# implementations that shell/static/qr.js is tested against, and opencv reads
-# the finished code back off a screenshot to prove a phone could.
-#   segno
-#   reedsolo
-#   opencv-python
+# Used to check work, not to do it. Pillow measures the icon set
+# (tests/machine/test_icons.py) and cuts it from a photograph
+# (tools/cut_icons.py); the tests that want it skip themselves without it, so
+# this is only needed by somebody who wants the whole suite to actually run.
+#   pillow

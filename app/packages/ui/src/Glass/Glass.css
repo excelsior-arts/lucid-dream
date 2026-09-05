@@ -1,0 +1,61 @@
+/* The glass: a flat page of its own fixed size, laid on the window in the
+ * room by the projection the engine hands it.
+ *
+ * Moved out of the room page's own stylesheet, rule for rule and comment for
+ * comment. Every selector is rooted in #glass, which is this component's own
+ * element, so each rule keeps the specificity it had and reaches no further
+ * than it did under the page's name.
+ */
+/* The conversation, lying on the glass.
+
+   It is a flat page of its own fixed size, and every frame the engine hands
+   it the projection that lands its four corners on the four corners of the
+   window in the room. So it leans with the wall — the words are in the
+   room's perspective rather than pasted over a picture of one — while
+   staying real text you can select, scroll and read a screen reader from.
+*/
+#glass { position:fixed; left:0; top:0; z-index:1; transform-origin:0 0;
+         display:flex; will-change:transform;
+         -webkit-font-smoothing:antialiased; }
+/* Type included: out here there is no glass to take a share of, and no
+   perspective shrinking it either — this is a page, read at a page's size. */
+html.flat #glass { --px:1; --type:15px; left:50%; top:0; transform:translateX(-50%);
+                   width:min(760px, 92vw); height:100vh; height:100dvh; }
+html.flat #glass::before { display:none; }
+/* Hidden while the room is on its way, and hidden from the first frame: the
+   fade below is for the way in. Without `transition:none` here the words
+   started at full opacity and faded *out* over half a second on every cold
+   load -- a flash of the conversation laid flat over nothing, before the
+   room had arrived to put it on the glass. */
+html.waking #glass { opacity:0; transition:none; }
+#glass { transition:opacity .45s ease; }
+/* Sized in real screen pixels, not in the page's own.
+
+   The glass is a plane in a room, so anything written on it comes out at
+   whatever size the perspective makes of it — which changes every time the
+   window is resized. The engine measures that and hands the page --px, the
+   number of page pixels in a screen pixel, so a size asked for here is the
+   size it arrives at. --type is the type on the glass; the panel's own is
+   13px, and the conversation should be a little larger than its controls,
+   not twice them.
+
+   And it keeps its share of the glass, whatever size the glass came out.
+   Held at one size it is right in a full-screen window and shouting in a
+   half-width one, where everything else in the room has come down with the
+   viewport and the writing has not. Tied to the window instead it climbs
+   past the room, which stops growing once the camera has framed it — the
+   shelves and the door stay put and the conversation goes on getting bigger.
+
+   So the engine hands over --glass-px, the width the glass actually came out
+   on screen, and the type is a share of that: a twenty-seventh, which is
+   about thirty characters to the line and the size these want to be read at.
+   Bounded at both ends — below eleven it is a squint, above seventeen it is
+   a poster — and the fallback is the glass at its usual width, for the frame
+   before the first measurement. */
+#glass { --type:clamp(11px, calc(var(--glass-px, 320px) * .0366), 17px); }
+
+/* ---- phone ---------------------------------------------------------- */
+@media (max-width:700px), (pointer:coarse) {
+  /* A phone holds the screen closer than a desk holds a monitor. */
+  #glass { --type:16px; }
+}

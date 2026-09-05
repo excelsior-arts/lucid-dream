@@ -9,11 +9,13 @@ at -ss and re-checking, this scans the whole source, scores every candidate
 window by how much the pitch actually moves, and cuts the best one -- already
 mono, 24 kHz, level-corrected, silence trimmed off the front.
 
-Needs ffmpeg on PATH. Writes lucid_talk/personas/<name>/voice.ref.wav.
+Needs ffmpeg on PATH. Writes models/voices/<name>.wav, which is the shelf
+the machine speaks from: a name there is a name a persona may claim.
 """
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import tempfile
@@ -25,8 +27,24 @@ import numpy as np
 from voicecheck import (PROSODY_S, TARGET_SR, contour, load, noise_floor_db,
                         speaker_spread)
 
-# Lucid Talk's voices: each app keeps its own things inside itself.
-PERSONAS = Path(__file__).resolve().parent.parent / "lucid_talk" / "personas"
+# The shelf. A voice is a model asset and lives with the models -- no game is
+# named here, and none needs to be: what a clip is called is the whole of the
+# wiring, and a name may carry folders (`mine/nova`). Wherever the config has
+# put the shelf, which `setup.sh --models DIR` moves; the checkout's own only
+# if the machine cannot be asked. See machine/voices.py.
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def shelf() -> Path:
+    try:
+        sys.path.insert(0, str(ROOT))
+        from machine import voices as V
+        return V.shelf()
+    except Exception:
+        return ROOT / "models" / "voices"
+
+
+SHELF = shelf()
 STEP_S = 0.5          # how finely to slide the search window
 
 
@@ -96,7 +114,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("source", help="any audio file ffmpeg can read")
-    ap.add_argument("name", help="the persona's slug; becomes personas/<slug>/voice.ref.wav")
+    ap.add_argument("name", help="what the voice is called; becomes "
+                                 "<shelf>/<name>.wav, folders and all (mine/nova)")
     ap.add_argument("--window", type=float, default=8.0,
                     help="clip length in seconds (default 8; only the first 6 drive delivery)")
     args = ap.parse_args()
@@ -119,14 +138,20 @@ def main():
         print("  note: every window had loud background. Nothing here will clone")
         print("        cleanly -- separate the vocals first, or use another source.")
 
-    home = PERSONAS / args.name
-    home.mkdir(parents=True, exist_ok=True)
-    out = home / "voice.ref.wav"
+    SHELF.mkdir(parents=True, exist_ok=True)
+    # A name is a path of plain words: `nova`, or `mine/nova`. The folders
+    # are made; anything else in a name is refused before a file is written.
+    parts = args.name.split("/")
+    if not all(re.fullmatch(r"[A-Za-z0-9_-]+", x) for x in parts):
+        sys.exit(f"a voice's name is words and slashes, not {args.name!r}")
+    out = SHELF / f"{args.name}.wav"
+    out.parent.mkdir(parents=True, exist_ok=True)
     cut(src, at, args.window, out)
     print(f"  wrote {out}\n")
 
     subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "voicecheck.py"), str(out)])
-    print(f"\nTo use it:  voice: {args.name}   in a persona's frontmatter")
+    print(f"\nTo use it:  voice: {args.name}   in a persona's frontmatter,")
+    print(f"            or name a character {args.name} and say nothing at all")
 
 
 if __name__ == "__main__":

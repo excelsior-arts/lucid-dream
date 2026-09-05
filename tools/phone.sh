@@ -56,7 +56,7 @@ say "trust this certificate. It is the only thing this needs."
 say ""
 mkcert -install
 
-CERTS="$(python3 -c 'from shell import paths as P; print(P.CERTS.relative_to(P.ROOT))')"
+CERTS="$(python3 -c 'from machine import paths as P; print(P.CERTS.relative_to(P.ROOT))')"
 mkdir -p "$CERTS"
 mkcert -cert-file "$CERTS/lucid.pem" \
        -key-file  "$CERTS/lucid-key.pem" \
@@ -66,7 +66,7 @@ mkcert -cert-file "$CERTS/lucid.pem" \
 # have anything else in it.
 python3 - <<'PY'
 import json
-from shell import paths as P
+from machine import paths as P
 
 p = P.CONFIG
 here = P.CERTS.relative_to(P.ROOT)

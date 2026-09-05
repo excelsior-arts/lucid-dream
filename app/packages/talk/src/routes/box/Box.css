@@ -1,0 +1,127 @@
+/* What is left of the box page when the box itself has gone next door.
+ *
+ * The case, the tray, the cards and the flight are @lucid/ui's Box — a
+ * mechanic, and the same one the next game will open. What stayed here is
+ * what only Lucid Talk means: the sheet inside the lid, which is the ledger,
+ * and the page the box is standing on.
+ *
+ * Every selector is under the page's own name. All three routes live in one
+ * document and their stylesheets are loaded at once, so each says which page
+ * it is for, on <html>, while it is mounted.
+ */
+html[data-page="box"] body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
+       overflow:hidden; touch-action:manipulation; }
+/* The routes hang inside #app rather than off <body>: the room the box stands
+   in has to reach down through it, or #room is as tall as its own contents and
+   the box is fitted to a room a third of the window. */
+html[data-page="box"] #app { flex:1; min-height:0; display:flex; flex-direction:column; }
+
+/* Never vw. Everything in the box is inside a transform that scales with
+   the box, so the type scales with it too — which is what makes the writing
+   part of the object rather than an overlay. In vw it did the opposite of
+   what you expect: browser zoom makes the viewport *narrower* in CSS pixels,
+   so zooming in made the text smaller.
+
+   Ten was the same trap one step further along. The box is fitted to that
+   same narrowing viewport, so ten came out multiplied by the fit and landed
+   at the same size on the glass at every zoom — the whole sheet pinned to
+   the screen while the page around it grew and shrank, which is zooming in
+   to read something and watching it refuse.
+
+   --type is twelve times the zoom, which cancels that: at 100% it is twelve
+   flat, and every other proportion here is a share of it. Twelve rather than
+   the ten this was first drawn at — ten was a squint at a desk. See
+   fitOpenBox in shell/fit.ts, and the fallback is for the frame before it has
+   measured. */
+html[data-page="box"] .leaf { height:100%; display:flex; flex-direction:column; text-align:left;
+        font-size:var(--type, 12px); }
+html[data-page="box"] .leaf h1 { margin:0 0 2px; font-size:1.15em; font-weight:500; letter-spacing:.52em;
+           text-transform:uppercase; color:#d9c79b;
+           text-shadow:0 1px 0 rgba(0,0,0,.85); }
+html[data-page="box"] .leaf .rule { height:1px; margin:0 0 .9em;
+              background:linear-gradient(90deg, rgba(201,162,39,.55), rgba(201,162,39,.08)); }
+html[data-page="box"] .leaf .note { margin:0 0 2.1em; font-size:.92em; line-height:1.7; color:var(--star-dim); }
+/* The middle of the sheet: sitting in the center of whatever room the lid
+   has, and scrolling inside it once there are more pills than fit. Auto
+   margins rather than justify-content, which clips the top of an
+   overflowing column in every browser that has ever shipped. */
+html[data-page="box"] .leaf .body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+              display:flex; -webkit-overflow-scrolling:touch; }
+/* The record arrives over the socket a moment after the page is drawn, and
+   the sheet is centered — so the lines pushed the writing around as they
+   landed, which is the flicker of text sliding into the box. Nothing on the
+   sheet is shown until it is all there. */
+html[data-page="box"] .lines,
+html[data-page="box"] .totals { opacity:0; transition:opacity .25s ease; }
+html[data-page="box"] .leaf.ready .lines,
+html[data-page="box"] .leaf.ready .totals { opacity:1; }
+html[data-page="box"] .leaf .stack { margin:auto 0; width:100%; }
+
+/* The record: a line per pill, and a total under it. Ruled like a ledger,
+   because that is what it is. */
+html[data-page="box"] .lines { display:flex; flex-direction:column; gap:.55em; }
+/* Name on the left, then everything that is a reading of it over on the
+   right: how it is holding you, and the tally. */
+html[data-page="box"] .line { display:grid; grid-template-columns:auto 1fr auto auto; align-items:baseline;
+        gap:.7em; padding-bottom:.5em;
+        border-bottom:1px solid rgba(201,162,39,.10); }
+html[data-page="box"] .line .tag { display:flex; align-items:center; gap:.55em;
+             letter-spacing:.22em; text-transform:uppercase; color:var(--ink); }
+html[data-page="box"] .line .tag i { width:1.5em; height:.62em; border-radius:999px;
+               background:linear-gradient(100deg, rgba(255,255,255,.8), rgba(var(--card), .7));
+               box-shadow:0 0 10px rgba(var(--card), .5); }
+html[data-page="box"] .line .said { grid-column:3; text-align:right; font-size:.86em;
+              color:var(--star-dim); letter-spacing:.047em; }
+html[data-page="box"] .line .count { font-size:.86em; color:#8d9aad; font-variant-numeric:tabular-nums;
+               letter-spacing:.047em; white-space:nowrap; }
+/* Each number opens the sheet it is counting, and says so by being
+   underlined — not on hover, always. A thing that only reveals itself as
+   clickable once the pointer is on it is a thing nobody finds, and on a
+   phone there is no hover at all. Framed buttons would shout over the
+   record, which is what somebody came here to read; an underline is the
+   quietest way a piece of text can say it does something. */
+html[data-page="box"] .line button { font:inherit; color:inherit; letter-spacing:inherit;
+               background:none; border:0; padding:0; cursor:pointer;
+               text-decoration:underline; text-decoration-thickness:1px;
+               text-decoration-color:rgba(201,162,39,.45);
+               text-underline-offset:3px;
+               transition:text-decoration-color .15s, color .15s; }
+html[data-page="box"] .line button:hover,
+html[data-page="box"] .line button:focus-visible {
+               color:var(--ink); text-decoration-color:var(--brass); }
+html[data-page="box"] .totals { padding-top:.8em; display:flex; flex-wrap:wrap;
+          gap:.4em 1.6em; font-size:.84em; letter-spacing:.167em;
+          text-transform:uppercase; color:#6d7a8c;
+          border-top:1px solid rgba(201,162,39,.14); }
+html[data-page="box"] .totals b { color:var(--ink); font-weight:500; font-variant-numeric:tabular-nums; }
+/* The dose lives here too, so it can be changed long after the first night. */
+html[data-page="box"] .totals .dosebox { display:flex; align-items:center; gap:.5em; }
+html[data-page="box"] .totals .tally { margin-left:auto; text-align:right; }
+html[data-page="box"] .totals .dosebox button { width:1.7em; height:1.7em; padding:0; font:inherit; cursor:pointer;
+                          line-height:1; color:var(--ink); background:rgba(255,255,255,.06);
+                          border:1px solid var(--rim); border-radius:.45em; }
+html[data-page="box"] .totals .dosebox button:hover { color:var(--brass); border-color:var(--edge); }
+
+html[data-page="box"] [hidden] { display:none !important; }
+
+@media (max-width: 700px), (pointer: coarse) {
+  /* The sheet is set in ems off this one number, so the whole ledger comes
+     up with it. On a phone it is the same sheet at arm's length in a column
+     a quarter as wide, and it has always wanted a little more here than the
+     desk asks for.
+
+     A share of --type rather than a number of its own, or browser zoom would
+     stop reaching the sheet the moment a window measured under 700 pixels. */
+  html[data-page="box"] .leaf { font-size:calc(var(--type, 12px) * 1.042); }
+  /* And two rows to a pill instead of four columns. Four columns of a
+     phone's width leaves each about eight characters, which is narrower
+     than the shortest label in here -- so every one of them wrapped, and a
+     ledger that wraps is a ledger nobody reads. Name and standing on the
+     first line, what it has given you on the second. */
+  html[data-page="box"] .line { grid-template-columns:auto 1fr; gap:.3em .7em; padding-bottom:.7em; }
+  html[data-page="box"] .line > span:not([class]) { display:none; }     /* the desk's spacer */
+  html[data-page="box"] .line .tag { grid-column:1; }
+  html[data-page="box"] .line .said { grid-column:2; text-align:right; font-size:.92em; }
+  html[data-page="box"] .line .count { grid-column:1 / -1; text-align:left; font-size:.92em; }
+  html[data-page="box"] .totals { font-size:.9em; }
+}

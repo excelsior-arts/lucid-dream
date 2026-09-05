@@ -10,11 +10,21 @@ character speaking is fictional.
 
 ```sh
 # 1. cut the best reference window out of any audio, checked as it goes.
-#    Name it after the persona that will speak with it.
-python tools/voiceprep.py source.mp3 nova     # -> voices/nova.ref.wav
+#    Name it whatever the voice is called.
+python tools/voiceprep.py source.mp3 mine/nova   # -> models/voices/mine/nova.wav
 
-# 2. restart, pick that persona, talk
+# 2. restart, pick a persona that speaks in it, talk
 ```
+
+The shelf is `models/voices/`, beside the weights, because that is what a clip
+is: a model asset. A voice's name is its path on the shelf: a folder holding a
+`voice.ref.wav` is a voice named by the folder (the published pack lands there
+as it is, so the shipped ones are `lucid_talk/personas/lover` and so on), and
+any other wav is a voice named by its path without the suffix. `GET
+/machine/voices` lists what is on it, and nothing there belongs to any game —
+a persona names a voice, and two games may name the same one. A name that
+begins `@<store>/` is looked for in the player's own store instead, which is
+where an uploaded clip lives.
 
 ## The targets
 
@@ -67,8 +77,8 @@ score on two words. If you would rather cut by hand, `-ss` is the knob:
 ```sh
 ffmpeg -i source.mp3 -ss 00:01:47.5 -t 8 -ac 1 -ar 24000 -sample_fmt s16 \
   -af "silenceremove=start_periods=1:start_threshold=-45dB,loudnorm=I=-18:TP=-2" \
-  voices/nova.ref.wav
-python tools/voicecheck.py voices/nova.ref.wav     # iterate until >= 3.5
+  models/voices/nova.wav
+python tools/voicecheck.py models/voices/nova.wav     # iterate until >= 3.5
 ```
 
 ## What actually matters
@@ -143,9 +153,9 @@ higher on movement alone.
 
 ## Wiring it to a persona
 
-Nothing to wire: `personas/nova.md` speaks with `voices/nova.ref.wav` because
-they share a name. The frontmatter is only for tuning — and for `voice:`, when
-one clip should serve two personas:
+Nothing to wire: a character in `app/packages/talk/content/personas/nova/`
+speaks with `models/voices/nova.wav` because they share a name. The frontmatter
+is only for tuning — and for `voice:`, when one clip should serve two personas:
 
 ```markdown
 ---
@@ -183,13 +193,15 @@ Not exposed, because measurement showed they do nothing here: chatterbox's own
 done by time-stretching the output; it was removed as unused, and `pause` is
 the artifact-free way to slow the feel.
 
-A bad value is logged and skipped rather than crashing the reply. Personas are
-re-read before every reply, so you can tune these mid-conversation.
+A bad value is logged and skipped rather than crashing the reply. Personas
+travel in the game's package and are read into the bundle at build time, so an
+edit takes `npm run build` (or the dev server, which reloads on save) rather
+than a restart.
 
 ## Auditioning several at once
 
 ```sh
-for f in voices/*.ref.wav; do python tools/voicecheck.py "$f"; echo; done
+for f in models/voices/*.wav; do python tools/voicecheck.py "$f"; echo; done
 ```
 
 Keep the ones above 3.5 st, then listen to those — the number tells you what is
@@ -212,4 +224,7 @@ tags are not its vocabulary and are stripped — write sounds as words (`mmm`,
 | Voice drifts mid-reply                       | You pointed a reference at generated audio. Always clone from the original clip, never from the app's output — that compounds error and moves the speaker. |
 | Sounds like a different person than the clip | Under 5s of reference, or the clip has more than one speaker in it.                                                                                        |
 
-A clip is named after the persona that speaks with it: `voices/<persona>.ref.wav`.
+A clip is named after the voice, and a persona claims it by that name:
+`models/voices/<name>.wav`. A persona whose name is not on the shelf is refused
+with the name it asked for — the console says so as the room opens, and
+`./setup.sh --check` lists what is actually there.

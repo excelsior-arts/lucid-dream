@@ -4,7 +4,7 @@
 # to, and the TLS keys that let your phone reach it.
 #
 # One line on purpose, and it stays one line: anything private invented later
-# goes under here rather than beside the code. See shell/paths.py.
+# goes under here rather than beside the code. See machine/paths.py.
 /userdata/
 
 # ---- the models ----
@@ -16,10 +16,27 @@
 # ---- the voices ----
 # A reference clip is six seconds of somebody's actual voice, and it is the one
 # asset here that cannot be taken back once it is published. So none of them
-# live in git: setup.sh fetches the pack, and a clip contributed in a pull
-# request has nowhere to land -- which is a guarantee rather than something a
+# live in git: setup.sh fetches the pack onto the shelf at models/voices/,
+# which the line above already covers. This one stays for a clip left lying
+# where they used to live, beside a character -- a clip contributed in a pull
+# request has nowhere to land, which is a guarantee rather than something a
 # reviewer has to catch on a tired afternoon. See THIRD-PARTY.md.
 voice.ref.wav
+
+# ---- the app package ----
+# Installed, built and reported: every one of these is produced by a command in
+# app/package.json and none of it is anybody's work. The lockfile is, and stays.
+node_modules
+app/dist/
+app/playwright-report/
+test-results/
+
+# ---- the lab ----
+# Benches, scorers and the baseline snapshotter: scripts for measuring this
+# machine and this checkout, run by hand while working on the code. They are
+# not part of the program and are never published; what they measured is
+# written into the code beside the number it justified.
+/lab/
 
 # ---- machine-local ----
 # a sink at the root: scratch tools, logs, anything mid-experiment. Nothing
@@ -30,3 +47,7 @@ voice.ref.wav
 .venv/
 __pycache__/
 .DS_Store
+
+# ---- working notes ----
+# Plans and notes written while working on the code are not part of it.
+PLAN-*.md

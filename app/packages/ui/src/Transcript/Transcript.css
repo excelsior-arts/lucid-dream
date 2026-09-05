@@ -1,0 +1,159 @@
+/* The conversation, and everything about showing it: the bubbles, the tools
+ * on their corners, the dots, and the way back down.
+ *
+ * Moved out of the room page's own stylesheet, rule for rule and comment for
+ * comment. What was under the page's name is under this component's root
+ * instead — `:where(#chatwrap)`, which adds nothing to a selector's weight,
+ * so every rule keeps exactly the specificity it had. The bare `.msg`, `.who`
+ * and `.tag` need it: unscoped they would follow somebody out to the box,
+ * which has a `.tag` and a `.note` of its own.
+ *
+ * The rules written `#glass .msg` are the transcript as it sits on the glass,
+ * and they keep the id: it is what makes them win over the flat-page sizes
+ * below them, and what stops them reaching a transcript that is not on one.
+ */
+/* The conversation scrolls and does not say so. A scrollbar down the glass
+   is a piece of operating system laid over a room — the one thing on that
+   pane that belongs to no part of this — and it is drawing a bright line
+   through a window somebody is reading a scene through. Nothing is lost by
+   taking it away: the last line is followed on its own, and the way back
+   down when you have scrolled up is the tip that already appears for it.
+   Wheel, trackpad, touch and keys are untouched. */
+#chatwrap { position:relative; flex:1; min-height:0; display:flex; overflow:hidden; }
+#chat { scrollbar-width:none; -ms-overflow-style:none;
+        flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+        overscroll-behavior:contain;
+        padding:calc(1.1em) calc(1.3em) calc(1.4em + var(--under, 0px));
+        font-size:calc(var(--type) * var(--px, 1));
+        display:flex; flex-direction:column;
+        /* Enough that the corner controls of one line clear the next. */
+        gap:calc(1.05em); }
+#chat::-webkit-scrollbar { width:0; height:0; }
+/* A short conversation sits on the bottom of the glass rather than hanging
+   from the top of it, and this is the way to say that on something which
+   also scrolls. `justify-content:flex-end` says it more plainly and is a
+   trap: once the conversation is taller than the box, the overflow goes out
+   of the *top*, where scrollTop cannot reach it. scrollHeight stayed equal
+   to clientHeight and twenty thousand pixels of talk sat above the frame
+   with no way back to it — the room had no history at all, and the only
+   visible symptom was a ↓ latest button that would not go away. An auto
+   margin on the first line does the same job and leaves the overflow at the
+   end, where scrolling is. */
+#chat > *:first-child { margin-top:auto; }
+/* Out here there is no glass to take a share of. */
+html.flat #chat { padding-top:max(24px, env(safe-area-inset-top)); }
+
+/* ---- on the glass ---------------------------------------------------- */
+#glass .msg { max-width:80%; line-height:1.45;
+              font-size:calc(var(--type) * var(--px, 1));
+              padding:.45em .7em; border-radius:.9em; }
+#glass .who { font-size:.72em; margin-bottom:.1em; }
+#glass .note { font-size:.85em; }
+/* Straddling the corner, in the type's own units so it stays put when the
+   projection changes size.
+
+   Including the buttons: the app's own `button` rule pins them to 13px, and
+   13px on a page hung at the far end of a room is not 13px on the screen —
+   it came out half the size of the words beside it on a desk and about
+   right on a phone. Inheriting the message's size instead means the icons
+   are a fixed fraction of the text, wherever the camera is standing. */
+#glass .tools { right:.4em; bottom:-.6em; gap:.1em; padding:.1em .2em; }
+#glass .tools button { font-size:.88em; padding:.16em; }
+#glass .tools button svg { width:1.15em; height:1.15em; }
+/* Only shown once you have scrolled away from the bottom. */
+#jump { position:absolute; left:50%; transform:translateX(-50%); bottom:12px;
+        font-size:12px; padding:5px 12px; border-radius:999px; background:#241a0e;
+        border:1px solid var(--line); color:var(--text); box-shadow:0 3px 10px rgba(0,0,0,.5);
+        opacity:.95; z-index:2; }
+:where(#chatwrap) .msg { position:relative; max-width:74%; padding:7px 11px; border-radius:13px;
+       font-size:14px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word; }
+/* Say it again — the mic cuts it off on a cough, and a line you missed is
+   otherwise gone.
+
+   They sit on the bubble's own corner, half in and half out of it, rather
+   than in a strip of padding reserved for them along the bottom. The window
+   is a small container and the words are the point: a line of padding kept
+   empty against the chance of a hover is a line of text nobody can read. */
+:where(#chatwrap) .tools { position:absolute; right:6px; bottom:-9px; display:flex; gap:2px;
+         padding:2px 3px; border-radius:999px;
+         background:rgba(10,7,16,.78); border:1px solid rgba(255,255,255,.12);
+         backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+         opacity:0; transition:opacity .15s; }
+/* A line that arrived while the sound was off. The words are on the glass
+   and the voice was dropped, which from in here is indistinguishable from a
+   line that was simply quiet — so the bubble says so itself, beside the
+   text, without waiting to be hovered. Hovering is not a thing a phone
+   does, and this is exactly the case somebody meets on one. */
+:where(#chatwrap) .msg .unheard { position:absolute; right:6px; top:-9px; display:flex;
+                min-height:0; padding:2px; line-height:0; cursor:pointer;
+                color:var(--warn, #d9932f); opacity:.85;
+                background:var(--panel, #1b1b22); border:1px solid var(--line, #33333d);
+                border-radius:999px; }
+:where(#chatwrap) .msg .unheard:hover { opacity:1; }
+:where(#chatwrap) .msg .unheard svg { width:13px; height:13px; }
+:where(#chatwrap) .tools button { min-height:0; padding:2px; line-height:0; border:0;
+                background:none; color:var(--dim); cursor:pointer; }
+:where(#chatwrap) .msg:hover .tools, :where(#chatwrap) .tools button:focus { opacity:1; }
+:where(#chatwrap) .tools .replay:hover { color:var(--accent); }
+:where(#chatwrap) .tools .del:hover { color:var(--bad); }
+/* A phone has no hover, so there they stay visible and quiet instead. */
+@media (hover: none) { :where(#chatwrap) .tools { opacity:.4; } }
+/* Nothing to replay or delete until the line is finished — mid-stream they
+   read as controls that do not work. */
+:where(#chatwrap) .msg.streaming .tools { display:none; }
+/* A reply still arriving has to look like one: without this the streaming
+   class only hid the two buttons above, so a reply that stalled mid-sentence
+   was pixel-identical to one that had finished on that word. The caret rides
+   the end of the text, needs no layout of its own, and leaves with the class. */
+:where(#chatwrap) .msg.streaming .body::after {
+  content:''; display:inline-block; width:.42em; height:1.05em;
+  margin-left:.1em; vertical-align:-.16em; border-radius:1px;
+  background:currentColor; opacity:.5;
+  animation:blink 1.05s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still shown, just not blinking: the fact that it is there is the signal,
+     and the movement is only what makes it noticeable. */
+  :where(#chatwrap) .msg.streaming .body::after { animation:none; opacity:.42; }
+}
+:where(#chatwrap) .msg.you { align-self:flex-end; background:var(--you); border-bottom-right-radius:4px;
+           border:1px solid rgba(201,162,39,.16);
+           backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+/* No shadow under either of them: they are on the glass, not floating in
+   front of it, and a cast shadow says the wrong thing about where they are. */
+/* The other half of the exchange — whoever the page is answering. Named for
+   the side it is on rather than for who is on it: what a game puts there is
+   the game's, and this is the bubble that is not yours. */
+:where(#chatwrap) .msg.them { align-self:flex-start; background:var(--panel); border:1px solid var(--rim);
+           border-bottom-left-radius:4px;
+           backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+:where(#chatwrap) .who { font-size:10px; text-transform:uppercase; letter-spacing:.7px; color:var(--dim);
+       margin-bottom:3px; }
+/* The caret under a reply still arriving, and the three dots that stand in
+   for words not written yet. Named the same as the deck's own blink and
+   spelled the same, so whichever file arrives first the animation is the one
+   both were drawn against. */
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+:where(#chatwrap) .tag { color:var(--accent); opacity:.8; }
+:where(#chatwrap) .note { align-self:center; font-size:12px; color:var(--dim); font-style:italic; }
+/* Your turn, before the words exist: it hears you now, the transcript
+   arrives a second later. Without this the screen says nothing while you
+   talk and the reply seems to come out of nowhere. */
+:where(#chatwrap) .msg.pending { opacity:.7; }
+/* Something you did, not something you said. */
+:where(#chatwrap) .msg.hand .body { font-style:italic; opacity:.82; }
+:where(#chatwrap) .msg.hand .who { opacity:.7; }
+:where(#chatwrap) .dots { display:inline-flex; gap:5px; align-items:center; height:1em; }
+:where(#chatwrap) .dots b { width:6px; height:6px; border-radius:50%; background:var(--dim);
+          animation:blink 1.2s ease-in-out infinite; }
+:where(#chatwrap) .dots b:nth-child(2) { animation-delay:.2s; }
+:where(#chatwrap) .dots b:nth-child(3) { animation-delay:.4s; }
+
+/* ---- phone ---------------------------------------------------------- */
+@media (max-width:700px), (pointer:coarse) {
+  #glass .msg { max-width:88%; }
+  #chat { padding:calc(.9em) calc(1em) calc(1em + var(--under, 0px));
+          gap:calc(.85em); }
+  #jump { min-height:0; }
+  :where(#chatwrap) .msg { max-width:88%; font-size:15px; }
+}

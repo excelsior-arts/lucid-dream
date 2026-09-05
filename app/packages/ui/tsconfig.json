@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.tmp/ui.tsbuildinfo"
+  },
+  // Two files from the root, both of them global augmentations that every one
+  // of these programs needs: what is on import.meta.env, and what expect()
+  // knows about the DOM. See app/vite-env.d.ts.
+  "include": ["src", "../../vite-env.d.ts", "../../test/setup.ts"]
+}

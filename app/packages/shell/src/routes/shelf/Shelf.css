@@ -1,0 +1,128 @@
+/* The shelf: the table, and a box on it for each app.
+ *
+ * Every selector is under the page's own name. All three routes live in one
+ * document and their stylesheets are all loaded at once, so each says which
+ * page it is for, on <html>, while it is mounted — which is what lets this and
+ * the box both say `.object` and mean their own. */
+
+/* The table an app sits on. One perspective for the whole page, so every
+   object on it agrees about where the viewer is standing — set it per-object
+   and two boxes look like two photographs pasted side by side. */
+html[data-page='shelf'] body {
+  height:100vh; height:100dvh; display:flex; flex-direction:column;
+  align-items:stretch; justify-content:center; touch-action:manipulation;
+  overflow:hidden;
+}
+/* The routes hang inside #app rather than off <body>, so the element the box
+   is fitted into is one further in — and an element of no particular height.
+   Left to itself <main> was as tall as the box inside it, the fitter measured
+   the box against that, and the front page drew it at half the size. */
+html[data-page='shelf'] #app { height:100%; display:flex; flex-direction:column; }
+/* The same strip along the bottom that the app keeps for its machine
+   drawer. There is nothing down there on this page, but the box has to come
+   out the same size on both, and the only way to guarantee that is for both
+   to be fitted into the same shape of room. */
+/* The same room as the app's: the same strip along the bottom for the
+   machine drawer, and the same inset at the top. The box is fitted into
+   this, so any difference between the two pages moves the object between
+   them — which is what made arriving at the open box look like a jump. */
+html[data-page='shelf'] main {
+  position:relative; z-index:1; text-align:center; width:100%;
+  height:100%; display:flex; align-items:center; justify-content:center;
+  padding:max(20px, env(safe-area-inset-top)) 16px 56px;
+}
+
+html[data-page='shelf'] .table {
+  display:flex; gap:80px; justify-content:center; flex-wrap:wrap;
+  perspective:1900px; perspective-origin:50% 42%;
+}
+
+/* ---- an app, as an object you can open ---------------------------------
+   A box seen from above and slightly in front: the floor of it is a plate,
+   four walls stand up off that floor, and the lid is hinged on the far edge.
+   All of it is divs — which is the point. When the lid is up, what is inside
+   is still HTML, so whatever the game lays in there can be real links with
+   real text on them. */
+html[data-page='shelf'] .object {
+  display:block; text-decoration:none; color:inherit;
+  touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none; user-select:none;
+  transform-style:preserve-3d; cursor:pointer;
+  transform:none;
+  transition:transform .85s cubic-bezier(.22,.7,.16,1);
+}
+@media (hover: hover) {
+  html[data-page='shelf'] .object {
+    transform:rotateX(calc(var(--lean-x, 0) * 1deg))
+              rotateY(calc(var(--lean-y, 0) * 1deg));
+  }
+}
+/* Opening sinks the object by exactly the overhang of the standing lid —
+   the same number the inside of the box uses to center itself. That is what
+   makes the last frame here and the first frame there the same picture. */
+html[data-page='shelf'] .object.opening { transform:translateY(var(--sink, 0px)); }
+/* Restored from the back button, everything is where it belongs before the
+   first frame: Safari hands the page back exactly as you left it — box open,
+   mid-flight — and without this you watch it shut itself. In one document
+   that is the route mounting again, which starts primed for the same reason. */
+html[data-page='shelf'] .object.priming,
+html[data-page='shelf'] .object.priming .box,
+html[data-page='shelf'] .object.priming .lid,
+html[data-page='shelf'] .object.priming .lamp,
+html[data-page='shelf'] .object.priming .contents { transition:none !important; }
+/* Only where a pointer can really hover. A touch screen reports :hover on
+   the very tap that opens the box, so without this the phone plays the peek
+   and the opening at once — and leaves the peek stuck there afterwards.
+
+   The lid angle is positive, and that matters: hinged along the far edge, a
+   negative angle swings the near edge down through the floor — the lid opens
+   into the box and you see nothing. Up is +. */
+@media (hover: hover) {
+  html[data-page='shelf'] .object:hover .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+  html[data-page='shelf'] .object:hover .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+  html[data-page='shelf'] .object:hover .lamp { opacity:.65; }
+  html[data-page='shelf'] .object:hover .contents { opacity:1; }
+  html[data-page='shelf'] .object:hover .contents i { opacity:.9;
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 26px rgba(var(--card), .32); }
+  html[data-page='shelf'] .object:hover .contents i:nth-child(3) { opacity:.28; }
+}
+/* Keyboard focus gets the same look, on any device. */
+html[data-page='shelf'] .object:focus-visible .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+html[data-page='shelf'] .object:focus-visible .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+html[data-page='shelf'] .object:focus-visible .lamp { opacity:.65; }
+html[data-page='shelf'] .object:focus-visible .contents { opacity:1; }
+html[data-page='shelf'] .object:focus-visible { outline:none; }
+
+/* The press: it comes to meet you, filling most of the screen, and only
+   then does the lid go back. --zoom is measured against this window when
+   the page loads, so the box lands the same size on a phone and a monitor. */
+html[data-page='shelf'] .object.opening .box { animation:none;
+        transform:rotateX(44deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1));
+        transition:transform .85s cubic-bezier(.22,.7,.16,1); }
+html[data-page='shelf'] .object.opening .lid { transform:translateZ(var(--h)) rotateX(108deg);
+        transition:transform .8s cubic-bezier(.3,.8,.25,1) .18s; }
+html[data-page='shelf'] .object.opening .lamp { opacity:1; }
+html[data-page='shelf'] .object.opening .label { opacity:0; }
+
+html[data-page='shelf'] .label { margin-top:34px; text-align:center; transition:opacity .5s ease; }
+
+html[data-page='shelf'] .label h2 { margin:0; font-size:15px; font-weight:500; letter-spacing:3px;
+            text-transform:uppercase; color:var(--ink); }
+html[data-page='shelf'] .label p { margin:7px 0 0; font-size:12.5px; line-height:1.6; color:var(--star-dim); }
+
+html[data-page='shelf'] footer { position:relative; z-index:1; font-size:11px; letter-spacing:2px;
+         text-transform:uppercase; color:#3f4757; }
+
+/* On a phone the box is the whole room: sized off the window rather than
+   fixed, so it fills the hand without being cropped, and a tap does what a
+   click does — nothing here needs a pointer to hover first.
+
+   It also turns portrait. A hand holds a tall window, and a chest that is
+   deeper than it is wide has room for five things standing in rows rather
+   than one long shelf of them. The camera lies back a little too, or the
+   added depth is foreshortened away and it just looks small. */
+@media (max-width: 700px), (pointer: coarse) {
+  html[data-page='shelf'] .table { perspective:1100px; perspective-origin:50% 38%; }
+  html[data-page='shelf'] .object.opening .box { transform:rotateX(40deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1)); }
+  html[data-page='shelf'] .object:focus-visible .box { transform:rotateX(46deg) translateZ(20px) scale(1.02); }
+}

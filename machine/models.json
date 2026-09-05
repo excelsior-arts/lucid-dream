@@ -1,0 +1,23 @@
+{
+  "_": [
+    "What is on the shelf: every model the machine runs, by the repository",
+    "it is checked out from. See machine/shelf.py for how this is read, and",
+    "setup.sh for how it is fetched. A checkout lands at",
+    "<models dir>/<org>/<repo>, exactly as published, and is never changed;",
+    "`rev` pins the commit, `gb` is what it takes on disk. A newer release of",
+    "the game edits this file and nothing else: setup fetches what is",
+    "missing or at another commit, and offers to prune what nothing names."
+  ],
+  "llm": {
+    "sm": {"repo": "mlx-community/Qwen3.5-4B-MLX-4bit",
+           "rev": "32f3e8ecf65426fc3306969496342d504bfa13f3", "gb": 3.1},
+    "md": {"repo": "mlx-community/Qwen3.5-9B-MLX-4bit",
+           "rev": "938d8919941c6e7efd3c7150eff7fe9d12afa631", "gb": 6.0},
+    "lg": {"repo": "mlx-community/Qwen3.8-27B-4bit",
+           "rev": "3e6447f082e89cc7f0bc6e5441afd38dfce760ff", "gb": 16.1}
+  },
+  "stt": {"repo": "mlx-community/parakeet-tdt-0.6b-v2",
+          "rev": "8ae155301e23d820d82aa60d24817c900e69e487", "gb": 2.5},
+  "tts": {"repo": "mlx-community/chatterbox-turbo-fp16",
+          "rev": "b2d0a13aa7cfff0a06d9acb247ae91c8f19a6d75", "gb": 3.0}
+}

@@ -1,0 +1,103 @@
+/* The transport deck: eight keys with some travel in them, and a meter along
+ * the foot of one.
+ *
+ * Moved out of the room page's own stylesheet, rule for rule and comment for
+ * comment. What was under the page's name is under this component's root
+ * instead — `:where(#deck)`, which adds nothing to a selector's weight, so
+ * every rule keeps exactly the specificity it had. `.key` needs it: unscoped
+ * it is a word plain enough for another page to want.
+ */
+/* ---- the deck --------------------------------------------------------
+   Keys with some travel in them: a face, a lit edge along the top, and a
+   shadow under it that shortens when it goes down. Chunky enough for a
+   thumb, and the labels stay words. */
+#deck { display:flex; align-items:flex-end; flex-wrap:wrap; gap:7px 7px; }
+:where(#deck) .key { flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
+       gap:2px; min-width:54px; min-height:0; padding:6px 8px 5px;
+       cursor:pointer; border-radius:7px 7px 9px 9px;
+       color:var(--text);
+       background:linear-gradient(#2a2530, #17141d);
+       border:1px solid rgba(255,255,255,.09);
+       border-top-color:rgba(255,255,255,.16);
+       box-shadow:0 2px 0 rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+       transition:transform .06s, box-shadow .06s, background .15s, color .15s; }
+:where(#deck) .key i { font-style:normal; font-size:15px; line-height:1;
+         display:flex; align-items:center; justify-content:center; }
+:where(#deck) .key i svg { width:19px; height:19px; display:block; }
+/* The waiting circle is drawn a hair smaller than the live one, and they
+   are the same circle. A pale shape on a dark key spreads — put the white
+   one and the red one side by side at the same radius and the white reads
+   larger, which is exactly the wrong way round for the one that is not
+   doing anything. Measured they were identical; seen they were not, and
+   what is seen is the part that counts. */
+:where(#deck) .key.rec:not(.armed) i svg { transform:scale(.93); }
+:where(#deck) .key span { font-size:8.5px; letter-spacing:1.3px; text-transform:uppercase;
+            color:var(--dim); }
+:where(#deck) .key:hover { color:var(--ink); }
+:where(#deck) .key:hover span { color:var(--text); }
+/* Pressed, and it stays down while what it started is happening. */
+:where(#deck) .key:active, :where(#deck) .key.down { transform:translateY(2px);
+                         box-shadow:0 0 0 rgba(0,0,0,.55), inset 0 2px 5px rgba(0,0,0,.5); }
+:where(#deck) .key.down { background:linear-gradient(#1b1822, #221e2a); }
+:where(#deck) .key[disabled] { opacity:.35; cursor:default; transform:none;
+                 box-shadow:0 2px 0 rgba(0,0,0,.55); }
+/* The two record keys. What goes on the tape comes through one of them, and
+   neither is armed until you say so, which is what the color is for: a white
+   circle waiting, a red one live. It used to be red either way, on a red key,
+   which read as a warning about something rather than an offer of two ways
+   in. */
+:where(#deck) .key.rec i { color:#e9e5f0; transition:color .15s; }
+:where(#deck) .key.rec.armed i { color:#e0644f; }
+/* A level, along the foot of the listening key and nowhere else. Small on
+   purpose: it is here to answer "is it hearing me" while something is being
+   set up, not to be watched. A pair of meters across the panel was a second
+   thing moving in a room that is already moving, and the room is the part
+   worth looking at. */
+#t-rec { position:relative; overflow:hidden; }
+#t-rec::after { content:""; position:absolute; left:0; bottom:0; height:2px;
+                width:var(--lvl, 0%);
+                background:#ff8a72; box-shadow:0 0 6px rgba(255,138,114,.8);
+                transition:width .08s linear; }
+/* And only the microphone blinks. A blink says "this is happening, now",
+   which is true of a mic that is open and listening and is not true of a
+   line waiting to be typed into: nobody types continuously, and a light
+   pulsing at somebody who has stopped to think is a light asking them to
+   hurry up. */
+#t-rec.armed i { color:#ff6a4d; animation:blink var(--beat, 1.6s) ease-in-out infinite; }
+:where(#deck) .key.playing i { color:var(--good); }
+/* hidden means hidden. Every `display` above outranks the browser's own
+   [hidden] rule, so a key given the attribute stayed on screen — which is
+   what happened to the microphone key on an address that cannot have one:
+   it was told to go and did not, while the console said it was not there. */
+#deck [hidden] { display:none !important; }
+/* The record key blinks while the mic is open, and faster when it can hear
+   you — the meter is the key itself rather than a lamp beside it. */
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+
+/* And a key that is working on something it was pressed for: the model behind
+   it coming up. The same two marks the microphone already wears, said slower
+   — the face blinks at a pace nobody would read as live, and the meter's own
+   bar sweeps instead of measuring, because there is nothing to measure yet.
+   Deliberately not a spinner: nothing else in here spins, and the deck's way
+   of saying "this is happening" is a light with a beat in it. */
+:where(#deck) .key.busy i { animation:blink 1.1s ease-in-out infinite; }
+#t-rec.busy::after { width:100%; transform-origin:left center;
+                     transition:none; animation:warming 1.4s ease-in-out infinite; }
+@keyframes warming { 0%,100% { transform:scaleX(.06); } 50% { transform:scaleX(1); } }
+
+/* ---- phone ---------------------------------------------------------- */
+/* By width, not by pointer: an iPad has a finger and a screen this row fits
+   on at full size, and condensed for its pointer it looked like a phone's
+   row stretched across a tablet. */
+@media (max-width:700px) {
+  /* Eight keys and a clock across a phone: the keys give up what they can. */
+  :where(#deck) .key { min-width:41px; padding:6px 4px 5px; }
+  :where(#deck) .key i svg { width:20px; height:20px; }
+  /* Condensed rather than dropped. Eight keys and a counter across a phone
+     is tight, and everything here gives up a little so that all of it fits
+     on one row: the labels lose half a pixel and most of their tracking, the
+     keys their padding. */
+  :where(#deck) .key span { font-size:7.5px; letter-spacing:.2px; }
+  :where(#deck) .key { min-width:29px; padding:6px 2px 5px; }
+  #deck { gap:2px; }
+}

@@ -1,0 +1,74 @@
+/* The line you write in, when there is one.
+ *
+ * Moved out of the room page's own stylesheet, rule for rule and comment for
+ * comment. Every selector is rooted in #say or #text, which are this
+ * component's own elements, so each rule keeps the specificity it had.
+ */
+/* The writing line, when there is one. It takes the space the keys leave
+   and no more, so the panel stays a row of controls with somewhere to write
+   rather than a form with some buttons under it. */
+/* A width worth writing in, or a row of its own.
+
+   Asked for nothing and given whatever was spare, it ended up about a
+   hundred and thirty pixels wide whatever the window was doing — the keys
+   take the row and the panel is set by the room, not by the screen — and its
+   own placeholder wrapped inside it. A line you cannot see a sentence in is
+   not a line, it is a slot.
+
+   So it asks for a real width. If the keys leave that much it sits among
+   them and grows into whatever else is spare; if they do not, the row wraps
+   and it takes a line under them, which is the same arrangement a phone gets
+   and for the same reason. The counter is narrow enough now to stay up on
+   the row either way. */
+/* On the keys' row, always, and as wide as the row leaves it: the keys and
+   the clock are sized so that this is a line and not a slot, and a line
+   that wrapped under the keys whenever a clock appeared was a panel
+   changing shape at the moment a dose began. */
+/* Its own height, not the row's. Stretched, it copied whatever the tallest
+   thing on the line happened to be — the stacked counter — and stood five
+   pixels above the keys, which is exactly enough for a row to stop looking
+   like one. Two rows of this type plus its padding comes to the height of a
+   key, so all three line up by being the same size rather than by being
+   told to. */
+#say { flex:1 1 0; min-width:0; display:flex; align-items:flex-end; align-self:stretch; }
+/* hidden means hidden. The `display:flex` above is an author rule and the
+   browser's own [hidden] is not, so a line told to go stayed on screen. */
+#say[hidden] { display:none !important; }
+/* The height of the keys beside it, whatever that is on this screen: the
+   line is stretched to the row and the box fills the line. Sized by its own
+   two rows of type it stood nine pixels over the keys on an iPad, where the
+   type is the phone's sixteen pixels and the keys are not the phone's. */
+#say #text { width:100%; height:100%; min-width:0; min-height:0; resize:none;
+             box-sizing:border-box; padding:4px 9px; font-size:12px; line-height:1.42;
+             overflow-y:auto; }
+/* A hint is not writing, and should not be the same weight as it: at the
+   same color the box reads as already having something in it. */
+#say #text::placeholder { color:var(--dim); opacity:.75; }
+
+/* ---- a finger ------------------------------------------------------ */
+/* Any touch screen, whatever its size. An iPad is one and is not a phone:
+   given the phone's block on the strength of its pointer, it put the line on
+   a row of its own under the keys across a screen with room to spare. */
+@media (max-width:700px), (pointer:coarse) {
+  /* The line you type and the key that sends it stay on one line: wrapped,
+     Send took a whole row of a panel that is trying to be small. */
+  #say { flex-wrap:nowrap; }
+  /* Sixteen pixels, and not for legibility. A phone zooms the whole page in
+     when a field it is focusing has type smaller than that, and the zoom
+     does not go back on its own — so a line typed into a room leaves the
+     room bigger than it was, every time. The one number that stops it is
+     this one, and it costs a slightly larger line of type in a place where
+     somebody is typing anyway. */
+  #say #text { min-width:0; font-size:16px; line-height:1.25; padding:3px 9px; }
+}
+
+/* ---- phone ---------------------------------------------------------- */
+@media (max-width:700px) {
+  /* On a phone there is nothing spare, so the line goes under the keys
+     rather than a sliver between them. Most of a row rather than all of it:
+     whatever else has to leave the keys' row -- a clock, while a dose runs
+     -- shares this one, and the line takes the rest. */
+  #say { flex:1 1 60%; order:1; }
+  /* one bar, then one row to type — nothing else by default */
+  #text { flex:1 1 auto; min-width:0; }
+}

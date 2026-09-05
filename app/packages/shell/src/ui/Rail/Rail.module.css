@@ -1,0 +1,178 @@
+/* The rail, as a module. Everything here was in the shared night sheet and is
+   moved rather than rewritten; the class names are scoped now, which is the
+   only difference. */
+
+/* ---- the corner ----------------------------------------------------------
+   Three small brass fittings, in one rail down the top right: what you can
+   hear, how to take it with you, and the promise that none of it leaves.
+   Quiet until looked at, and never in front of the object in the middle.
+
+   One corner rather than three. Scattering them into three corners meant
+   three things to find and three edges for the eye to check, and on a page
+   whose whole subject is in the middle they read as litter round the frame.
+   Stacked, they are a single small object you learn once. */
+/* touch-action tells iOS these are things you press, not things you read: a
+   double tap on the minus button zooms the page otherwise, which is maddening
+   when you are stepping the volume down. Pinch-to-zoom on the page itself is
+   untouched — that one belongs to the reader. */
+.corners, .knob, .pop, .pop * { touch-action:manipulation; }
+.knob, .pop .step, .pop.vol .calm { -webkit-user-select:none; user-select:none;
+                                    -webkit-tap-highlight-color:transparent; }
+
+.corners { position:fixed; inset:0; z-index:70; pointer-events:none;
+           /* Its own 3-D layer. WebKit will paint a big transformed element
+              over a plain fixed one whatever the z-index says, which is how
+              these vanished behind the open box on a phone. */
+           transform:translateZ(0); }
+/* The rail they hang on: top right, and only as wide as a knob.
+
+   It takes presses itself, over a gutter wider than the knobs, and the margin
+   pulls the box back out so nothing moves on screen. The knobs are small on
+   purpose, and a press that missed one used to fall through the gaps between
+   them to the page underneath -- where landing on nothing may be a real
+   gesture the game reads, and costs whoever missed the knob a move. Missing a
+   button should cost nothing at all; it is the one press with no intention
+   in it. */
+.rail { position:absolute; top:max(18px, env(safe-area-inset-top));
+        right:max(20px, env(safe-area-inset-right));
+        display:flex; flex-direction:column; align-items:flex-end; gap:9px;
+        /* Out to the screen on the two sides it is already against, and a wide
+           margin on the two it is not. The negative margins pull the box back
+           out again, so the knobs sit exactly where they did. */
+        padding:18px 20px 120px 120px; margin:-18px -20px -120px -120px;
+        pointer-events:auto; }
+/* Except where the game's own panel has come up under it. On a wide screen
+   the rail hangs over the page, and a press it swallows is one that would have
+   gone nowhere anybody meant. Narrow, the panel is beneath it instead -- and a
+   panel is usually a scroller, so the same gutter is a patch where a thumb can
+   neither tap a line nor drag it. Measured: 120px takes 44% of the panel's
+   width on a phone. Below the width where the two stop overlapping it goes
+   back to a knuckle's worth. */
+@media (max-width: 1120px) {
+  /* Above stays generous: it is the edge of the screen, and on a phone that
+     the notch has pushed the rail down from, the strip over it belongs to
+     nothing else. The same expression as `top`, so the knobs do not move. */
+  .rail { padding:max(20px, env(safe-area-inset-top)) 20px 26px 26px;
+          margin:calc(-1 * max(20px, env(safe-area-inset-top))) -20px -26px -26px; }
+}
+/* Each fitting is only as big as its own knob. Its panel is taken out of the
+   flow: hidden, it still had size, and a wide invisible rectangle lying
+   across the page swallowed every press meant for what was under it. */
+.corner { position:relative; pointer-events:auto; display:flex; align-items:center; }
+.corner[hidden] { display:none; }
+
+.knob { display:flex; align-items:center; gap:7px; padding:7px; min-height:0;
+        color:var(--star-dim); background:rgba(12,15,22,.6); cursor:pointer;
+        border:1px solid var(--rim); border-radius:11px;
+        backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+        transition:color .2s, border-color .2s, background .2s; }
+.knob svg { width:19px; height:19px; display:block; }
+.knob:hover, .corner.open .knob { color:var(--brass); border-color:var(--edge);
+                                  background:rgba(20,16,8,.7); }
+.knob.muted { color:#6b5f4c; }
+
+/* The panel each one opens. Same brass and glass as everything else, and it
+   grows out of its own corner rather than appearing in the middle. */
+.pop { position:absolute; pointer-events:none;
+       opacity:0; visibility:hidden; transform:translateY(-4px) scale(.97);
+       transform-origin:top right; transition:opacity .18s, transform .18s, visibility .18s;
+       background:rgba(10,13,19,.9); border:1px solid var(--edge); border-radius:13px;
+       box-shadow:0 22px 50px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06);
+       backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+       padding:11px 13px; color:var(--ink); }
+.corner.open .pop { opacity:1; visibility:visible; transform:none; pointer-events:auto; }
+/* Out to the side rather than downwards: below its own knob is where the next
+   knob is, so a panel opening down covers the rest of the rail.
+
+   `max-content` because a box positioned from the right shrink-wraps to the
+   space left of it, and the space left of a knob is one knob wide — without
+   this the panels came out as a column of single words. The cap is what
+   actually decides how wide they get, and each panel may set its own. */
+.pop { top:0; right:100%; margin-right:10px;
+       width:max-content; max-width:min(300px, 78vw); }
+
+.pop.vol { display:flex; flex-direction:column; gap:9px; }
+/* `stepper` and not `row`. A shared sheet has no business owning a name that
+   generic: an app defined its own `.row` with flex-wrap on it, which loads
+   after this one, and the minus, the slider and the plus each took a line of
+   their own. Anything in here that a page might plausibly also name gets
+   renamed, not out-specified. */
+.pop.vol .stepper { display:flex; flex-wrap:nowrap; align-items:center; gap:10px; }
+/* Centered under the stepper. The label is nearly as wide as the panel, so
+   aligning it to the slider's left edge left it hanging off to one side —
+   centered, it balances the row above it. */
+.pop.vol .calm { display:flex; align-items:center; justify-content:center; gap:7px;
+                 cursor:pointer; font-size:11px; letter-spacing:.6px; color:var(--star-dim); }
+.pop.vol .calm:hover { color:var(--ink); }
+.pop.vol .calm input { accent-color:var(--brass); width:13px; height:13px; margin:0; }
+/* Not now. The one press somebody reaches for in a hurry, so it is the first
+   thing in the panel and the widest — and it says which of the two states it
+   is in rather than which one it would put you in, because a switch that
+   describes the other side of itself is a switch you press twice to find out
+   where you are. */
+.pop.vol .hush { display:flex; align-items:center; gap:9px; width:100%;
+                 min-height:0; padding:7px 10px; cursor:pointer;
+                 font-size:11.5px; letter-spacing:.5px; text-align:left;
+                 color:var(--ink); background:rgba(255,255,255,.05);
+                 border:1px solid var(--rim); border-radius:8px; }
+.pop.vol .hush svg { width:16px; height:16px; flex:0 0 auto; }
+.pop.vol .hush .what { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.pop.vol .hush b { font-weight:400; }
+/* The cost of the button, under its name. Quiet enough not to be a second
+   label and close enough to be read as part of the first. */
+.pop.vol .hush em { font-style:normal; font-size:9.5px; letter-spacing:.2px;
+                    line-height:1.25; opacity:.6; }
+.pop.vol .hush:hover { border-color:var(--edge); color:var(--brass); }
+.pop.vol .hush.on { color:#f0a58f; border-color:rgba(240,165,143,.4);
+                    background:rgba(240,165,143,.09); }
+
+.pop.vol .step { min-height:0; width:24px; height:24px; padding:0; cursor:pointer;
+                 display:grid; place-items:center; font-size:14px; line-height:1;
+                 color:var(--ink); background:rgba(255,255,255,.05);
+                 border:1px solid var(--rim); border-radius:7px; }
+.pop.vol .step:hover { color:var(--brass); border-color:var(--edge); }
+.pop.vol input[type=range] { width:120px; accent-color:var(--brass); background:transparent; }
+
+.pop.tale { max-width:290px; }
+.pop.tale b { display:block; font-size:12px; font-weight:500; letter-spacing:1.6px;
+              text-transform:uppercase; color:var(--brass); margin-bottom:7px; }
+.pop.tale p { margin:0; font-size:12.5px; line-height:1.65; color:var(--star-dim); }
+
+/* The code itself: one element per module, laid out as a grid. Drawn rather
+   than fetched — see qr.js — because this program does not ask the network
+   for a picture of its own address. */
+.pop.qr { display:flex; flex-direction:column; align-items:center; gap:8px;
+          max-width:min(280px, 74vw); }
+.pop.qr b { font-size:10.5px; font-weight:500; letter-spacing:2px;
+            text-transform:uppercase; color:var(--brass); }
+.pop.qr .code { display:grid; grid-template-columns:repeat(var(--n, 25), 5px);
+                background:#f2e5d0; padding:10px; border-radius:6px; line-height:0; }
+.pop.qr .code i { width:5px; height:5px; background:transparent; }
+.pop.qr .code i.on { background:#0a0d14; }
+/* A hostname is whatever the person called their machine, and some of them
+   are very long. It wraps anywhere rather than pushing the panel off the
+   screen — the code above it is the part that matters, this only says which
+   machine you are about to reach. */
+.pop.qr .url { max-width:100%; font-size:9.5px; letter-spacing:.6px; color:#5c6675;
+               font-variant-numeric:tabular-nums; text-align:center; line-height:1.45;
+               overflow-wrap:anywhere; word-break:break-word; }
+
+@media (max-width:620px) {
+  .pop.qr .code { grid-template-columns:repeat(var(--n, 25), 4px); }
+  .pop.qr .code i { width:4px; height:4px; }
+}
+
+/* And the knob it hangs on. The rail sits above the sheet on purpose: the
+   knob that opened it is the obvious thing to press to close it again, and
+   under the sheet it could not be pressed at all.
+
+   A dot when something has gone wrong since you last looked, because a tool
+   nobody remembers is a tool nobody uses. */
+.knob.term { position:relative; }
+/* Dark, and no glow. A bright dot on a dark screen is a notification badge,
+   and a badge is a thing that wants answering — this is a mark on a tool, for
+   somebody who happens to look at it. Anybody who does not is losing nothing:
+   whatever raised it is in the console when they get there. */
+.knob.term.trouble::after { content:""; position:absolute; top:4px; right:4px;
+                            width:5px; height:5px; border-radius:50%;
+                            background:#46201a; }

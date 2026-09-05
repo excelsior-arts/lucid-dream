@@ -16,7 +16,6 @@ There is no authentication here or in the app. Anyone on the network who
 finds the port can read every conversation and start the models. Run it when
 you want your phone, Ctrl-C when you don't.
 """
-import os
 import socket
 import subprocess
 import sys
@@ -72,31 +71,6 @@ def _lan_ip():
         if ip:
             return ip
     return ""
-
-
-def _scheme():
-    """http or https -- the app terminates TLS, we only forward bytes."""
-    try:
-        import json
-        import sys
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        sys.path.insert(0, root)
-        from shell import paths as P          # stdlib only
-        cfg = json.loads(P.CONFIG.read_text())
-        # Top level since the shell took the root config over, and relative
-        # to the checkout unless it says otherwise -- the same rule the shell
-        # reads it by.
-        cert = cfg.get("tls_cert", "") or cfg.get("ui", {}).get("tls_cert", "")
-        if cert and not cert.startswith("/"):
-            cert = os.path.join(root, cert)
-        return "https" if cert and os.path.exists(cert) else "http"
-    except Exception:
-        return "http"
-
-
-def _urls(port):
-    name, lan = _out("scutil", "--get", "LocalHostName"), _lan_ip()
-    return [h for h in ("%s.local" % name if name else "", lan) if h]
 
 
 def main():
