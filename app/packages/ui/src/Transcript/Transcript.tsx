@@ -26,6 +26,8 @@ export interface Line {
   hand?: boolean;
   /** Written, never spoken, and saying so beside the words. */
   unheard?: boolean;
+  /** It broke off part-way: its last words fade out where it broke. */
+  cut?: boolean;
 }
 
 export interface Props {
@@ -56,6 +58,46 @@ const Muted = () => (
 );
 
 const Dots = () => <i className="dots"><b /><b /><b /></i>;
+
+/* Where a line broke off: its last few words fade out, a step at a time,
+   the last of them ending in a dash where it broke -- none after a sentence
+   that had ended, where the fade alone says it. Nothing else: no label, no
+   mark, no other word in the bubble (Eugene, 10-10: a CUT OFF after it read
+   as debug UI). A reader that cannot see the fade is told in words. Each
+   word is its own step, so the fade holds across a line wrap, and the last
+   one keeps its dash with it. Finished, so no caret; and not a warning,
+   which is the game's to say somewhere other than in the words. */
+const ENDED = /[.!?\u2026]["'\u201d\u2019)\]]*$/;
+/** How many words fade: f1 to f4 in the stylesheet, the last the faintest. */
+const FADE = 4;
+function Broke({text}: {text: string}) {
+  const t = text.trimEnd().replace(/\n[ \t]+/g, '\n');
+  /* The last few words, with what stood between them: the words fade, the
+     space and any line break between them stay as they were. */
+  const tail = new RegExp(`(?:\\S+\\s+){0,${FADE - 1}}\\S+$`).exec(t);
+  const head = tail ? t.slice(0, tail.index) : t;
+  const parts = tail ? tail[0].split(/(\s+)/) : [];
+  const words = parts.filter((_, i) => i % 2 === 0);
+  /* Fewer words than steps take the faintest: the last is always f4. */
+  const from = FADE - words.length + 1;
+  const dash = ENDED.test(t) ? '' : '\u2014';
+  return (
+    <>
+      {render(head)}
+      {parts.map((p, i) => {
+        if (i % 2) return p;
+        const n = i / 2;
+        const last = n === words.length - 1;
+        return (
+          <span key={`f${n}`} className={`fade f${from + n}${last ? ' end' : ''}`}>
+            {render(p)}{last ? dash : ''}
+          </span>
+        );
+      })}
+      <span className="cut-said"> cut off</span>
+    </>
+  );
+}
 
 /* One line, and its own memo.
 
@@ -102,7 +144,9 @@ const Bubble = memo(function Bubble(
           transcript arrives a second later; without this the screen says
           nothing while you talk and the reply seems to come out of
           nowhere. */}
-      <div className="body">{turn.pending ? <Dots /> : render(text)}</div>
+      <div className="body">
+        {turn.pending ? <Dots /> : turn.cut ? <Broke text={text} /> : render(text)}
+      </div>
       {corner && <span className="tools">{corner}</span>}
       {/* A line that arrived while the sound was off. The words are on the
           glass and the voice was dropped, which from in here is

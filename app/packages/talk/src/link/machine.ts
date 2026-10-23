@@ -14,8 +14,9 @@
  *
  * It does not feed the idle watchdog, and must not: a room left open all
  * afternoon should let the machine put itself away, which is the whole of what
- * `idle_stop_minutes` is for. What keeps the models up is asking them for
- * something. See `ping` in @lucid/machine for the other half of that.
+ * `idle_stop_minutes` in the machine's config is for. What keeps the models up
+ * is asking them for something. See `ping` in @lucid/machine for the other
+ * half of that.
  */
 import {status} from '@lucid/machine';
 import {EMPTY, link} from './store';
@@ -48,7 +49,7 @@ export async function readMachine(): Promise<void> {
  */
 export function watchMachine(every = EVERY_MS): () => void {
   const tick = () => void readMachine().then(
-    () => { if (link.getState().adrift) link.setState({adrift: false}); },
+    () => { if (link.getState().adrift) link.setState({adrift: false, adrift_said: ''}); },
     () => { if (!link.getState().adrift) link.setState({adrift: true}); });
   tick();
   const timer = setInterval(tick, every);

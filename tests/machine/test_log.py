@@ -199,7 +199,7 @@ class Commands(unittest.TestCase):
         L.orders.update(self.was)
 
     def _run(self, line):
-        return asyncio.new_event_loop().run_until_complete(L.run(line))
+        return asyncio.run(L.run(line))
 
     def test_a_command_runs_and_answers(self):
         L.command("greet", "say hello", app="lucid-talk")(lambda args: f"hi {args}")

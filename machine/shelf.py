@@ -22,8 +22,10 @@ those are never called strays.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -41,10 +43,36 @@ def sizes() -> list[str]:
     return list(manifest()["llm"])
 
 
+def pick(ram_gb: float) -> str:
+    """The size this much memory is good for, by the rule setup.sh writes the
+    config with: the large one wants 32 GB (about 23 mid-reply with the voice
+    and the ear beside it), the middle one 16, and the small one runs on
+    anything. Two copies of one rule, the shell's and this, so the first-open
+    card in a room suggests what setup would have written; change both.
+    """
+    return "lg" if ram_gb >= 32 else "md" if ram_gb >= 16 else "sm"
+
+
+def ram_gb() -> float:
+    """This Mac's memory, in the GB setup.sh counts it in (2^30 bytes)."""
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1073741824
+    except (ValueError, OSError, AttributeError):
+        return 0.0
+
+
 def entry(role: str, size: str | None = None) -> dict:
     """One line of the manifest: the repository, its commit, its weight."""
     m = manifest()
     return m["llm"][size] if role == "llm" else m[role]
+
+
+def censored(size: str) -> bool:
+    """Whether a size of the language model is flagged `censored` in the
+    manifest: weights that sometimes answer as the model rather than as the
+    character. A size the manifest does not name -- one of the config's own
+    -- is not: nobody has said it of it."""
+    return bool((manifest()["llm"].get(size) or {}).get("censored", False))
 
 
 def where(base: str | Path, role: str, size: str | None = None) -> Path:
@@ -170,6 +198,32 @@ def size_of(path: Path) -> float:
 
 # ---- fetching ---------------------------------------------------------------
 
+@contextmanager
+def online():
+    """The hub reachable for as long as this lasts.
+
+    run.sh starts the machine with HF_HUB_OFFLINE=1, because after setup the
+    app runs with no network at all and a model load must never reach for
+    one. A fetch asked for from the first-open card is the one exception --
+    somebody pressed Download -- so the switch is lifted around it and put
+    back. The library reads the flag off its constants module on every
+    request, which is what this sets.
+
+    The card's bar is what is on disk under the checkout. Over Xet, which the
+    library uses where it can, files are written in large pieces and the bar
+    moves in steps (0.85, 1.42, 1.5, then 3.1 GB at 17 s for the 4B, measured
+    10-08); plain HTTP grows smoothly but took 36 s for the same model, so the
+    steps are the price of half the wait.
+    """
+    from huggingface_hub import constants
+    was = constants.HF_HUB_OFFLINE
+    constants.HF_HUB_OFFLINE = False
+    try:
+        yield
+    finally:
+        constants.HF_HUB_OFFLINE = was
+
+
 def fetch(base: str | Path, role: str, size: str | None = None) -> Path:
     """Bring one checkout to the commit the manifest pins. Resumes a download
     that stopped, and does nothing to one already there."""
@@ -177,7 +231,8 @@ def fetch(base: str | Path, role: str, size: str | None = None) -> Path:
     e = entry(role, size)
     home = where(base, role, size)
     home.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_download(e["repo"], revision=e["rev"], local_dir=str(home))
+    with online():
+        snapshot_download(e["repo"], revision=e["rev"], local_dir=str(home))
     if whole(home, e["rev"]):
         tidy(home)
     return home

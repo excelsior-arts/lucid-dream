@@ -7,6 +7,8 @@
    and nothing here knows where on the page that ends up.
 --------------------------------------------------------------------------- */
 import {backend} from '../backend';
+import {routed} from '../base';
+import {host} from '../host';
 import {sound} from './sound';
 
 export type Level = 'debug' | 'info' | 'warn' | 'error';
@@ -35,8 +37,12 @@ type Wire =
    door — and the console asks for the commands that make sense there. Without
    that the box's own page was being offered a microphone and a conversation to
    reset. */
-export function appAt(where: string): string {
-  return (location.pathname.split('/')[1] || '').trim() + (where ? '/' + where : '');
+export function appAt(where: string, app?: string): string {
+  /* By the game's name, not its address: the address can move (/lucid-talk
+     became /talk) and can sit under a host's own path (/lucid-dream/talk).
+     The first segment is the answer only for a caller that did not say. */
+  const id = app ?? (routed(location.pathname).split('/')[1] || '').trim();
+  return id + (where ? '/' + where : '');
 }
 
 /* How far somebody has read. Every line carries the moment it was said, so the
@@ -194,8 +200,21 @@ export class Hatch {
    * field and return, having already dialled: the room's own server-side
    * commands were missing until something else dropped the socket. So the
    * socket is opened again, quietly, on a move. */
-  start(where = ''): void {
-    const at = appAt(where);
+  start(where = '', app?: string): void {
+    const at = appAt(where, app);
+    /* No machine behind this page -- a static host, or a wrapper that brought
+       none -- and so no log to dial. The console is this page's own then:
+       what it says is drawn here, what it is asked is answered here or not
+       at all, and nothing retries a socket that was never going to open. */
+    if (!host().log) {
+      this.at = at;
+      if (!this.dialed) {
+        this.dialed = true;
+        const held = this.outbox.splice(0);
+        for (const msg of held) this.tell(msg);
+      }
+      return;
+    }
     if (this.dialed && at === this.at) return;
     this.at = at;
     if (!this.dialed) {
@@ -217,7 +236,22 @@ export class Hatch {
   }
 
   // ---- the wire ----
+  /** One row of lamps, from this side of the wire. A page with no machine
+      behind it is its own machine -- the model it runs is the lamp -- and
+      says so here rather than over a socket. */
+  report(h: Health): void {
+    this.health.set(h.app, h);
+    this.changed();
+  }
+
   private tell(msg: Said | Ran): void {
+    if (!host().log && this.dialed) {
+      const at = Date.now() / 1000;
+      if ('say' in msg) this.draw([{at, source: 'page', level: msg.say.level, text: msg.say.text}]);
+      else this.draw([{at, source: 'console', level: 'warn',
+                       text: `${msg.run.split(' ')[0]} — there is no machine behind this page to ask`}]);
+      return;
+    }
     if (this.ws && this.ws.readyState === 1) {
       this.ws.send(JSON.stringify(msg));
       return;

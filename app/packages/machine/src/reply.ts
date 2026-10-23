@@ -11,7 +11,7 @@
 import type {Pacer, Playback} from '@lucid/audio';
 import type {ChatOptions, Message} from './chat';
 import {streamChat} from './chat';
-import {mergeFor, splitForSpeech, spokenPrefix} from './speech';
+import {hasWords, mergeFor, showable, splitForSpeech, spokenPrefix, withoutTags} from './speech';
 import type {Voice} from './tts';
 
 export interface ReplyOptions {
@@ -37,7 +37,9 @@ export interface ReplyOptions {
       puts the reply into a store something else paces from -- which is what
       the room does -- leaves this out, or the words arrive twice. */
   pacer?: Pacer;
-  /** The next words of the reply, as they are written. */
+  /** The next words of the reply, as they are written -- as they are read,
+      that is: the tags a voice performs ("[laugh]") go to the voice and
+      never here. See `showable` in speech.ts. */
   onDelta?: (delta: string) => void;
   /** The first chunk has been handed to the voice: the state is `speaking`
       rather than `thinking`. */
@@ -50,13 +52,32 @@ export interface ReplyOptions {
   onChunk?: (chunk: {n: number; words: number; chars: number; queuedS: number;
                      merge: number; paragraph: boolean}) => void;
   /** What to keep. `text` is the model's own writing, cut where the voice
-      stopped if it was; `spoken` is the chunks that were actually said.
-      Not called at all when nothing was said -- see below. */
-  onDone?: (text: string, spoken: string[]) => void;
+      stopped if it was, and without its tags: what is kept is what is read.
+      `spoken` is the chunks that were actually said, as the voice was handed
+      them. `written` is `text` with its tags still in, for the one reader
+      that should see them: the model, next turn. Shown its replies without
+      them, it learns from its own history that it never makes a sound --
+      measured, a voice offered tags in the system prompt wrote none in ten
+      replies. Called with nothing when nothing was said -- see below.
+
+      `cut` is a reply that broke off: the words stopped coming because
+      something failed (a GPU letting go, a stream dropped, a machine gone
+      quiet), not because anybody stopped it, and `onTrouble` has said why.
+      `text` is then every word that came, shown as it was, the fragment it
+      broke off in included; `written` the same with its tags; `spoken` the
+      whole sentences handed to the voice, which are all it says of it. What
+      of it to keep is the caller's to decide. */
+  onDone?: (text: string, spoken: string[], written: string, cut?: boolean) => void;
   /** The model would not answer, or the voice would not speak. */
   onTrouble?: (e: Error) => void;
   /** Cut from outside: the room was left, the page went away. */
   signal?: AbortSignal;
+  /** Where the words come from: `streamChat` unless a game puts something
+      between the model and the voice -- talk's refusal guard, which holds a
+      reply's opening back until it can be judged and asks again for one
+      that refused (conversation/refusal.ts there). Whatever it is takes the
+      same options, the signal among them, and yields the words to show. */
+  chat?: (o: ChatOptions) => AsyncIterable<string>;
 }
 
 export interface Reply {
@@ -118,6 +139,9 @@ export function runReply(o: ReplyOptions): Reply {
      snapshot can be asked for at any moment, including one where nothing is
      going to run again -- the page is going away. */
   let full = '';
+  /* And how much of it the page has been shown, which is `full` without its
+     tags. See onDelta. */
+  let shown = '';
   let buffer = '';
   let startedSpeaking = false;
   let stopped = false;
@@ -132,10 +156,9 @@ export function runReply(o: ReplyOptions): Reply {
    * spend playing anyway. See mergeFor. Muted, nothing is queued and nothing
    * is spoken, so the size of a chunk is nobody's concern. */
   async function flush(final: boolean): Promise<void> {
-    // Hurry only the opening, and only until something is playing.
     const queuedS = o.voice ? o.playback.queuedS : 0;
     const merge = mergeFor(queuedS);
-    const chunks = splitForSpeech(buffer, {firstShort: !startedSpeaking, merge});
+    const chunks = splitForSpeech(buffer, {merge});
     if (!final && chunks.length <= 1) return;
     const take = final ? chunks : chunks.slice(0, -1);
     const rest = final ? '' : chunks[chunks.length - 1] ?? '';
@@ -153,6 +176,10 @@ export function runReply(o: ReplyOptions): Reply {
       spoken.push(chunk);
       credits.push(0);
       if (!o.voice) continue;         // muted: nothing is sent, so nothing is made
+      /* A tag the reply ended on with no line left to carry it ("[sigh]" as
+         its last word): kept as said, and not sent -- a tag alone is noise
+         from the voice, not a sound (see hasWords in speech.ts). */
+      if (!hasWords(chunk)) continue;
       try {
         /* The paragraph marker, the way the splitter writes it: a trailing
            newline is a thought ending, and the machine puts a beat after it. */
@@ -166,14 +193,19 @@ export function runReply(o: ReplyOptions): Reply {
           o.playback.enqueue(frame.pcm, frame.rate);
           /* What that audio just covered, in characters of the reply as
              written. The page paces the text against the voice, and it cannot
-             work this out for itself: the machine strips bracketed tags and
+             work this out for itself: the machine strips unknown tags and
              every asterisk before synthesis, so counting the characters it
              streamed would count markup that is never said, and read the voice
              as faster than it is. The +1 is the whitespace this chunk was
-             split on, and it arrives on the first frame of the chunk. */
+             split on, and it arrives on the first frame of the chunk.
+
+             Less the tags, which the page never shows: the credit is measured
+             against the text on the glass, and a tag counted there is the
+             words running a few characters ahead of the voice per tag. */
           if (frame.chars) {
-            o.playback.credit(frame.chars);
-            credits[credits.length - 1] = (credits[credits.length - 1] ?? 0) + frame.chars;
+            const chars = Math.max(1, frame.chars - (text.length - withoutTags(text).length));
+            o.playback.credit(chars);
+            credits[credits.length - 1] = (credits[credits.length - 1] ?? 0) + chars;
           }
         }
       } catch (e) {
@@ -190,7 +222,7 @@ export function runReply(o: ReplyOptions): Reply {
     holding = true;
     o.playback.expect(true);
     try {
-      for await (const delta of streamChat({
+      for await (const delta of (o.chat ?? streamChat)({
         messages: o.messages,
         temperature: o.temperature,
         top_p: o.top_p,
@@ -200,8 +232,16 @@ export function runReply(o: ReplyOptions): Reply {
         if (stopped) break;
         full += delta;
         buffer += delta;
-        o.onDelta?.(delta);
-        o.pacer?.feed(delta);
+        /* What can be read of it so far: the tags out, and a tag still being
+           written held back until it closes -- "[whisp" on the glass for a
+           token is a tag shown. Only ever longer, so what is new is a delta. */
+        const now = showable(full);
+        if (now.length > shown.length && now.startsWith(shown)) {
+          const more = now.slice(shown.length);
+          shown = now;
+          o.onDelta?.(more);
+          o.pacer?.feed(more);
+        }
         await flush(false);
       }
     } catch (e) {
@@ -218,6 +258,7 @@ export function runReply(o: ReplyOptions): Reply {
         o.onTrouble?.(e instanceof Error ? e : new Error(String(e)));
         holding = false;
         o.playback.expect(false);
+        brokeOff();
         return;
       }
     }
@@ -234,20 +275,43 @@ export function runReply(o: ReplyOptions): Reply {
        streamed with breaks collapsed into a block the moment it finished. An
        interrupted reply is the exception: only what was actually spoken is
        true, and the rest was never heard. */
-    const said = stopped
+    const written = stopped
       /* Cut from what the model wrote rather than rebuilt out of the pieces it
          was spoken in — see spokenPrefix, which explains what rebuilding costs
          a transcript. */
-      ? heard()
-      : (full.trim() || spoken.join(' ').trim());
+      ? heardAsWritten()
+      : (full.trim() || spoken.join(' ')).trim();
+    const said = withoutTags(written).trim();
     if (!said) {
-      // Cut off before a single token arrived: an empty turn would go into the
-      // transcript and back to the model as context.
+      /* Cut off before a word was heard: an empty turn would go into the
+         transcript and back to the model as context, so it is done with
+         nothing -- and said so, because the deltas that did arrive are on
+         somebody's glass under a caret, and nothing else is going to take
+         them down. */
       o.pacer?.done('');
+      o.onDone?.('', [], '');
       return;
     }
     o.pacer?.done(said);
-    o.onDone?.(said, stopped ? spoken.slice(0, heardAt ?? heardChunks()) : spoken);
+    o.onDone?.(said, stopped ? spoken.slice(0, heardAt ?? heardChunks()) : spoken, written);
+  }
+
+  /* The words stopped coming and nobody stopped them: the reply is over now.
+     It used to return with nothing said to anybody, so the bubble it was
+     streaming into went on streaming -- the caret blinking under a line
+     nobody was writing until the next one took it down. So it ends here,
+     with what came: the words on the glass stay (they were read), and the
+     voice keeps only the whole sentences it was already handed -- the
+     fragment in `buffer` is never sent, so nothing half-said is heard. */
+  function brokeOff(): void {
+    const said = showable(full);
+    if (!said) {
+      o.pacer?.done('');
+      o.onDone?.('', [], '');
+      return;
+    }
+    o.pacer?.done(said);
+    o.onDone?.(said, [...spoken], full.trim(), true);
   }
 
   /* How many of the chunks handed to the voice the room has actually heard.
@@ -291,10 +355,11 @@ export function runReply(o: ReplyOptions): Reply {
 
   /** What was spoken of it, cut out of the model's own text. See `spokenPrefix`,
       which explains what rebuilding it out of the chunks costs a transcript. */
-  const heard = (): string => {
+  const heardAsWritten = (): string => {
     const got = spoken.slice(0, heardAt ?? heardChunks());
-    return spokenPrefix(full, got).trim() || got.join(' ').trim();
+    return (spokenPrefix(full, got).trim() || got.join(' ')).trim();
   };
+  const heard = (): string => withoutTags(heardAsWritten()).trim();
 
   return {
     done: work(),

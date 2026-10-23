@@ -36,6 +36,25 @@ describe('the conversation', () => {
     expect(s.transcript).toEqual([{role: 'assistant', text: 'Come here.', streaming: false}]);
   });
 
+  test('done with nothing is a line cut before a word was heard: the bubble comes down', () => {
+    const s = fold([
+      {type: 'assistant_delta', text: 'I am here. The'},
+      {type: 'assistant_done', text: ''},
+    ]);
+    expect(s.transcript).toEqual([]);
+    // And with nothing streaming, nothing is said either.
+    expect(fold([{type: 'assistant_done', text: ''}]).transcript).toEqual([]);
+  });
+
+  test('a reply that broke off is finished, keeps its words and says it was cut', () => {
+    const s = fold([
+      {type: 'assistant_delta', text: 'I am here. I was thinking about the'},
+      {type: 'assistant_done', text: 'I am here. I was thinking about the', cut: true},
+    ]);
+    expect(s.transcript).toEqual([
+      {role: 'assistant', text: 'I am here. I was thinking about the', streaming: false, cut: true}]);
+  });
+
   test('done with nothing streaming is still a thing that was said', () => {
     const s = fold([{type: 'assistant_done', text: 'said while you were away'}]);
     expect(s.transcript).toEqual([{role: 'assistant', text: 'said while you were away'}]);

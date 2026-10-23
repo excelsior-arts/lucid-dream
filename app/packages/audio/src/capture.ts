@@ -7,6 +7,7 @@
  * cancellation is the browser's, which is most of why it must be this device
  * that listens: the same device is playing the voice.
  */
+import {host} from '@lucid/shell';
 import {BLOCK, RATE} from './vad';
 
 /** What the microphone does when you leave the window: close on a blur, close
@@ -56,6 +57,10 @@ export interface Options {
  * the line at the bottom sends. It is a remote, and a remote is a perfectly
  * good thing to be. */
 export function canBeHeard(): boolean {
+  /* And nothing to hear with: a page with no machine behind it has no
+     recognizer, so a microphone it could open would be a key that listens to
+     nobody. See host.ts in @lucid/shell. */
+  if (!host().ear) return false;
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && window.isSecureContext;
 }
 

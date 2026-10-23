@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./conversation/*": "./src/conversation/*.ts",
     "./*": "./src/*"
   },
   "dependencies": {
@@ -13,10 +14,10 @@
     "@lucid/shell": "*",
     "@lucid/ui": "*",
     "@lucid/world": "*",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "react-router": "8.3.1",
-    "three": "0.185.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router": "8.4.0",
+    "three": "0.186.1",
     "zustand": "5.0.15"
   }
 }

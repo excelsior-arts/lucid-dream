@@ -9,7 +9,7 @@
  */
 import type {Playback} from '@lucid/audio';
 import type {Reply} from '@lucid/machine';
-import {link} from '../link/store';
+import {surface} from './surface';
 
 /* Bumped every time the floor is taken. Anything queued behind that moment
    checks it and gives up rather than starting to talk into a silence you
@@ -175,10 +175,10 @@ export function costOfTurn(seconds: number): void {
  * times a second; here the queue says when it has changed. See Session.snapshot.
  */
 export function settleState(): void {
-  const state = link.getState().state;
+  const state = surface().stateIs();
   if (state !== 'speaking' && state !== 'thinking') return;
   if (held || remainingS() > 0.05) return;
-  link.setState({state: 'idle'});
+  surface().state('idle');
 }
 
 /** Cut the reply that is being spoken, and keep the floor as it is. For a

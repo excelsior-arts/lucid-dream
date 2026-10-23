@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 
 from pathlib import Path
 
@@ -144,6 +145,13 @@ DEFAULTS = {
         # thought ends; without this the next one starts instantly.
         "paragraph_pause": 0.45,
     },
+    # Minutes with nobody asking the three models above for anything before
+    # the machine puts all of them away and gives the memory back. Nothing
+    # anybody has written down goes with them, and the next thing said
+    # brings them up again. A room merely left open is not asking; a reply
+    # in flight is. 0 is never. Read on every check, so an edit here lands
+    # without a restart. See idle_minutes in machine/machine.py.
+    "idle_stop_minutes": 30,
     # The shelf of reference clips: models/voices/<name>.wav, and a persona
     # names one of them. A model asset like the weights above and written down
     # like one -- so a machine keeping its models on a disk of their own keeps
@@ -151,6 +159,15 @@ DEFAULTS = {
     # other paths. See machine/voices.py.
     "voices": {
         "path": "models/voices",
+    },
+    # The shelf of assets a game plays and draws: sounds/<name>.m4a and
+    # figures/<name>.glb under this directory. Not in the repository, ever
+    # -- heavy, and mostly somebody else's: a recording from a sound library,
+    # a character from Mixamo. They live in lucid-assets, a repository of
+    # their own, cloned beside the models or wherever this points. No shelf
+    # is the assets off. See machine/assets.py.
+    "assets": {
+        "dir": "models/assets",
     },
     "vad": {
         "floor_mult": 3.0,          # how much louder than the room speech starts
@@ -214,7 +231,7 @@ DEFAULTS = {
 # instead, a relative path is only found by a start made from the checkout,
 # and speculative decoding turns itself off anywhere else with nothing said.
 ON_DISK = (("models", "dir"), ("llm", "model"), ("llm", "venv"), ("llm", "draft_model"),
-           ("stt", "model"), ("tts", "model"), ("voices", "path"))
+           ("stt", "model"), ("tts", "model"), ("voices", "path"), ("assets", "dir"))
 
 def somewhere(value: str) -> str:
     """A path as this reads them: from the checkout unless it says otherwise.
@@ -262,6 +279,9 @@ def shelved(cfg: dict) -> dict:
     voices = cfg.setdefault("voices", {})
     if not voices.get("path"):
         voices["path"] = str(Path(base) / "voices")
+    assets = cfg.setdefault("assets", {})
+    if not assets.get("dir"):
+        assets["dir"] = str(Path(base) / "assets")
     return cfg
 
 
@@ -350,6 +370,11 @@ def written() -> dict:
     return got if isinstance(got, dict) else {}
 
 
+# One note at a time: each reads the file, patches it and writes it back, and
+# two at once would each keep only their own patch. Switches run on threads.
+NOTING = threading.Lock()
+
+
 def note(**changes) -> dict:
     """Write down a setting or two, and touch nothing else in the file.
 
@@ -364,9 +389,16 @@ def note(**changes) -> dict:
     The port is dropped on the way past, wherever it came from: it belongs to
     the run and a number written down here is ignored anyway.
     """
-    cfg = written()
-    cfg.update(changes)
-    cfg.pop("port", None)
-    PATH.parent.mkdir(parents=True, exist_ok=True)
-    PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+    with NOTING:
+        cfg = written()
+        cfg.update(changes)
+        cfg.pop("port", None)
+        PATH.parent.mkdir(parents=True, exist_ok=True)
+        # Beside and moved into place, as store.beside does: a reader that
+        # catches the file half written takes it for empty, and a note made
+        # from that would write back only its own change -- the rest of
+        # somebody's settings gone.
+        tmp = PATH.with_name(f".{PATH.name}.new")
+        tmp.write_text(json.dumps(cfg, indent=2) + "\n")
+        tmp.replace(PATH)
     return cfg

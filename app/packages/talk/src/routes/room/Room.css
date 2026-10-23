@@ -139,6 +139,19 @@ html[data-figure="spiral"]:where([data-page="room"]) #waking i {
    is merely elsewhere. */
 :where(html[data-page="room"]) #gone { color:#e9a184; background:rgba(90,38,23,.28);
         border-color:rgba(90,38,23,.6); }
+/* The pill being woken after a reply broke off (Banners.tsx): not a banner
+   -- nothing is wrong that the person has to do anything about, and nothing
+   is locked -- so no box and no amber. A line of the room's own muted type
+   over the keys, and a dot breathing in its accent while it is so. */
+:where(html[data-page="room"]) #not-answering { margin:0 0 -4px; padding:0 4px; display:flex; align-items:center;
+        gap:7px; font-size:11.5px; line-height:1.3; letter-spacing:.2px; color:var(--dim); }
+:where(html[data-page="room"]) #not-answering[hidden] { display:none; }
+:where(html[data-page="room"]) #not-answering::before { content:''; flex:none; width:5px; height:5px; border-radius:50%;
+        background:rgba(var(--room-accent), .75); animation:not-answering 2.4s ease-in-out infinite; }
+@keyframes not-answering { 0%,100% { opacity:.25; } 50% { opacity:1; } }
+@media (prefers-reduced-motion: reduce) {
+  :where(html[data-page="room"]) #not-answering::before { animation:none; opacity:.6; }
+}
 :where(html[data-page="room"]) .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 :where(html[data-page="room"]) button { font:inherit; font-size:13px; color:var(--text); background:#1d1710;
          border:1px solid var(--line); border-radius:8px; padding:7px 13px; cursor:pointer; }

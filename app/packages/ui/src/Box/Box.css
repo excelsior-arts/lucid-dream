@@ -211,6 +211,10 @@
                 pointer-events:none; }
 :where(#room, #taking) .card[data-figure="diamond"]::before {
    background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2740%27%20height%3D%2772%27%20viewBox%3D%270%200%2040%2072%27%3E%20%3Cg%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-opacity%3D%27.34%27%20stroke-width%3D%271.5%27%3E%20%3Cpath%20d%3D%27M20%204%20L33%2036%20L20%2068%20L7%2036%20Z%27%2F%3E%3Cpath%20d%3D%27M20%2017%20L26%2036%20L20%2055%20L14%2036%20Z%27%2F%3E%20%3Cpath%20d%3D%27M0%20-32%20L13%200%20L0%2032%20L-13%200%20Z%27%2F%3E%3Cpath%20d%3D%27M40%20-32%20L53%200%20L40%2032%20L27%200%20Z%27%2F%3E%20%3Cpath%20d%3D%27M0%2040%20L13%2072%20L0%20104%20L-13%2072%20Z%27%2F%3E%3Cpath%20d%3D%27M40%2040%20L53%2072%20L40%20104%20L27%2072%20Z%27%2F%3E%20%3C%2Fg%3E%3C%2Fsvg%3E"); background-size:auto 34%; }
+/* A flame, tiled the way the diamond is: one tongue of fire over the whole
+   back, drawn in the same white line. Which card wears it is the game's. */
+:where(#room, #taking) .card[data-figure="flame"]::before {
+   background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2740%27%20height%3D%2764%27%20viewBox%3D%270%200%2040%2064%27%3E%3Cg%20fill%3D%27none%27%20stroke%3D%27%23ffffff%27%20stroke-opacity%3D%27.34%27%20stroke-width%3D%271.5%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M20%204%20C14%2014%208%2019%209%2028%20C10%2036%2030%2036%2031%2028%20C32%2021%2027%2017%2025%2011%20C24%2017%2021%2019%2020%2024%20C17%2020%2019%2012%2020%204%20Z%27%2F%3E%3Cpath%20d%3D%27M0%2036%20C-6%2046%20-12%2051%20-11%2060%20C-10%2068%2010%2068%2011%2060%20C12%2053%207%2049%205%2043%20C4%2049%201%2051%200%2056%20C-3%2052%20-1%2044%200%2036%20Z%27%2F%3E%3Cpath%20d%3D%27M40%2036%20C34%2046%2028%2051%2029%2060%20C30%2068%2050%2068%2051%2060%20C52%2053%2047%2049%2045%2043%20C44%2049%2041%2051%2040%2056%20C37%2052%2039%2044%2040%2036%20Z%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E"); background-size:auto 30%; }
 /* One spiral, not a field of them: a single ribbon turning in on itself,
    drawn once and centred rather than repeated. The diamond above is tiled
    instead — which of the two a figure wants is a property of the figure, and
@@ -243,7 +247,13 @@
    to reach the foot of it and no further, and the longest of them runs to six
    lines — given the sheet's size it wraps past the bottom edge and is cut
    mid-word. These stay a share of the card, which is a share of the box. */
+/* Centred line by line, like the blurb under it: a title too long for the
+   card wraps, and a wrapped box is as wide as the card, so left-aligned it
+   sat its lines off to the left of the mark above them. A title that fits
+   on one line is as wide as its words and is centred by the caption either
+   way. */
 :where(#room, #taking) .card b { font-size:10px; font-weight:500; letter-spacing:2.4px;
+          text-align:center;
           text-transform:uppercase; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.6); }
 :where(#room, #taking) .card em { font-style:normal; font-size:8.5px; line-height:1.45;
            text-align:center; color:rgba(255,255,255,.78);
@@ -357,6 +367,17 @@
 /* The mark is the one thing that survives the turn: it is handed to the
    page that opens next, which picks it up under the same name. */
 :where(#room, #taking) .contents.taken .card.chosen .mark { view-transition-name:mirror; }
+/* But not in Firefox (157), whose GPU process panics capturing an element
+   inside a preserve-3d subtree for a view transition -- "this is an
+   unexpected case - please open a bug and talk to #gfx team!" -- every time a
+   card was taken (crash reports from the box of either game, headless and
+   not). The GPU process comes back, and a WebGPU piece opened over the restart
+   draws black: Burning Man, the second time in. Unnamed, the turn is a cut
+   there, as in a browser without view transitions. -moz-orient is Gecko's
+   alone. */
+@supports (-moz-orient: inherit) {
+  :where(#room, #taking) .contents.taken .card.chosen .mark { view-transition-name:none; }
+}
 /* Somebody who has asked not to be moved gets the old lift instead — the
    card still says which one was taken, and nothing flies at them. */
 @media (prefers-reduced-motion: reduce) {

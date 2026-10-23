@@ -35,6 +35,11 @@ export interface Pacer {
   feed(delta: string): void;
   /** An `assistant_done`: the reply, whole, once it has stopped growing. */
   done(text: string): void;
+  /** The reply broke off -- a failure, not a Stop: it is over on the glass
+      now, every word that came shown at once, whatever its voice has still
+      to say of the sentences it was handed. Walking the tail out against
+      that voice would keep the caret under a reply that has ended. */
+  cut(text: string): void;
   /** A new turn, or a line of your own. */
   reset(): void;
   /** There will be no voice for this reply, so pace against the clock.
@@ -286,6 +291,10 @@ export function createPacer(playback: Playback, o: Clock = {}): Pacer {
         return;
       }
       settle(text);
+    },
+
+    cut(text: string) {
+      if (!settled) settle(text);
     },
 
     reading(on: boolean) { wantReading = !!on; },

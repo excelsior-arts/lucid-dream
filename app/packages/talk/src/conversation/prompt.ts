@@ -6,12 +6,14 @@
  * moves goes on the end -- and the reason is the prompt cache. See `window`,
  * which is the one place that still breaks the rule.
  */
+import {tagsOnWords, wholeSentences} from '@lucid/machine';
 import type {Message} from '@lucid/machine';
 import type {PersonaCard} from '../link/shapes';
 import {asPromptBlock as memoryBlockOf} from './memory';
 import type {Standing} from './relation';
 import {asPromptBlock as relationBlockOf, conduct, decayed} from './relation';
 import {asPromptBlock as sceneBlockOf} from './scene';
+import {DEFAULT_VOICE, say, type Voice} from './pronouns';
 
 /** The prompts, by name, as conversation/bundle.ts reads them out of the
     package. */
@@ -25,13 +27,146 @@ export type Prompts = Readonly<Record<string, string>>;
 export const CONTEXT_TURNS = 6;      // user+assistant pairs kept in context
 export const CONTEXT_WORDS = 600;    // and a ceiling on their length; 0 is none
 
-export function systemPrompt(persona: PersonaCard, prompts: Prompts): string {
+/** A line of the conversation as the room keeps it.
+ *
+ * `content` is the words: what is shown, kept, folded into memory and read
+ * back. `sent` is what the model was shown for the line, where that is
+ * something else -- a reply with the sounds its voice made still in it
+ * ("[laugh] You came back. I didn't think you would."). The two are kept apart
+ * so that nothing a person reads ever carries a tag, and the model still sees
+ * its own history the way it wrote it: shown its replies with the tags taken
+ * out, it learns from them that it never makes a sound. See `asSent`. */
+export interface Kept extends Message {
+  sent?: string;
+  /** A reply that broke off part-way (turn.ts): `content` is every word
+      that came, as the glass shows it, and the model is shown its whole
+      sentences only (`asSent`). */
+  cut?: boolean;
+}
+
+/** The conversation as the model is shown it: each line as it was sent.
+ *
+ * Her tags where the voice said them: one she put on a line by itself is
+ * shown opening the sentence after it (`tagsOnWords`), so the lone "[sigh]"
+ * between two paragraphs that the voice never says alone is not a habit her
+ * own history teaches her -- on 10-12 the lover wrote one in eleven replies
+ * of twelve, from her second on.
+ *
+ * Less her tags when the voice speaking this reply performs none (`tagged`
+ * false, see `offersTags`): her replies are then shown as they are read, so
+ * a tag from an evening that had Turbo, or one that slipped through, is not
+ * a lesson in making more. His lines keep their presses either way. */
+export function asSent(history: readonly Kept[], tagged = true): Message[] {
+  return history.flatMap((m) => {
+    const content = m.role !== 'assistant' ? m.sent ?? m.content
+      : tagged ? tagsOnWords(m.sent ?? m.content) : m.content;
+    if (!m.cut) return [{role: m.role, content}];
+    /* A reply that broke off, up to its last whole sentence; none ended, and
+       it is not shown at all. Shown its half sentence, the model copies it:
+       measured 10-10 on the 0.8B, the lover's room, one reply cut inside its
+       first, second and third sentence and the next line asked six times
+       each way -- after "Sorry, you cut out. What were you saying?", 4 of 12
+       replies were the broken line again, word for word, stopping on the
+       word it broke on (and one was his own line before it); shown only the
+       whole sentences, none of 36. To a new question, no difference. */
+    const whole = wholeSentences(content);
+    return whole ? [{role: m.role, content: whole}] : [];
+  });
+}
+
+export function systemPrompt(
+  persona: PersonaCard, prompts: Prompts, voice: Voice = DEFAULT_VOICE, tags: readonly string[] = [],
+): string {
   // System first, persona last. The model weights what it read most recently,
   // so anything generic sitting after a persona quietly overrides it -- which
   // is why system.md carries no style or length guidance, only the facts about
   // being spoken aloud that the model cannot work out for itself.
-  return (prompts.system ?? '').replace(/\s+$/, '') + '\n\n' + (persona.prompt ?? '').trim();
+  const tagged = offersTags(prompts, tags);
+  return say(ifTags(prompts.system ?? '', tagged), voice).replace(/\s+$/, '')
+    + soundsLine(prompts, tags, voice) + '\n\n' + ifTags(persona.prompt ?? '', tagged).trim();
 }
+
+/** Whether the prompt offers the voice its sounds as tags: the voice keeps
+ * at least one, and sounds.md is there to offer them.
+ * Everything that differs between a voice that makes "[laugh]" and one that
+ * would only strip it turns on this one answer -- the sounds line, the
+ * reminder, the history shown back, and the `{if tags}` blocks. */
+export function offersTags(prompts: Prompts, tags: readonly string[]): boolean {
+  return !!prompts.sounds && tags.length > 0;
+}
+
+/** A prompt file's words for the voice that will speak them.
+ *
+ * Where the wording differs between a voice that performs tags and one that
+ * does not, a file carries both, inline and verbatim:
+ *
+ *   ... in your voice -- so is {if tags}a sound described in words instead
+ *   of made{else}naming a sound instead of making it{end}.
+ *
+ * `{if tags}A{else}B{end}` is A when the voice performs tags and B when it
+ * does not; `{if no tags}A{end}` is A only when it does not; either may leave
+ * out its `{else}`. What is between the marks is taken exactly as written,
+ * line breaks and all, so the marks go where the words change and nowhere
+ * else. A tagless voice gets the original approach -- a sound written as a
+ * word (mmm, ah, hah), never named, never in brackets -- and a tagged one the
+ * wording that dares it to write [laugh]. The same marks in system.md,
+ * system_text.md and a persona's body, the player's own included. */
+export function ifTags(text: string, tagged: boolean): string {
+  return text.replace(IF_TAGS, (_m, no: string | undefined, then: string, otherwise?: string) =>
+    (tagged === !no ? then : otherwise ?? ''));
+}
+
+const IF_TAGS = /\{if (no )?tags\}([\s\S]*?)(?:\{else\}([\s\S]*?))?\{end\}/g;
+
+/** The line that offers them, from sounds.md, and only when the voice
+ * keeps at least one: `tags` is what the voice that will speak says it keeps
+ * (see `shelf` in @lucid/machine), which is the map's, by ear, for that
+ * voice (voice-tags.json there) -- no second list here. A voice with no
+ * entry yet offers all its tokenizer knows, to be pruned by ear. With none,
+ * nothing is asked for -- the voice would strip them all, so a tag asked for
+ * is a word the reply spent on nothing. Fixed for the room, so the cached
+ * prefix holds. */
+export function soundsLine(prompts: Prompts, tags: readonly string[], voice: Voice = DEFAULT_VOICE): string {
+  if (!offersTags(prompts, tags)) return '';
+  return '\n' + say(prompts.sounds!, voice, {tags: tags.join(' ')}).trim();
+}
+
+/** Remind the model of the sounds, on the turn it is answering -- when its
+ * last reply made none.
+ *
+ * The same lesson as `unstick` and `statePress`, measured again for this: the
+ * line in the system prompt alone was read and not acted on -- no tags in ten
+ * replies from the lover, two from the thinker -- and moving it after the
+ * persona changed nothing. One short line at the end of his turn, where
+ * recency favours it, is what moved it.
+ *
+ * And only after a reply with no sound in it. On every turn it pushed the
+ * thinker to a sound in four replies of five while the lover made one in
+ * half; asked only when the last reply was quiet, the two came out at about
+ * three in five and one in four over twenty replies each. A pill that is
+ * making sounds is left to make them, and one that has stopped is reminded. The last reply is read as it was sent, tags and all (see
+ * Kept); one outside the window is as good as quiet.
+ *
+ * It names no tag: the tags are the system prompt's, and a reminder that
+ * spelled out sounds of its own invited ones the voice does not know. Only
+ * when the system prompt offered any (see soundsLine): a voice that performs
+ * none is asked for none here either. And on his turn only, like every press.
+ */
+export function soundPress(
+  messages: readonly Message[], prompts: Prompts, tags: readonly string[], voice: Voice = DEFAULT_VOICE,
+): Message[] {
+  const out = [...messages];
+  const last = out[out.length - 1];
+  const text = say(prompts.sounds_press ?? '', voice).trim();
+  if (!text || !soundsLine(prompts, tags, voice) || !last || last.role !== 'user') return out;
+  const reply = [...out].reverse().find((m) => m.role === 'assistant');
+  if (reply && MADE_A_SOUND.test(reply.content)) return out;
+  out[out.length - 1] = {...last, content: `${last.content}\n\n[${text}]`};
+  return out;
+}
+
+/** A reply with a tag in it, as the model wrote it. */
+const MADE_A_SOUND = /\[[A-Za-z][A-Za-z -]*\]/;
 
 /** What the pill remembers about you, for the system prompt.
  *
@@ -48,9 +183,9 @@ export function memoryBlock(mem: string, prompts: Prompts): string {
 }
 
 /** Where you stand with the pill. Facts are memory's job; this is stance. */
-export function relationBlock(state: Standing | null, prompts: Prompts, now?: number): string {
+export function relationBlock(state: Standing | null, prompts: Prompts, now?: number, voice: Voice = DEFAULT_VOICE): string {
   if (!state) return '';
-  return relationBlockOf(state, prompts.relation_intro ?? '', now);
+  return relationBlockOf(state, prompts.relation_intro ?? '', now, voice);
 }
 
 /** The whole of what goes in front of a conversation: the persona, what it
@@ -58,9 +193,10 @@ export function relationBlock(state: Standing | null, prompts: Prompts, now?: nu
     times an evening and no oftener, which is what makes the prefix cacheable. */
 export function systemFor(
   persona: PersonaCard, prompts: Prompts, mem: string, state: Standing | null, now?: number,
+  voice: Voice = DEFAULT_VOICE, tags: readonly string[] = [],
 ): string {
-  return systemPrompt(persona, prompts) + memoryBlock(mem, prompts)
-    + relationBlock(state, prompts, now);
+  return systemPrompt(persona, prompts, voice, tags) + memoryBlock(mem, prompts)
+    + relationBlock(state, prompts, now, voice);
 }
 
 export interface WindowOptions {
@@ -227,11 +363,11 @@ export function unstick(messages: readonly Message[]): Message[] {
  * turn leaves everything before it untouched. See scenePress.
  */
 export function statePress(
-  messages: readonly Message[], state: Standing | null, now?: number,
+  messages: readonly Message[], state: Standing | null, now?: number, voice: Voice = DEFAULT_VOICE,
 ): Message[] {
   const out = [...messages];
   if (!state) return out;
-  const text = conduct(decayed(state, now));
+  const text = conduct(decayed(state, now), voice);
   const last = out[out.length - 1];
   if (!text || !last || last.role !== 'user') return out;
   out[out.length - 1] = {...last, content: `${last.content}\n\n[${text}]`};
@@ -265,12 +401,29 @@ export function statePress(
  * `window`, which is the one place that still breaks the rule.
  */
 export function scenePress(
-  messages: readonly Message[], scene: string, prompts: Prompts,
+  messages: readonly Message[], scene: string, prompts: Prompts, voice: Voice = DEFAULT_VOICE,
 ): Message[] {
   const out = [...messages];
-  const block = sceneBlockOf(scene, prompts.scene_intro ?? '');
+  const block = sceneBlockOf(scene, say(prompts.scene_intro ?? '', voice));
   const last = out[out.length - 1];
   if (!block || !last || last.role !== 'user') return out;
   out[out.length - 1] = {...last, content: block.trim() + '\n\n' + last.content};
   return out;
+}
+
+/** The room, said once at the end of the system prompt instead of on every
+ * line -- where it never moves.
+ *
+ * With the scene off -- a browser's default (config.ts PAGE_DEFAULTS), or a
+ * player's choice on a Mac -- the room is the persona's place all evening,
+ * and scenePress put that same paragraph in
+ * front of every line he said: the window carried it four times over and the
+ * small model answered it -- 60% of the 4B's replies opened on the room in
+ * the research of 10-09, one take said a reply six times. Said once, where
+ * it holds still and the cache keeps it, the same note took that to 20%.
+ * The same words as the press, without its brackets; nothing when there is
+ * no place. See `placedOnce` in turn.ts, which decides. */
+export function placeLine(scene: string, prompts: Prompts, voice: Voice = DEFAULT_VOICE): string {
+  const block = sceneBlockOf(scene, say(prompts.scene_intro ?? '', voice)).trim();
+  return block ? '\n\n' + block.slice(1, -1).trim() : '';
 }

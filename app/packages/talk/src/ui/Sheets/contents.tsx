@@ -12,7 +12,7 @@
 import {useRef} from 'react';
 import {Link} from 'react-router';
 import {closeSheet} from '@lucid/ui';
-import {hatch} from '@lucid/shell';
+import {hatch, LimitNote, Mark, useLimited} from '@lucid/shell';
 import type {Sheet} from './sheets';
 import {saveCharacter} from './sheets';
 import {clearStanding, saveMemory} from '../../conversation/after';
@@ -54,7 +54,7 @@ export function Sessions({sheet}: {sheet: Sheet}) {
         <Link
           key={x.id}
           className="sheet-row"
-          to={`/lucid-talk/${sheet.slug}?session=${encodeURIComponent(x.id)}`}
+          to={`/talk/${sheet.slug}?session=${encodeURIComponent(x.id)}`}
           onClick={closeSheet}
         >
           <b>{x.when}</b>
@@ -69,6 +69,7 @@ export function Sessions({sheet}: {sheet: Sheet}) {
 // ---- what it remembers -----------------------------------------------------
 export function Memory({sheet}: {sheet: Sheet}) {
   const remembered = useLink((s) => s.remembered);
+  const slower = useLimited('memory');
   const box = useRef<HTMLTextAreaElement>(null);
   if (!remembered || remembered.slug !== sheet.slug) return <Waiting />;
   /* Off is a state worth drawing rather than hiding. The file is still yours
@@ -109,7 +110,9 @@ export function Memory({sheet}: {sheet: Sheet}) {
           </span>
         ) : (
           <>
-            <span>edit freely; this is prepended to every reply</span>
+            <span>edit freely; this is prepended to every reply
+              {/* Folded a third as often in a browser: said, with the mark. */}
+              {slower && <>; in this browser it is rewritten a third as often<Mark /></>}</span>
             <button
               type="button"
               className="sheet-save"
@@ -187,11 +190,15 @@ export function Character({sheet, words}: {sheet: Sheet; words: string}) {
 
 // ---- and how it is taking you ----------------------------------------------
 export function Forget({sheet}: {sheet: Sheet}) {
+  /* In a browser where you stand is held: said first, with the steps to run
+     it on your Mac, and the reset under it as anywhere. */
+  const held = useLimited('standing');
   return (
     <>
       <div className="sheet-body">
+        {held && <LimitNote id="standing" />}
         <p className="sheet-say">
-          Warmth, trust and mood go back to nothing, and the record of how you got here is deleted.
+          {held ? 'Reset puts it back to nothing here too: w' : 'W'}armth, trust and mood go back to nothing, and the record of how you got here is deleted.
           Your conversations, and what {sheet.name} remembers about you, are not touched.
         </p>
       </div>

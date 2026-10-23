@@ -65,10 +65,14 @@ vi.mock('./files', () => ({
   lines: () => Promise.resolve({lines: bags.lines, version: bags.version}),
 }));
 
+const machine = vi.hoisted(() => ({tags: [] as string[], down: false}));
+
 vi.mock('@lucid/machine', () => ({
   openVoice: () => ({close: () => {}}),
   // The shelf, for the line a room says when a pill's voice is not on it.
   voices: () => Promise.resolve(['lover']),
+  shelf: () => (machine.down ? Promise.reject(new Error('down'))
+    : Promise.resolve({voices: ['lover'], tags: machine.tags})),
 }));
 
 const {DEFAULTS} = await import('./config');
@@ -96,6 +100,8 @@ beforeEach(() => {
   bags.refuse = 0;
   bags.lines = [];
   bags.session = null;
+  machine.tags = [];
+  machine.down = false;
   sessionStorage.clear();
   link.setState({...EMPTY});
   leaveRoom();
@@ -157,6 +163,14 @@ test('and starts a fresh one when there is nothing to pick up', async () => {
   const room = await openRoom('lover');
   expect(room.sessionId).toBe('2026-03-03T03-03-01_lover');
   expect(link.getState().sid).toBe(room.sessionId);
+});
+
+test('the room knows which tags its voice performs, and a silent machine is none', async () => {
+  machine.tags = ['[laugh]', '[sigh]'];
+  expect((await openRoom('lover')).tags).toEqual(['[laugh]', '[sigh]']);
+  leaveRoom();
+  machine.down = true;
+  expect((await openRoom('lover')).tags).toEqual([]);
 });
 
 test('a name in the address is opened, spoken in or not', async () => {
@@ -334,4 +348,37 @@ test('an open overtaken by another pill plants nothing', async () => {
   } finally {
     PILLS.pop();
   }
+});
+
+/* ---- another page, through the surface ----------------------------------- */
+
+test('a page that says where a line was said has it on every turn, and nothing else changes', async () => {
+  const {attach, quiet} = await import('./surface');
+  const told: string[] = [];
+  attach({
+    ...quiet,
+    where: () => ({step: 420, region: 'the Salt Flats'}),
+    transcript: (m) => { told.push(m.type); },
+  });
+  try {
+    const room = await openRoom('lover');
+    bags.version = 1;
+    await write(room, {kind: 'turn', role: 'assistant', content: 'the wind'});
+    await write(room, {kind: 'scene', text: 'a slope'});
+    expect(bags.appends).toEqual([
+      {kind: 'meta', persona: 'lover', persona_name: 'Purple'},
+      {kind: 'turn', role: 'assistant', content: 'the wind', step: 420, region: 'the Salt Flats'},
+      {kind: 'scene', text: 'a slope'},
+    ]);
+    // The page's own store was not written into: this is not its room.
+    expect(link.getState().slug).toBe('');
+    expect(link.getState().transcript).toEqual([]);
+  } finally {
+    attach(null);
+  }
+  // And Talk's own is back.
+  leaveRoom();
+  const again = await openRoom('lover');
+  expect(link.getState().slug).toBe('lover');
+  expect(link.getState().sid).toBe(again.sessionId);
 });

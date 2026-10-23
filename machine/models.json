@@ -6,7 +6,12 @@
     "<models dir>/<org>/<repo>, exactly as published, and is never changed;",
     "`rev` pins the commit, `gb` is what it takes on disk. A newer release of",
     "the game edits this file and nothing else: setup fetches what is",
-    "missing or at another commit, and offers to prune what nothing names."
+    "missing or at another commit, and offers to prune what nothing names.",
+    "A size of the language model may say `\"censored\": true`: weights that",
+    "sometimes answer as the model rather than as the character (\"I can't",
+    "continue this roleplay. I am an AI...\"). GET /machine says it of the",
+    "size in use (llm.censored) and the game guards against it -- see",
+    "talk's conversation/refusal.ts. Absent is false, and none here is."
   ],
   "llm": {
     "sm": {"repo": "mlx-community/Qwen3.5-4B-MLX-4bit",

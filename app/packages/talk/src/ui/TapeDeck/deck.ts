@@ -39,6 +39,9 @@ export interface Machine {
   micWarming: boolean;
   /** The line to write in is open. */
   typing: boolean;
+  /** Nothing here can write the pill's words: a browser that cannot run a
+      model, stepped into to look around (the 'pill' limit). */
+  noWords?: boolean;
 }
 
 export interface Key {
@@ -58,6 +61,8 @@ export interface Key {
 }
 
 export type Deck = Record<KeyId, Key>;
+
+const NO_WORDS = 'this browser can’t run the pill';
 
 const SAY_FIRST = 'say something first — a tape has to be recorded before it plays';
 
@@ -181,6 +186,15 @@ export function deck(m: Machine): Deck {
      is the one key that still means something, and a room with no working key
      at all is a room somebody has to close the tab to leave. */
   const dark = (ids: KeyId[]) => { for (const id of ids) keys[id].disabled = true; };
+  /* A room with no pill in it, looked around: the keys that would ask it
+     for a turn are dark and say why, and the line is always open, marked,
+     its key the way to the note (see Room.tsx). Eject still leaves. */
+  if (m.noWords) {
+    for (const id of ['back', 'play', 'skip', 'rec'] as const) keys[id].title = NO_WORDS;
+    dark(['back', 'play', 'skip', 'rec']);
+    keys.type = {...keys.type, armed: true, pressed: true, label: 'Typing',
+                 title: 'this browser can’t run the pill — press to see why'};
+  }
   if (m.nowhere) dark(['play', 'pause', 'stop', 'skip', 'back', 'rec', 'type']);
   // Everything the machine has to answer. Pause is not in this list: the
   // sound it holds is already in this browser.

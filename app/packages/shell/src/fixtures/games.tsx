@@ -13,6 +13,10 @@ const inside = () => Promise.resolve({default: () => <p>inside</p>});
 
 export const AGAME: Manifest = {
   slug: 'a-game',
+  /* An address that is not the name, the way the real ones are, and the one
+     it moved from. */
+  path: 'game',
+  was: ['a-game'],
   name: 'A Game',
   blurb: 'Something with a lid on it.',
   routes: () => [

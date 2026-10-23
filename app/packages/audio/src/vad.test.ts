@@ -471,6 +471,107 @@ describe('the microphone gate', () => {
   });
 });
 
+/* ---- a line said while the answer to the last one is being made -------- */
+
+describe('before the reply has made a sound', () => {
+  /* The model is writing its first sentence, or the voice is making it: the
+     speaker has been told a reply is coming and has nothing yet. Nothing has
+     come out of the page, so there is no echo to be mistaken for a voice --
+     and the second of two lines said a breath apart, said here, was dropped
+     without a word: the grace counts from the first sound, which had not
+     come, and the learn-window from playback heard, of which there was none.
+     Measured in headless Chromium, the second line began 1.4 s before the
+     first reply's voice and only its last 384 ms got through. */
+  const making = (): Fake => {
+    const sp = new Fake(0);
+    sp.playing = false;
+    sp.queuedS = 0;
+    sp.expecting = true;
+    return sp;
+  };
+  const after = (e: ReturnType<typeof ear>) => {
+    for (let i = 0; i < TUNING.hangoverMs / BLOCK_MS + 3; i++) e.say(room(0.002));
+  };
+  const types = (e: ReturnType<typeof ear>) => e.heard.filter((x) => x.type !== 'log' && x.type !== 'note')
+    .map((x) => x.type);
+
+  test('a line said there takes the floor from the reply and is heard', () => {
+    // The first reply after the mic opened: nothing learned, and nothing to learn from.
+    const e = ear(making(), 0.01, {bargeLearnMs: 1500});
+    for (let i = 0; i < 40; i++) e.say(voice(0.05));
+    after(e);
+    expect(types(e)).toEqual(['barge', 'listening', 'listening', 'utterance']);
+    expect(e.heard.find((x) => x.type === 'barge')).toEqual({type: 'barge', spoken: true});
+    expect((e.kept()[0] as {seconds: number}).seconds).toBeGreaterThan(40 * BLOCK_MS / 1000);
+    expect(e.heard.filter((x) => x.type === 'log')).toHaveLength(0);
+  });
+
+  test('at the ordinary gate, as in a quiet room', () => {
+    // Three times the floor rather than six: nothing is coming out to clear.
+    const e = ear(making(), 0.01, {bargeLearnMs: 1500});
+    for (let i = 0; i < 40; i++) e.say(voice(0.035));
+    after(e);
+    expect(e.kept()).toHaveLength(1);
+  });
+
+  test('but the reply is stopped only once the line is long enough to be one', () => {
+    /* A cough while the pill is thinking does not cost it its answer: the
+       turn is said to be too short, and nothing was stopped. */
+    const e = ear(making(), 0.01, {bargeLearnMs: 1500});
+    for (let i = 0; i < 6; i++) e.say(voice(0.05));       // under 500 ms with the preroll
+    after(e);
+    expect(types(e)).toEqual(['dropped']);
+    expect((e.dropped()[0] as {barged: boolean}).barged).toBe(false);
+  });
+
+  test('or the moment the reply starts to sound, so its voice is not taken as yours', () => {
+    const sp = making();
+    const e = ear(sp, 0.01, {bargeLearnMs: 1500});
+    for (let i = 0; i < 4; i++) e.say(voice(0.05));       // begun, not yet a turn
+    expect(types(e)).toEqual([]);
+    sp.queuedS = 0.8;                                     // the first sentence arrives
+    sp.sinceStartMs = 10;
+    e.say(voice(0.05));
+    expect(types(e)).toEqual(['barge', 'listening']);
+    // Stopped, the speaker has nothing: the line goes on as a line.
+    sp.queuedS = 0;
+    sp.sinceStartMs = 0;
+    sp.expecting = false;
+    for (let i = 0; i < 30; i++) e.say(voice(0.05));
+    after(e);
+    expect(e.kept()).toHaveLength(1);
+  });
+
+  test('where talking over is off it is not taken, and the room says so', () => {
+    const e = ear(making(), 0.01, {bargeLearnMs: 1500});
+    e.vad.barge = false;
+    for (let i = 0; i < 40; i++) e.say(voice(0.05));
+    after(e);
+    expect(types(e)).toEqual([]);
+    expect(e.heard.filter((x) => x.type === 'log' && /talking over it is off/.test(x.text))).toHaveLength(1);
+  });
+
+  test('once it has sounded, the first moments of the first reply are still its own', () => {
+    /* The echo safety this leaves alone: the voice has started, the canceller
+       has heard none of it yet, and what the microphone hears might be the
+       pill. Refused, with the one note. */
+    const sp = making();
+    sp.playing = true;
+    sp.sinceStartMs = 800;                                 // past the grace
+    const e = ear(sp, 0.01, {bargeLearnMs: 1500});
+    for (let i = 0; i < 10; i++) e.say(voice(0.2));
+    expect(types(e)).toEqual([]);
+    expect(e.heard.filter((x) => x.type === 'log' && /still learning/.test(x.text))).toHaveLength(1);
+  });
+
+  test('and a microphone closed under such a line says nothing of listening', () => {
+    const e = ear(making(), 0.01, {bargeLearnMs: 1500});
+    for (let i = 0; i < 4; i++) e.say(voice(0.05));
+    e.vad.reset();
+    expect(types(e)).toEqual([]);
+  });
+});
+
 /* ---- what the two tests on a block actually measure ---------------------- */
 
 describe('a voice against a door', () => {
@@ -564,5 +665,117 @@ describe('the key, where there is one', () => {
     e.say(room(0.001));
     expect(e.kept()).toHaveLength(0);
     expect(e.dropped()).toEqual([{type: 'dropped', ms: 5 * BLOCK_MS, barged: false}]);
+  });
+});
+
+/* ---- 10-12: a microphone that heard and did not listen, and said nothing -- */
+
+describe('what the room says about itself', () => {
+  const notes = (e: ReturnType<typeof ear>) =>
+    e.heard.filter((x) => x.type === 'note').map((x) => (x as {text: string}).text);
+  const hush = (e: ReturnType<typeof ear>, blocks: number) => {
+    for (let i = 0; i < blocks; i++) e.say(room(0.002));
+  };
+  const line = (e: ReturnType<typeof ear>, rms = 0.05, blocks = 40) => {
+    for (let i = 0; i < blocks; i++) e.say(voice(rms));
+    hush(e, TUNING.hangoverMs / BLOCK_MS + 3);
+  };
+
+  test('a queue said to be waiting with nothing playing is a quiet room after three seconds', () => {
+    /* The evening's fault, as the detector saw it: the speaker said 2e-15 s
+       were queued behind a reply that was over. Nothing played and nothing
+       had started, so no grace ever passed and the line was refused without
+       a word, for as long as the page stood. Now it is not believed for
+       longer than a stuck chunk is -- and the room says so. */
+    const sp = new Fake(0);
+    sp.playing = false;
+    sp.queuedS = 2.220446049250313e-15;
+    const e = ear(sp, 0.01, {bargeLearnMs: 0});
+    e.vad.barge = true;
+    line(e);
+    expect(e.kept()).toHaveLength(0);                 // still believed, for now
+    hush(e, Math.round(3000 / BLOCK_MS));
+    line(e);
+    expect(e.kept()).toHaveLength(1);
+    expect(notes(e).some((n) => /^detector: 0\.000s said to be queued and nothing playing for 3 s — a quiet room/
+      .test(n))).toBe(true);
+  });
+
+  test('where it stands is said when that changes, and only then', () => {
+    const sp = new Fake();
+    sp.playing = false;
+    const e = ear(sp, 0.01);
+    hush(e, 10);
+    sp.playing = true;
+    hush(e, 10);
+    sp.playing = false;
+    hush(e, 10);
+    expect(notes(e).map((n) => n.replace(/ \(.*/, ''))).toEqual([
+      'detector: a quiet room',
+      'detector: a reply going out — a voice over it takes the floor',
+      'detector: a quiet room',
+    ]);
+  });
+
+  test('a turn begun says how it was heard', () => {
+    const e = ear(quiet, 0.01);
+    line(e);
+    expect(notes(e).some((n) => /^detector: hearing you \(you 0\.0500, gate 0\.0\d+\)$/.test(n))).toBe(true);
+    expect(e.heard.find((x) => x.type === 'note' && /hearing you/.test(x.text))).toMatchObject({level: 'debug'});
+  });
+
+  test('a voice refused for a second and a half says why, once', () => {
+    /* Talking over the reply is off, and somebody talks over it anyway: the
+       room used to say so the first time in a mic's life and never again. */
+    const sp = new Fake();
+    const e = ear(sp, 0.01, {bargeLearnMs: 0});
+    e.vad.barge = false;
+    for (let i = 0; i < 60; i++) e.say(voice(0.05));
+    const said = e.heard.filter((x) => x.type === 'note' && x.level === 'info');
+    expect(said).toEqual([{type: 'note', level: 'info',
+      text: 'hearing you but not taking it: talking over the reply is off (you 0.0500) — Skip, then speak'}]);
+    // Not again for a while, however long it goes on.
+    for (let i = 0; i < 200; i++) e.say(voice(0.05));
+    expect(e.heard.filter((x) => x.type === 'note' && x.level === 'info')).toHaveLength(1);
+    expect(e.kept()).toHaveLength(0);
+  });
+
+  test('and a voice under a reply it cannot clear says what it would have to clear', () => {
+    const sp = new Fake();
+    const e = ear(sp, 0.01, {bargeLearnMs: 0});
+    e.vad.barge = true;
+    for (let i = 0; i < 40; i++) e.say(room(0.03));        // the canceller lets a lot through
+    for (let i = 0; i < 60; i++) e.say(voice(0.05));
+    const said = notes(e).filter((n) => n.startsWith('hearing you but not taking it'));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/^hearing you but not taking it: under the bar a voice over the reply must clear /);
+    expect(said[0]).toMatch(/\(you 0\.0500, bar [\d.]+, the reply as heard [\d.]+\) — speak up, or Skip$/);
+  });
+
+  test('and a voice under the gate of a quiet room says so', () => {
+    /* A room whose floor has come up to meet whoever is talking in it: the
+       meter moves, and nothing clears the gate. */
+    const e = ear(quiet, 0.01);
+    for (let i = 0; i < 60; i++) e.say(voice(0.02));
+    expect(e.kept()).toHaveLength(0);
+    expect(notes(e).filter((n) => n.startsWith('hearing you but not taking it: under the gate'))).toHaveLength(1);
+  });
+
+  test('a cough is not refused speech', () => {
+    const sp = new Fake();
+    const e = ear(sp, 0.01, {bargeLearnMs: 0});
+    e.vad.barge = false;
+    for (let i = 0; i < 20; i++) e.say(voice(0.05));
+    hush(e, 60);
+    for (let i = 0; i < 20; i++) e.say(voice(0.05));
+    expect(notes(e).filter((n) => n.startsWith('hearing you but not taking it'))).toHaveLength(0);
+  });
+
+  test('a microphone opened again says where the room stands again', () => {
+    const e = ear(quiet, 0.01);
+    hush(e, 5);
+    e.vad.reset();
+    hush(e, 5);
+    expect(notes(e).filter((n) => n.startsWith('detector: a quiet room'))).toHaveLength(2);
   });
 });

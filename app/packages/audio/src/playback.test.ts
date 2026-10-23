@@ -136,6 +136,32 @@ test('a hard stop empties the queue and pauses what was playing', async () => {
   p.dispose();
 });
 
+test('a fade takes the voice down to nothing, stops it, and puts the level back', async () => {
+  vi.useFakeTimers();
+  try {
+    const p = createPlayback(ears);
+    p.enqueue(chunk(2), 24000);
+    p.enqueue(chunk(2), 24000);
+    await settled();
+    sound.setLevel(0.8);
+    p.fade(1);
+    vi.advanceTimersByTime(500);
+    expect(el().paused).toBe(false);
+    expect(el().volume).toBeGreaterThan(0.2);
+    expect(el().volume).toBeLessThan(0.6);
+    vi.advanceTimersByTime(600);
+    expect(el().paused).toBe(true);
+    expect(p.queuedS).toBe(0);
+    expect(el().volume).toBeCloseTo(0.8, 6);    // for whoever speaks next
+    // Nothing playing: a fade is a stop.
+    p.fade(1);
+    expect(el().paused).toBe(true);
+    p.dispose();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('a soft stop lets the line being spoken land', async () => {
   const p = createPlayback(ears);
   p.enqueue(chunk(1), 24000);
@@ -425,4 +451,26 @@ test('a stretch of speech spans the holes of one reply', async () => {
   expect(pb.sinceStartMs).toBe(0);
   pb.dispose();
   vi.useRealTimers();
+});
+
+test('an empty queue is no seconds at all, whatever its chunks added up to', async () => {
+  /* 10-12: hands-free talk stopped hearing anybody after a long reply. The
+     queue's seconds were a running total -- each chunk added on the way in,
+     taken off on the way out -- and floating point does not give back what it
+     was given: these four left 8.9e-16 s "queued" behind an empty queue. The
+     detector read that as a reply still going out, nothing started, so no
+     grace had passed: every word said after the reply was refused without a
+     line, the meter moving, until a typed line stopped the queue by hand. */
+  const p = createPlayback(ears);
+  for (const n of [24000, 30001, 45007, 52003]) p.enqueue(chunk(n / 24000), 24000);
+  await settled();
+  expect(p.queuedS).toBeCloseTo((30001 + 45007 + 52003) / 24000, 9);
+  for (let i = 0; i < 4; i++) {
+    el().onended!();
+    await settled();
+  }
+  expect(p.playing).toBe(false);
+  expect(p.queuedS).toBe(0);
+  expect(queued[queued.length - 1]).toBe(0);     // and whoever paces on it is told so
+  p.dispose();
 });

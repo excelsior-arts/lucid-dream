@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="274" height="76" viewBox="0 0 274 76" role="img" aria-label="RUN IT ON YOUR MAC">
+  <title>RUN IT ON YOUR MAC</title>
+  <defs>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgb(214,108,48)" stop-opacity=".62"/>
+      <stop offset="1" stop-color="rgb(214,108,48)" stop-opacity=".22"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>
+  </defs>
+  <rect x="12" y="12" width="250" height="52" rx="26.0" fill="rgb(214,108,48)" opacity=".35" filter="url(#glow)"/>
+  <rect x="12" y="12" width="250" height="52" rx="26.0" fill="#0a0c14"/>
+  <rect x="12.5" y="12.5" width="249" height="51" rx="25.5" fill="url(#fill)" stroke="rgb(214,108,48)" stroke-opacity=".75"/>
+  <rect x="30" y="13.5" width="214" height="1" fill="#fff" opacity=".12"/>
+  
+  <text x="137.0" y="43.5" text-anchor="middle" textLength="190" lengthAdjust="spacing" fill="#f2e5d0" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="600">RUN IT ON YOUR MAC</text>
+</svg>

@@ -7,7 +7,9 @@
  *
  * Nothing here knows what a persona is. Messages in, words out.
  */
-import {machine} from './address';
+import {call} from './address';
+import {Dropped, FIRST_WORD_MS, LATE_MS, NEXT_WORD_MS, NotAnswering, Stalled, within} from './stall';
+import {Told} from './told';
 
 export type Role = 'system' | 'user' | 'assistant';
 
@@ -25,12 +27,23 @@ export interface ChatOptions {
       a reply nobody will hear stops being written rather than being written
       into a socket nobody is reading. */
   signal?: AbortSignal;
+  /** How long the page waits for the first word and for each after it
+      before it calls the model stopped (stall.ts): the machine's own rule,
+      a little later. A test's to shorten. */
+  firstMs?: number;
+  nextMs?: number;
 }
 
 /** What a `data:` line carried. Only the two fields anybody reads. */
 interface Frame {
   choices?: Array<{delta?: {content?: string}}>;
   error?: string;
+  /** The error is in the page's own words (told.ts): only a browser's
+      stand-in sends it. */
+  told?: boolean;
+  /** The model stopped answering part-way, and the machine is waking it
+      (stall.ts): said quietly, not as a failure of the request. */
+  not_answering?: boolean;
 }
 
 /** One chat call, yielding the deltas as they arrive.
@@ -47,7 +60,7 @@ export async function* streamChat(o: ChatOptions): AsyncIterable<string> {
   if (o.top_p != null) body.top_p = o.top_p;
   if (o.max_tokens != null) body.max_tokens = o.max_tokens;
 
-  const res = await fetch(machine() + '/machine/chat', {
+  const res = await call('/machine/chat', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body),
@@ -64,6 +77,35 @@ export async function* streamChat(o: ChatOptions): AsyncIterable<string> {
      line can be split across two reads and two of them can share one. What is
      held here is the tail that has no newline on it yet. */
   let rest = '';
+  /* The page's own watch on the model, behind the machine's (stall.ts): from
+     the machine's answer, the first word within FIRST_WORD_MS and each after
+     it within NEXT_WORD_MS, each a little later than the machine would have
+     said so itself. Counted from the last word, not the last read -- a frame
+     with no words in it is not the model answering -- and only while this
+     waits on the stream: the time a reader spends with a word, handing a
+     sentence to the voice, is not the model's. */
+  const firstMs = (o.firstMs ?? FIRST_WORD_MS) + LATE_MS;
+  const nextMs = (o.nextMs ?? NEXT_WORD_MS) + LATE_MS;
+  let flowing = false;
+  /** Waited on the stream since the last word. */
+  let waited = 0;
+  /** The next lump of the body, or the stall, or the stream gone. */
+  const read = async () => {
+    const began = Date.now();
+    try {
+      const ms = flowing ? nextMs : firstMs;
+      return await within(reader.read(), Math.max(0, ms - waited),
+                          () => new Stalled(`the machine sent no word for ${Math.round(ms / 1000)} s`));
+    } catch (e) {
+      /* Ours to stop, or a stall: as it is. A read that failed under nobody
+         stopping it is the stream dropped -- a reset, a machine gone -- and
+         the reply breaks off there (reply.ts). */
+      if (o.signal?.aborted || e instanceof NotAnswering) throw e;
+      throw new Dropped(e instanceof Error ? e.message : String(e));
+    } finally {
+      waited += Date.now() - began;
+    }
+  };
   /* One line of the stream: the words in it, or the end of it. */
   function* take(line: string): Generator<string, boolean> {
     if (!line.startsWith('data:')) return false;      // the blank line between frames
@@ -75,14 +117,17 @@ export async function* streamChat(o: ChatOptions): AsyncIterable<string> {
     } catch {
       return false;                                   // not ours to make sense of
     }
-    if (frame.error) throw new Error(frame.error);
+    if (frame.error) {
+      throw frame.not_answering ? new NotAnswering(frame.error)
+        : frame.told ? new Told(frame.error) : new Error(frame.error);
+    }
     const delta = frame.choices?.[0]?.delta?.content;
-    if (delta) yield delta;
+    if (delta) { flowing = true; waited = 0; yield delta; }
     return false;
   }
   try {
     for (;;) {
-      const {done, value} = await reader.read();
+      const {done, value} = await read();
       if (done) break;
       rest += decode.decode(value, {stream: true});
       const lines = rest.split('\n');

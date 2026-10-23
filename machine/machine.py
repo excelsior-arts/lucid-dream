@@ -36,14 +36,15 @@ from pathlib import Path
 import time
 
 import numpy as np
-from fastapi import Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from . import config as C
 from . import log as LOG
 from . import models as M
 from . import shelf as S
 from . import voices as V
+from . import assets as A
 from .store import asked, raw, too_much
 
 # What a page sends and what comes back, in samples per second. The recognizer
@@ -71,10 +72,22 @@ def most_audio(rate: int) -> int:
     return int(max(ms, 1000.0) / 1000.0 * rate * 2 * TURNS)
 
 
-# How long the machine may sit loaded with nobody asking it anything. It
-# defers to any conversation that says it is busy, so a page that is in the
-# middle of something is never put away underneath it.
-IDLE_MINUTES = 30
+def idle_minutes() -> float:
+    """How long the machine may sit loaded with nobody asking it anything.
+
+    `idle_stop_minutes` in the machine's config, 30 unless it says otherwise,
+    and 0 or less is never. Read on every look rather than once at start, the
+    way the microphone's settings are, so an edit to the file is the next
+    check's answer. A value that is not a number is the default rather than a
+    watchdog that dies on it. The watchdog defers to any conversation that
+    says it is busy, so a page that is in the middle of something is never
+    put away underneath it.
+    """
+    got = C.load().get("idle_stop_minutes")
+    try:
+        return float(got)
+    except (TypeError, ValueError):
+        return float(C.DEFAULTS["idle_stop_minutes"])
 
 # And how long one model stays up after the last page to want it said it was
 # done. A microphone goes off between two things somebody says and the mute
@@ -129,7 +142,10 @@ class Stack:
         # for one nobody has said they are done with. See want().
         self._grace: dict[str, float | None] = {"stt": None, "tts": None}
         self.active_at = time.time()
-        self._starting = threading.Lock()
+        # Re-entrant: a revive holds it across the kill and the start that
+        # follows (start_llm takes it again), so a line arriving in between
+        # waits for the fresh model rather than finding the old one dying.
+        self._starting = threading.RLock()
         self._mending = False
         self._busy: list = []
         self._watch: threading.Thread | None = None
@@ -137,6 +153,15 @@ class Stack:
                           "total_gb": 0.0}
         self._mem_at = 0.0
         self._mem_busy = False
+        # A size being brought onto the shelf, for the card that asked for it:
+        # which, how far, and how it ended. None when nothing has been asked.
+        # See fetch().
+        self._fetch: dict | None = None
+        self._fetching = threading.Lock()
+        # And the voice and the ear, brought down by the same card beside the
+        # language model or on their own: which, how far, how it ended.
+        # See fetch_parts().
+        self._parts: dict | None = None
 
     # ---------- the two objects ----------
 
@@ -248,6 +273,187 @@ class Stack:
         self.start_llm()
         return {"status": self.status["llm"], "size": self.size()}
 
+    def here(self) -> bool:
+        """Whether the language model the config names is on this Mac.
+
+        What the first-open card in a room asks: a machine with its model on
+        disk never sees the card, and one without -- a fresh checkout, or one
+        whose shelf is somewhere that has not been filled -- is offered the
+        sizes to fetch. The path is the config's, not the running process's,
+        because the question is what a start would find.
+        """
+        model = str((C.load().get("llm") or {}).get("model") or "")
+        return bool(model) and (Path(model) / "config.json").is_file()
+
+    def offer(self) -> list[dict]:
+        """The sizes a page can choose between, smallest first: what each
+        weighs, whether it is already here, and the one this Mac's memory is
+        good for marked, by setup's rule (shelf.pick). Only the manifest's
+        three: a size of somebody's own is on disk already or nowhere."""
+        base = (C.load().get("models") or {}).get("dir") or C.somewhere("models")
+        good = S.pick(S.ram_gb())
+        # Whole, rather than a config.json in a directory: that is the first
+        # file of a download to arrive, and the card said "on this Mac" over a
+        # bar at 20 MB.
+        return [{"size": name, "repo": S.entry("llm", name)["repo"],
+                 "gb": S.entry("llm", name)["gb"],
+                 "here": S.whole(S.where(base, "llm", name), S.entry("llm", name)["rev"]),
+                 "suggested": name == good}
+                for name in S.sizes()]
+
+    # The two the card offers beside the language model, by the name the card
+    # gives them: the voice and the ear. One of each, the manifest's.
+    PARTS = {"voice": ("tts", "Chatterbox Turbo"), "ear": ("stt", "Parakeet")}
+
+    def part_here(self, role: str) -> bool:
+        """Whether the voice (tts) or the ear (stt) the config names is on
+        this Mac: the manifest's checkout whole at its commit, or a path of
+        somebody's own that is there at all."""
+        cfg = C.load()
+        base = (cfg.get("models") or {}).get("dir") or C.somewhere("models")
+        model = Path(str((cfg.get(role) or {}).get("model") or ""))
+        home = S.where(base, role)
+        if not str(model) or model.resolve() == home.resolve():
+            return S.whole(home, S.entry(role)["rev"])
+        return model.is_dir()
+
+    def parts(self) -> dict:
+        """What the first-open card offers beside the sizes: the voice and
+        the ear, each a row -- what it is, what it weighs, whether it is here
+        -- and how a fetch of them is going."""
+        out: dict = {}
+        for kind, (role, name) in self.PARTS.items():
+            e = S.entry(role)
+            out[kind] = [{"id": role, "name": name, "repo": e["repo"], "gb": e["gb"],
+                          "here": self.part_here(role), "suggested": True}]
+        out["fetch"] = self.parts_fetching()
+        return out
+
+    def parts_fetching(self) -> dict | None:
+        got = dict(self._parts) if self._parts else None
+        if got and got.get("state") == "fetching":
+            base = (C.load().get("models") or {}).get("dir") or C.somewhere("models")
+            total = 0.0
+            for role in got.get("roles", []):
+                home = S.where(base, role)
+                try:
+                    total += S.size_of(home) if home.is_dir() else 0.0
+                except OSError:
+                    pass
+            got["got_gb"] = round(total, 2)
+        return got
+
+    def fetch_parts(self, roles: list[str]) -> dict:
+        """Bring the voice, the ear or both onto the shelf, as fetch() brings
+        a size: shelf.fetch on a thread, one already whole left as it is.
+        Nothing is started: the voice and the ear load when a room asks for
+        them, as they always have."""
+        bad = [r for r in roles if r not in S.ROLES]
+        if not roles or bad:
+            raise ValueError("the parts are " + ", ".join(S.ROLES))
+        with self._fetching:
+            now = self._parts
+            if now and now.get("state") == "fetching":
+                return dict(now)
+            self._parts = {"roles": list(roles), "state": "fetching", "got_gb": 0.0,
+                           "gb": round(sum(S.entry(r)["gb"] for r in roles), 2)}
+        self.touch()
+        threading.Thread(target=self._parts_fetched, args=(list(roles),), daemon=True,
+                         name="machine-fetch-parts").start()
+        return dict(self._parts)
+
+    def _parts_fetched(self, roles: list[str]) -> None:
+        base = (C.load().get("models") or {}).get("dir") or C.somewhere("models")
+        named = {"tts": "the voice", "stt": "the ear"}
+        for role in roles:
+            e = S.entry(role)
+            LOG.say(f"fetching {named[role]}, ~{e['gb']} GB …", source="machine")
+            try:
+                home = S.where(base, role)
+                if not S.whole(home, e["rev"]):
+                    home = S.fetch(base, role)
+                if not S.whole(home, e["rev"]):
+                    raise RuntimeError("the download finished and is still not whole")
+            except Exception as err:
+                self._parts = {**(self._parts or {}), "state": "error",
+                               "error": f"{type(err).__name__}: {err}"}
+                LOG.say(f"{named[role]} did not come down — {type(err).__name__}: {err}",
+                        source="machine", level="error")
+                return
+            LOG.say(f"{named[role]} is on the shelf", source="machine")
+        self._parts = {**(self._parts or {}), "state": "done",
+                       "got_gb": self._parts.get("gb", 0.0) if self._parts else 0.0}
+
+    def fetching(self) -> dict | None:
+        """How a fetch is going, measured rather than reported: what is on
+        disk under the checkout -- the downloader writes into it as it goes,
+        its unfinished files included -- against what the manifest says the
+        whole weighs. A copy, so a caller cannot write into it."""
+        got = dict(self._fetch) if self._fetch else None
+        if got and got.get("state") == "fetching":
+            base = (C.load().get("models") or {}).get("dir") or C.somewhere("models")
+            home = S.where(base, "llm", got["size"])
+            try:
+                got["got_gb"] = round(S.size_of(home), 2) if home.is_dir() else 0.0
+            except OSError:
+                got["got_gb"] = 0.0
+        return got
+
+    def fetch(self, name: str) -> dict:
+        """Bring one of the manifest's sizes onto the shelf, then run it.
+
+        The first-open card's download: shelf.fetch, which resumes a download
+        that stopped and does nothing to one already whole, and then resize --
+        the choice written into the config and the server started on it -- so
+        the room that asked carries on with the model it chose. On a thread,
+        because three gigabytes take what they take; `GET /machine` carries
+        how far it has got. One at a time: a second ask while one is running
+        is answered with the one that is.
+        """
+        if name not in S.sizes():
+            raise ValueError(f"no size called {name!r} — the sizes are "
+                             + ", ".join(S.sizes()))
+        with self._fetching:
+            now = self._fetch
+            if now and now.get("state") in ("fetching", "starting"):
+                return dict(now)
+            self._fetch = {"size": name, "state": "fetching", "got_gb": 0.0,
+                           "gb": S.entry("llm", name)["gb"]}
+        self.touch()
+        threading.Thread(target=self._fetched, args=(name,), daemon=True,
+                         name="machine-fetch").start()
+        return dict(self._fetch)
+
+    def _fetched(self, name: str) -> None:
+        base = (C.load().get("models") or {}).get("dir") or C.somewhere("models")
+        e = S.entry("llm", name)
+        LOG.say(f"fetching the {name} language model, ~{e['gb']} GB …", source="machine")
+        try:
+            # One already whole is only started: nothing to ask the network.
+            home = S.where(base, "llm", name)
+            if not S.whole(home, e["rev"]):
+                home = S.fetch(base, "llm", name)
+            if not S.whole(home, e["rev"]):
+                raise RuntimeError("the download finished and is still not whole")
+        except Exception as err:
+            self._fetch = {**(self._fetch or {}), "state": "error",
+                           "error": f"{type(err).__name__}: {err}"}
+            LOG.say(f"the {name} model did not come down — {type(err).__name__}: {err}",
+                    source="machine", level="error")
+            return
+        self._fetch = {**(self._fetch or {}), "state": "starting",
+                       "got_gb": round(S.size_of(home), 2)}
+        LOG.say(f"the {name} model is on the shelf — starting it", source="machine")
+        try:
+            self.resize(name)
+        except Exception as err:
+            self._fetch = {**self._fetch, "state": "error",
+                           "error": f"{type(err).__name__}: {err}"}
+            return
+        ok = self.status["llm"] == "ready"
+        self._fetch = {**self._fetch, "state": "done" if ok else "error",
+                       **({} if ok else {"error": "the language model did not start"})}
+
     @property
     def voice(self):
         if self._voice is None:
@@ -330,6 +536,20 @@ class Stack:
                 return True
             self.apply()
             self._retuned()
+            # Nothing on disk to start. Said once, in words, rather than
+            # launching a server that dies on a missing path and printing its
+            # last lines as an error: a fresh machine is not a broken one, and
+            # the page it is asked from offers the sizes to fetch. Only for a
+            # size off the shelf, in a supervisor this made: a model path
+            # written by hand is somebody's own and is launched as it always
+            # was, and a supervisor handed in is a test's.
+            if (self._built is not None and not self.here()
+                    and not (C.written().get("llm") or {}).get("model")):
+                if self.status["llm"] != "absent":
+                    LOG.say("no language model on this Mac yet — the page offers "
+                            "the sizes to fetch", source="machine", level="warn")
+                self.status["llm"] = "absent"
+                return False
             self.status["llm"] = "starting"
             gen = self._load_gen["llm"]
             LOG.say(f"starting the language model on :{M.LLM_PORT} …",
@@ -561,6 +781,15 @@ class Stack:
         something else on the machine — after which every call fails with a
         page of urllib text that tells somebody looking at a game nothing.
         """
+        # A third: a model that took the request and stopped answering it.
+        # It is still up -- its port answers -- so it reads as a refusal, and
+        # was logged as one and left frozen; a retry then queued behind it
+        # for good. Frozen is not refusing: it is put down and started again.
+        if isinstance(e, M.Stalled):
+            LOG.say(f"the language model stopped answering ({e}) — starting it again",
+                    source="machine", level="warn")
+            self.revive()
+            return
         if self._llm is not None and self._llm.ready():
             LOG.say(f"the language model refused that — {type(e).__name__}: {e}",
                     source="machine", level="error")
@@ -583,6 +812,38 @@ class Stack:
 
         threading.Thread(target=work, daemon=True, name="machine-mend").start()
 
+    def revive(self):
+        """Kill the model server and start it again: one that stalled.
+
+        Not `mend`, which puts back what has gone and leaves alone what is
+        up -- and a frozen server is up, by every test it has. Done on a
+        thread, holding the start lock from the kill to the model being up,
+        so the next line (the chat route goes through start_llm) waits for
+        the fresh one. A model on the port that this did not start is
+        somebody's own: it is said, and left (see LLMServer.stop).
+        """
+        if self._mending:
+            return
+        self._mending = True
+        # Said before the thread runs, and never "off" on the way: a page asks
+        # whether the model is up again the moment it hears of the stall, and
+        # "ready" from the frozen one, or "off" between the kill and the
+        # start, would answer it wrongly.
+        self.status["llm"] = "starting"
+
+        def work():
+            try:
+                with self._starting:
+                    self.llm.stop()
+                    self.start_llm()
+            except Exception as e:
+                LOG.say(f"the language model would not start again: {type(e).__name__}: {e}",
+                        source="machine", level="error")
+            finally:
+                self._mending = False
+
+        threading.Thread(target=work, daemon=True, name="machine-revive").start()
+
     def _idle_watch(self):
         """Put the models away when nothing has asked for them in a long time.
 
@@ -596,18 +857,29 @@ class Stack:
             # nobody wants goes ninety seconds after it was let go of, whether
             # or not somebody else is in the middle of a conversation.
             self.sweep()
-            if IDLE_MINUTES <= 0 or self.status == {"llm": "off", "stt": "off",
-                                                    "tts": "off"}:
-                continue
-            if self.busy():
-                self.touch()
-                continue
-            quiet = time.time() - self.active_at
-            if quiet < IDLE_MINUTES * 60:
-                continue
-            LOG.say(f"quiet for {int(quiet // 60)} minutes — putting the machine "
-                    f"away; the next thing said brings it back", source="machine")
-            self.stop()
+            self.idle()
+
+    def idle(self) -> bool:
+        """Put the whole machine away if it has been quiet past idle_minutes().
+
+        Called by the watchdog, and by a test that has moved `active_at`. Says
+        whether it put anything away.
+        """
+        if self.status == {"llm": "off", "stt": "off", "tts": "off"}:
+            return False
+        minutes = idle_minutes()
+        if minutes <= 0:
+            return False
+        if self.busy():
+            self.touch()
+            return False
+        quiet = time.time() - self.active_at
+        if quiet < minutes * 60:
+            return False
+        LOG.say(f"quiet for {int(quiet // 60)} minutes — putting the machine "
+                f"away; the next thing said brings it back", source="machine")
+        self.stop()
+        return True
 
     # ---------- the meter ----------
 
@@ -676,6 +948,7 @@ class Stack:
         # See _measure, which learned this first.
         voice, llm = self._voice, self._llm
         mine = cfg.get("llm") or {}
+        size = self.size()
         return {
             "status": dict(self.status),
             # And how long the two smaller ones have left, for a page that told
@@ -705,8 +978,24 @@ class Stack:
                               else mine.get("model", "")),
                     # Which size is in use, and which are on this Mac, for a
                     # console or a page that offers the choice.
-                    "size": self.size(),
-                    "sizes": {k: v["here"] for k, v in self.sizes().items()}},
+                    "size": size,
+                    "sizes": {k: v["here"] for k, v in self.sizes().items()},
+                    # Whether the size in use is one models.json flags as
+                    # answering as the model rather than as the character:
+                    # the game guards its replies against it. See
+                    # shelf.censored.
+                    "censored": S.censored(size),
+                    # And what the first-open card needs: whether the model
+                    # the config names is on disk, the sizes it could fetch
+                    # instead with the one for this Mac's memory marked, and
+                    # how a fetch it asked for is going. See fetch().
+                    "here": self.here(),
+                    "offer": self.offer(),
+                    "ram_gb": round(S.ram_gb()),
+                    "fetch": self.fetching()},
+            # The voice and the ear, for the same card: what each weighs,
+            # whether it is here, and how a fetch of them is going.
+            "shelf": self.parts(),
         }
 
 
@@ -958,6 +1247,14 @@ def _split_system(messages: list[dict]) -> tuple[str, list[dict]]:
     return "", msgs
 
 
+# One reply at a time. The model server is threaded and would take two, and
+# what it does with two is generate both at once on one model with one prompt
+# cache -- which is how a narrator's line stalled at three words while a
+# stone and a word were asked for beside it. The docstring on `routes` has
+# always promised that two callers queue; this is the queue.
+_words = threading.Lock()
+
+
 def chat_frames(body: dict, stop: threading.Event | None = None):
     """The SSE body of one chat call, as an async generator.
 
@@ -982,11 +1279,16 @@ def chat_frames(body: dict, stop: threading.Event | None = None):
             def delta(text):
                 loop.call_soon_threadsafe(out.put_nowait, ("delta", text))
             try:
-                here.llm.stream_reply(
-                    messages, delta, stop, system=system,
-                    temperature=body.get("temperature"),
-                    top_p=body.get("top_p"),
-                    max_tokens=body.get("max_tokens"))
+                # A page that closed while this waited its turn is not
+                # answered: the flag is set by then, and the model is not
+                # asked to write a reply nobody will hear.
+                with _words:
+                    if not stop.is_set():
+                        here.llm.stream_reply(
+                            messages, delta, stop, system=system,
+                            temperature=body.get("temperature"),
+                            top_p=body.get("top_p"),
+                            max_tokens=body.get("max_tokens"))
             except Exception as e:
                 here.trouble(e)
                 loop.call_soon_threadsafe(out.put_nowait, ("error", e))
@@ -1001,8 +1303,16 @@ def chat_frames(body: dict, stop: threading.Event | None = None):
                     yield ("data: " + json.dumps(
                         {"choices": [{"delta": {"content": payload}}]}) + "\n\n")
                 elif kind == "error":
+                    # A model that stopped answering says so, for the page to
+                    # say quietly while it is woken (stall.ts there): not a
+                    # refusal, and the next line gets a fresh model.
+                    stalled = isinstance(payload, M.Stalled)
+                    said = (f"the language model stopped answering ({payload}) — "
+                            f"it is started again for the next line" if stalled
+                            else f"{type(payload).__name__}: {payload}")
                     yield ("data: " + json.dumps(
-                        {"error": f"{type(payload).__name__}: {payload}"}) + "\n\n")
+                        {"error": said, **({"not_answering": True} if stalled else {})})
+                        + "\n\n")
                 else:
                     break
             yield "data: [DONE]\n\n"
@@ -1020,10 +1330,11 @@ def routes(app):
 
     Everything here can be waiting on somebody else's turn — one MLX thread
     for the voice and the recognizer, one model server for the words — so two
-    callers queue and neither breaks. The only lock in the file is on starting
+    callers queue and neither breaks. Two locks in the file: one on starting
     the model, so two pages arriving at a cold machine wait on one start
-    rather than each spawning a twenty-gigabyte child. Nothing is ever refused
-    for being second.
+    rather than each spawning a twenty-gigabyte child; and `_words`, one
+    reply at a time on the model server. Nothing is ever refused for being
+    second.
     """
 
     @app.post("/machine/chat")
@@ -1241,6 +1552,28 @@ def routes(app):
             stop.set()
             reader.cancel()
 
+    @app.get("/machine/assets/{kind}")
+    def assets(kind: str):
+        """What is on one shelf, by name: the sounds, the figures.
+
+        A game asks once and then asks for each by name below; a name that
+        is not here is silence on the page, or the plain figure, which is
+        what a machine with no shelf is like. See machine/assets.py.
+        """
+        if kind not in A.KINDS:
+            raise HTTPException(404, f"no such kind of asset: {kind!r}")
+        return {"assets": A.names(kind)}
+
+    @app.get("/machine/assets/{kind}/{name:path}")
+    def asset(kind: str, name: str):
+        """One asset, as the file it is. Cached the way everything served
+        here is -- kept, and asked about -- so a replaced shelf is seen on
+        the next load."""
+        path = A.asset(kind, name)
+        if path is None:
+            raise HTTPException(404, f"no {kind} named {name!r}")
+        return FileResponse(path, media_type=A.media_type(kind))
+
     @app.get("/machine/voices")
     def voices():
         """The names on the shelf.
@@ -1249,8 +1582,13 @@ def routes(app):
         that wants to know what this machine can sound like before it asks it
         to. A name here is the whole of what `/machine/tts` and a warm take:
         see machine/voices.py.
+
+        And the delivery tags the voice performs -- "[laugh]", "[sigh]" --
+        read off the model's own tokenizer whether or not it is loaded yet, so
+        a page can ask for them only from a voice that makes them. Empty for
+        any voice but Turbo, which strips every one. See models.voice_tags.
         """
-        return {"voices": V.names()}
+        return {"voices": V.names(), "tags": sorted(M.voice_tags())}
 
     @app.get("/machine")
     def machine():
@@ -1313,6 +1651,32 @@ def routes(app):
         threading.Thread(target=here.resize, args=(want,), daemon=True,
                          name="machine-resize").start()
         return {"status": "loading", "size": want}
+
+    @app.post("/machine/models/fetch")
+    async def model_fetch(req: Request):
+        """Bring a size of the language model onto this Mac, then run it:
+        `{"size": "sm"}`. The first-open card in a room asks this when the
+        model the config names is not on disk. Answered at once with where it
+        stands; `GET /machine` carries `llm.fetch` while it runs, and the lamp
+        says when the model is up. See Stack.fetch.
+        """
+        body = await asked(req)
+        if not isinstance(body, dict):
+            return body
+        want = body.get("size")
+        # And the voice and the ear beside it, each true to bring it down
+        # (the card's rows; `voice` may name the row, "tts"). Either may come
+        # without a size, for a machine that has its model and not them.
+        roles = [role for kind, (role, _) in Stack.PARTS.items()
+                 if body.get(kind) in (True, role)]
+        if want is None and roles:
+            return stack().fetch_parts(roles)
+        if not isinstance(want, str) or want not in S.sizes():
+            return JSONResponse({"error": "a size is one of " + ", ".join(S.sizes())},
+                                status_code=400)
+        if roles:
+            stack().fetch_parts(roles)
+        return stack().fetch(want)
 
     @app.post("/machine/models/start")
     async def models_start():

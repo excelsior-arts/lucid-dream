@@ -128,11 +128,11 @@ const {hatch, sound} = await import('@lucid/shell');
 
 const PILL = {slug: 'lover', name: 'Violet', figure: 'diamond'} as unknown as PersonaCard;
 
-const show = (at = '/lucid-talk/lover') => render(
+const show = (at = '/talk/lover') => render(
   <MemoryRouter initialEntries={[at]}>
     <Routes>
-      <Route path="/lucid-talk" element={<div>the box</div>} />
-      <Route path="/lucid-talk/:slug" element={<Room />} />
+      <Route path="/talk" element={<div>the box</div>} />
+      <Route path="/talk/:slug" element={<Room />} />
     </Routes>
   </MemoryRouter>);
 
@@ -162,7 +162,7 @@ afterEach(() => {
 });
 
 test('it opens the pill in the address, and the conversation with it', async () => {
-  show('/lucid-talk/lover?session=2026-01-02T03-04-05_lover');
+  show('/talk/lover?session=2026-01-02T03-04-05_lover');
   await waitFor(() => expect(conversation.opened)
     .toEqual(['lover|2026-01-02T03-04-05_lover']));
 });
@@ -186,7 +186,7 @@ test('the page says what it is, on the document itself', () => {
 
 test('a pill that is not in the box goes back to where the pills are', async () => {
   link.setState({personas: [PILL]});
-  show('/lucid-talk/blunt');
+  show('/talk/blunt');
   await waitFor(() => expect(screen.getByText('the box')).toBeInTheDocument());
   // Nothing was opened for it: there is nothing there to open.
   expect(conversation.opened).toHaveLength(0);
@@ -377,9 +377,8 @@ test('the talk key opens the microphone, and what it hears becomes a turn', asyn
 
 test('muting the room hands the voice back, and unmuting asks for it again',
   async () => {
-    /* The switch in the rail is not a volume of zero: a muted room is a
-       text-only one, and several gigabytes of voice have no business being
-       held for it. What the machine does with the news — a grace, in case the
+    /* A muted room is a text-only one, and several gigabytes of voice have
+       no business being held for it. What the machine does with the news — a grace, in case the
        switch was a flinch — is the machine's. */
     const asked: Array<{url: string; body?: string}> = [];
     vi.stubGlobal('fetch', (url: string, init?: {body?: string}) => {
@@ -397,6 +396,15 @@ test('muting the room hands the voice back, and unmuting asks for it again',
     await waitFor(() => expect(wanted()).toEqual([true, false]));
     sound.setHush(false);
     await waitFor(() => expect(wanted()).toEqual([true, false, true]));
+    /* And the knob at zero is the same silence (10-08): nothing heard is no
+       voice held. Dragged on down from one past zero, nothing more is said. */
+    sound.setLevel(0);
+    await waitFor(() => expect(wanted()).toEqual([true, false, true, false]));
+    sound.setHush(true);
+    sound.setHush(false);
+    sound.setLevel(0.3);
+    await waitFor(() => expect(wanted()).toEqual([true, false, true, false, true]));
+    sound.setLevel(0.7);
     vi.unstubAllGlobals();
   });
 
@@ -527,15 +535,15 @@ test('and a conversation opened from History opens, without a reload', async () 
      row somebody pressed in the History sheet did nothing at all until a
      reload. The link below is the one that sheet draws. */
   render(
-    <MemoryRouter initialEntries={['/lucid-talk/lover?session=2026-01-02T03-04-05_lover']}>
+    <MemoryRouter initialEntries={['/talk/lover?session=2026-01-02T03-04-05_lover']}>
       <Routes>
-        <Route path="/lucid-talk" element={<div>the box</div>} />
+        <Route path="/talk" element={<div>the box</div>} />
         <Route
-          path="/lucid-talk/:slug"
+          path="/talk/:slug"
           element={
             <>
               <Room />
-              <Link to="/lucid-talk/lover?session=2026-02-02T03-04-05_lover">another evening</Link>
+              <Link to="/talk/lover?session=2026-02-02T03-04-05_lover">another evening</Link>
             </>
           }
         />

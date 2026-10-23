@@ -23,12 +23,17 @@ export {createWorld, ready} from './world';
 export type {Vec3, World, WorldOpts} from './world';
 
 export {
-  dynamicFromMesh, park, pose, remove, setPose, staticFromMesh, sync,
+  dynamicFromMesh, park, pose, release, remove, setPose, staticFromMesh, sync,
 } from './bodies';
 export type {Bound, DynamicOpts, Pose, Shape, StaticOpts} from './bodies';
 
+export {groundAt, staticHeightfield} from './heightfield';
+export type {HeightfieldOpts} from './heightfield';
+
 export {shove} from './impulse';
 export type {Shove} from './impulse';
+
+export {overlapping} from './overlap';
 
 export {hush, isAsleep, rouse, settle} from './settle';
 export type {Settling} from './settle';

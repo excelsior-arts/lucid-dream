@@ -9,7 +9,7 @@
  */
 import {expect, test} from 'vitest';
 import type {Frame, Socketish} from './tts';
-import {openVoice, VoiceRefused} from './tts';
+import {openVoice, VoiceFailed, VoiceRefused} from './tts';
 
 function fakeSocket() {
   const sent: Array<Record<string, unknown>> = [];
@@ -212,6 +212,14 @@ test('a voice the shelf has not got is a refusal, not a machine that is down', a
   await expect(took(voice.speak('One.'),
                     () => wire.about(0, {error: "no voice named 'nobody'", refused: 'voice'})))
     .rejects.toThrow(VoiceRefused);
+  voice.close();
+});
+
+test('a chunk the voice could not make is the voice failing, not the machine', async () => {
+  const wire = fakeSocket();
+  const voice = openVoice({voice: 'lover', url: 'ws://x', socket: wire.make});
+  await expect(took(voice.speak('One.'), () => wire.about(0, {error: 'RuntimeError: Aborted()'})))
+    .rejects.toThrow(VoiceFailed);
   voice.close();
 });
 

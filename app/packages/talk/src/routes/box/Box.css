@@ -35,10 +35,32 @@ html[data-page="box"] #app { flex:1; min-height:0; display:flex; flex-direction:
    measured. */
 html[data-page="box"] .leaf { height:100%; display:flex; flex-direction:column; text-align:left;
         font-size:var(--type, 12px); }
-html[data-page="box"] .leaf h1 { margin:0 0 2px; font-size:1.15em; font-weight:500; letter-spacing:.52em;
+html[data-page="box"] .leaf h1 { margin:0 0 2px; font-size:1.15em; line-height:1.1; font-weight:500; letter-spacing:.52em;
            text-transform:uppercase; color:#d9c79b;
            text-shadow:0 1px 0 rgba(0,0,0,.85); }
-html[data-page="box"] .leaf .rule { height:1px; margin:0 0 .9em;
+/* The gear: on the title's line, at the end of the rule under it -- the
+   glyph centred on the title's capitals and its right edge on the rule's
+   right end, at every width. The rule's gold, at the rule's weight, and no
+   glow; the title's lighter gold under a pointer. Sized in the sheet's ems, so
+   it scales with the box like the writing does: a 1.56em glyph inside a .6em
+   press area. The title's line is 1.15em x 1.1 = 1.265em tall, the press area
+   2.76em, so -0.75em centres the two boxes; the capitals sit a little above
+   the middle of their line, and .06em more lifts the glyph onto them.
+
+   On a phone that end of the rule can lie under the rail. There the rule ends
+   short of it, a knuckle clear of the knobs, and the gear with it: the lid
+   measures how far (--rail-clear, @lucid/ui's Box), and the rail hands a
+   press on its gutter over the gear to the gear (data-own-press, Rail.tsx). */
+html[data-page="box"] .leaf { position:relative; }
+html[data-page="box"] .leaf .gear { position:absolute; top:-.81em; right:calc(var(--rail-clear, 0px) - .6em); width:2.76em; height:2.76em;
+           padding:.6em; margin:0; display:grid; place-items:center; cursor:pointer;
+           background:none; border:0; border-radius:.5em; color:rgba(201,162,39,.62);
+           transition:color .15s; }
+html[data-page="box"] .leaf .gear svg { width:100%; height:100%; display:block; }
+html[data-page="box"] .leaf .gear:hover,
+html[data-page="box"] .leaf .gear:focus-visible { color:#d9c79b; }
+html[data-page="box"] .leaf .gear:focus-visible { outline:1px solid rgba(201,162,39,.45); outline-offset:-.2em; }
+html[data-page="box"] .leaf .rule { height:1px; margin:0 var(--rail-clear, 0px) .9em 0;
               background:linear-gradient(90deg, rgba(201,162,39,.55), rgba(201,162,39,.08)); }
 html[data-page="box"] .leaf .note { margin:0 0 2.1em; font-size:.92em; line-height:1.7; color:var(--star-dim); }
 /* The middle of the sheet: sitting in the center of whatever room the lid
@@ -74,6 +96,9 @@ html[data-page="box"] .line .said { grid-column:3; text-align:right; font-size:.
               color:var(--star-dim); letter-spacing:.047em; }
 html[data-page="box"] .line .count { font-size:.86em; color:#8d9aad; font-variant-numeric:tabular-nums;
                letter-spacing:.047em; white-space:nowrap; }
+/* In a browser where you stand is held, and a word nothing moves is not
+   drawn: three columns, the tally where the standing was. */
+html[data-page="box"] .line.bare { grid-template-columns:auto 1fr auto; }
 /* Each number opens the sheet it is counting, and says so by being
    underlined — not on hover, always. A thing that only reveals itself as
    clickable once the pointer is on it is a thing nobody finds, and on a
@@ -123,5 +148,8 @@ html[data-page="box"] [hidden] { display:none !important; }
   html[data-page="box"] .line .tag { grid-column:1; }
   html[data-page="box"] .line .said { grid-column:2; text-align:right; font-size:.92em; }
   html[data-page="box"] .line .count { grid-column:1 / -1; text-align:left; font-size:.92em; }
+  /* No standing (a browser): the tally takes its place on the first line. */
+  html[data-page="box"] .line.bare { grid-template-columns:auto 1fr; }
+  html[data-page="box"] .line.bare .count { grid-column:2; text-align:right; }
   html[data-page="box"] .totals { font-size:.9em; }
 }

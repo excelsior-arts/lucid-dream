@@ -9,21 +9,32 @@
    The line it sits on: a language model, a voice, an ear and a microphone are
    the machine's; a persona, a pill, a dose, a memory of you and a room are the
    game's. See packages/talk/src/conversation for one game's half. */
-export {FIRST_CHUNK_WORDS, MERGE_WORDS, MERGE_MAX_WORDS, MERGE_CHARS, CLAUSE_END, mergeFor,
-  shortenOpening, splitForSpeech, spokenPrefix} from './speech';
+export {MERGE_WORDS, MERGE_MAX_WORDS, MERGE_CHARS, hasWords, mergeFor, showable, splitForSpeech, spokenPrefix, tagsOnWords, wholeSentences, withoutTags} from './speech';
 export type {SplitOptions} from './speech';
+export {tagEntry, voiceTags} from './voice-tags';
 
-export {machine, machineWs} from './address';
+export {answeredBy, beacon, call, machine, machineWs} from './address';
+export type {Answer} from './address';
+
+export {heedShelf, machineAnswers, settle} from './host';
 
 export {streamChat} from './chat';
+export {Told} from './told';
+export {Dropped, FIRST_WORD_MS, LATE_MS, NEXT_WORD_MS, NotAnswering, Stalled} from './stall';
+export {forgetModel} from './page/forget-model';
+export type {PartKind} from './page/forget-model';
 export type {ChatOptions, Message, Role} from './chat';
 
-export {openVoice, TTS_PATH, VoiceRefused} from './tts';
+export {ask, colour, findJson, line, list, num, word} from './ask';
+export type {AskOptions, Asked} from './ask';
+
+export {openVoice, TTS_PATH, voiceAnsweredBy, VoiceFailed, VoiceRefused} from './tts';
 export type {Frame, MakeSocket, Options as VoiceOptions, Socketish, Stats, Voice} from './tts';
 
-export {awaitReady, models, ping, READY_EVERY_MS, READY_TIMEOUT_MS, status, voices}
+export {asset, assets, awaitReady, bytes, models, ping, READY_EVERY_MS, READY_TIMEOUT_MS, shelf, status,
+  voices}
   from './status';
-export type {Facts, MemoryUse, Model, ModelStatus, Wanted, WarmBody} from './status';
+export type {AssetKind, Facts, Fetching, Generation, MemoryUse, Model, ModelStatus, Offer, Part, PartsFetching, Wanted, WarmBody} from './status';
 
 export {runReply} from './reply';
 export type {Reply, ReplyOptions} from './reply';

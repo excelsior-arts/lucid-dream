@@ -170,6 +170,20 @@ test('a conversation is a log, and its lines are what is on disk', async () => {
   expect(urls()).toEqual([`GET ${LOG}`]);
 });
 
+test('a reply kept with what the model was shown for it comes back with both', async () => {
+  answers = transcript([
+    {kind: 'turn', role: 'assistant', content: 'You came back.', sent: 'You came back [laugh]'},
+    {kind: 'turn', role: 'assistant', content: 'Plain.', sent: ''},
+    {kind: 'turn', role: 'assistant', content: 'Odd.', sent: 7},
+  ]);
+  const got = await F.readSession('2026-03-03T03-03-03_lover');
+  expect(got.turns).toEqual([
+    {role: 'assistant', content: 'You came back.', sent: 'You came back [laugh]', ts: undefined},
+    {role: 'assistant', content: 'Plain.', ts: undefined},
+    {role: 'assistant', content: 'Odd.', ts: undefined},
+  ]);
+});
+
 test('an append says which version it expects to follow', async () => {
   answers = [[/jsonl POST/, {version: 3}]];
   const out = await F.append('2026-03-03T03-03-03_lover',

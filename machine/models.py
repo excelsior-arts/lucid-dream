@@ -21,6 +21,7 @@ import os
 import queue
 import re
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -235,6 +236,116 @@ def is_turbo() -> bool:
     return "turbo" in str(CB_PATH).lower()
 
 
+# A bracketed tag as a model writes one: "[laugh]", "[clear throat]",
+# "[Sigh]". Letters, spaces and hyphens, on one line. The page strips the same
+# shape from everything it shows -- see speech.ts in @lucid/machine.
+TAG = re.compile(r"\[([A-Za-z][A-Za-z -]*)\]")
+
+
+# Which tags a voice says well, by ear: the map both ends read, beside the
+# page's code that reads it too (voice-tags.ts in @lucid/machine). Keyed by
+# the model's name -- its directory's, less a precision suffix.
+TAG_MAP = paths.ROOT / "app" / "packages" / "machine" / "src" / "voice-tags.json"
+
+
+def tag_entry(name: str, where=None):
+    """The map's entry for a voice, following `as`; None for one with none."""
+    try:
+        voices = json.loads(Path(where or TAG_MAP).read_text()).get("voices") or {}
+    except (OSError, ValueError):
+        return None
+    entry = voices.get(name)
+    for _ in range(4):
+        if not isinstance(entry, dict) or not entry.get("as"):
+            break
+        entry = voices.get(entry["as"])
+    return entry if isinstance(entry, dict) else None
+
+
+def tag_name(path) -> str:
+    """A model's name in the map: its directory's, lower-cased, less the
+    precision it was converted at ("chatterbox-turbo-fp16" is
+    "chatterbox-turbo")."""
+    return re.sub(r"-(fp16|fp32|bf16|f16|f32|q?\d+bit|q\d)$", "", Path(path).name.lower())
+
+
+def voice_tags(path=None, where=None) -> frozenset[str]:
+    """The delivery tags the voice model at `path` keeps, "[laugh]" and all.
+
+    Turbo's tokenizer carries them as single added tokens, and a tag it has
+    a token for is performed rather than read: [sigh] is a breath before the
+    line, [laugh] a laugh. A tag it has no token for is read out as words. So
+    what it could keep is whatever the model's own added_tokens.json says,
+    never a list written down here; what it does keep is those of them the
+    map (TAG_MAP) says it says well. A model with no entry keeps every one
+    its tokenizer knows and the log says so, so a new voice tries the whole
+    range and is pruned by ear. Nothing at all for a model that is not
+    Turbo, or a directory without the file.
+    """
+    path = Path(path or CB_PATH)
+    if "turbo" not in str(path).lower():
+        return frozenset()
+    known = _tags_in(str(path))
+    entry = tag_entry(tag_name(path), where)
+    if entry is None:
+        if known and str(path) not in _UNMAPPED:
+            _UNMAPPED.add(str(path))
+            LOG.say(f"voice tags: {tag_name(path)} has no entry in voice-tags.json -- it keeps "
+                    f"all {len(known)} its tokenizer knows, to be pruned by ear", source="machine")
+        return known
+    return known & frozenset((entry.get("say") or {}).keys())
+
+
+_UNMAPPED: set[str] = set()
+
+
+_TAGS: dict[str, frozenset[str]] = {}
+
+
+def _tags_in(where: str) -> frozenset[str]:
+    if where not in _TAGS:
+        found: set[str] = set()
+        for name in ("added_tokens.json", "tokenizer_config.json"):
+            try:
+                data = json.loads((Path(where) / name).read_text())
+            except (OSError, ValueError):
+                continue
+            if name == "tokenizer_config.json":
+                data = {v.get("content", ""): k for k, v in
+                        (data.get("added_tokens_decoder") or {}).items()
+                        if isinstance(v, dict)}
+            found |= {t for t in data if isinstance(t, str) and TAG.fullmatch(t)}
+            if found:
+                break
+        _TAGS[where] = frozenset(found)
+    return _TAGS[where]
+
+
+def voice_text(text: str, tags=frozenset()) -> str:
+    """What the synthesiser is handed for a line of the reply.
+
+    A tag in `tags` stays, lower-cased to the token's own spelling, and is
+    performed. Every other bracketed tag goes: one the tokenizer has no token
+    for is read aloud as words -- "[surprise-oh] you did it" came back as
+    "Surprise. Oh, you did it", and a leading one can derail the sentence.
+    *mmm* is a sound the model wrapped in emphasis; the marks would otherwise
+    be at the mercy of the tokenizer, so they go too.
+
+    A line that is only tags is nothing to say. Alone, with no words for the
+    voice to carry them, Turbo made noise of them rather than sounds: a
+    "[sigh]" a faint breath with nothing of the speaker in it, or a word
+    nobody wrote ("Yeah.") -- see hasWords in speech.ts (@lucid/machine),
+    which keeps a tag with the sentence it opens instead.
+    """
+    def keep(m):
+        name = "[" + " ".join(m.group(1).lower().split()) + "]"
+        return name if name in tags else " "
+    clean = TAG.sub(keep, text).replace("*", " ")
+    if not re.search(r"[A-Za-z0-9]", TAG.sub(" ", clean)):
+        return ""
+    return re.sub(r"\s{2,}", " ", clean).strip()
+
+
 def draft_args() -> list[str]:
     """Speculative decoding: a small model guesses, the big one verifies.
 
@@ -286,6 +397,74 @@ def _fronted(messages: list[dict], system: str | None) -> list[dict]:
     return ([{"role": "system", "content": system}] if system else []) + list(messages)
 
 
+# A model that stops answering, noticed: the rule the page keeps as well
+# (app/packages/machine/src/stall.ts, which has the reasons). Before the first
+# word the prompt is being read, which at 8192 tokens or on a model just woken
+# can take tens of seconds; once words are flowing, a working model writes
+# several a second, and fifteen seconds with none is a stall. Starting the
+# model is not counted: the chat route waits on start_llm before it asks.
+FIRST_WORD_S = 90.0
+NEXT_WORD_S = 15.0
+
+
+class Stalled(Exception):
+    """The model server took a request and stopped answering it: alive, its
+    port open, and no word for longer than a working one ever takes. Frozen,
+    not refusing -- so it is restarted rather than asked again (Stack.revive).
+    """
+
+
+def _unblock(r) -> None:
+    """Make a read blocked on this response come back now.
+
+    `read1` blocks until the server sends something, and a server that is
+    frozen sends nothing: the stop flag in `_lines` was read only between
+    reads, so a page that gave up left the reply holding `_words` -- and the
+    next line queued behind it -- for as long as the read timeout. Shutting
+    the socket down from another thread wakes the read with an end of
+    stream; closing it alone does not on every platform.
+    """
+    if r is None:
+        return
+    for get in (lambda: r.raw._fp.fp.raw._sock,
+                lambda: r.raw.connection.sock):
+        try:
+            sock = get()
+        except Exception:
+            continue
+        if sock is not None:
+            with contextlib.suppress(Exception):
+                sock.shutdown(socket.SHUT_RDWR)
+            break
+    with contextlib.suppress(Exception):
+        r.close()
+
+
+def _lines(r, stop_flag: threading.Event):
+    """The lines of a streamed response, each the moment it has arrived.
+
+    Not `iter_lines`. mlx_lm streams its frames with no length and no chunked
+    encoding, and on a body like that requests reads in blocks of 512 bytes:
+    the read blocks until 512 bytes have come, and a frame is about 350. So
+    the first word waited for the second, and every word after arrived in
+    lumps of a word and a half -- a token's worth of delay (~75 ms at this
+    model's pace) on the first word, and a stutter in the stream the page
+    never saw as words but the voice saw as later sentence ends. `read1`
+    hands over whatever has arrived, which is the whole difference.
+    """
+    buf = b""
+    while not stop_flag.is_set():
+        data = r.raw.read1(65536)
+        if not data:
+            break
+        buf += data
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            yield line.decode("utf-8", "replace").rstrip("\r")
+    if buf and not stop_flag.is_set():
+        yield buf.decode("utf-8", "replace").rstrip("\r")
+
+
 class LLMServer:
     """Supervises the model server as a child process we can actually kill.
 
@@ -330,16 +509,31 @@ class LLMServer:
         them every time. Measured on one machine, same model,
         same prompt, time to first token: 3.4s against 1.6s.
 
-        mlx_lm does not take --kv-bits or --max-kv-size; it is bounded by the
-        size of its prompt cache instead. mlx_vlm is what a vision model would
-        need, which is why both are here.
+        mlx_lm does not take --max-kv-size; it is bounded by the size of its
+        prompt cache instead. It has taken --kv-bits since 0.32, and is not
+        given it: its own help says a quantised cache turns batching off, and
+        two pages on one server are two requests at once. mlx_vlm is what a
+        vision model would need, which is why both are here.
         """
         common = ["--host", LLM_HOST, "--port", str(LLM_PORT),
                   "--model", str(self.model_path), "--max-tokens", "2048"]
         if self.server == "mlx_lm":
             gb = float(LLM_OPTS.get("prompt_cache_gb", 4))
+            # How many prompts the server keeps, as well as how many bytes.
+            # Its default is ten. A turn of a room puts two new ones in (the
+            # context, and the whole prompt with the reply on it) and each of
+            # the small calls after it -- the scene, the judgement, the fold
+            # -- two more: eight a turn, which is the ten with nothing to
+            # spare, and the entry the next turn resumes from is the oldest
+            # of them. One room keeps it by a hair; a second page on the same
+            # server, or a page reloaded, throws it out. Measured on a shared
+            # server: a turn that should have read ~240 tokens read 2004 and
+            # took 5s to the first word. The bytes bound it; the count is set
+            # out of the way of them.
             return ([str(VENV_BIN / "mlx_lm.server")] + common
-                    + ["--prompt-cache-bytes", str(int(gb * 1e9))] + draft_args())
+                    + ["--prompt-cache-bytes", str(int(gb * 1e9)),
+                       "--prompt-cache-size", str(int(LLM_OPTS.get("prompt_cache_size", 40)))]
+                    + draft_args())
         return ([str(VENV_BIN / "mlx_vlm.server")] + common
                 + ["--kv-bits", "4",
                    "--max-kv-size", str(LLM_OPTS.get("max_kv_size", 8192))]
@@ -376,6 +570,11 @@ class LLMServer:
         if self.proc is not None and self.proc.poll() is None:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
+                # And let it act on it: a server that stalled may be a
+                # stopped process, and a stopped process holds a SIGTERM
+                # until it is continued -- ten seconds of waiting below, and
+                # then the kill, for a restart somebody is waiting on.
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGCONT)
             except Exception:
                 self.proc.terminate()
             try:
@@ -487,25 +686,75 @@ class LLMServer:
             # chain of thought.
             body["chat_template_kwargs"] = {"enable_thinking": False}
         text = ""
-        with requests.post(f"{llm_url()}/v1/chat/completions", json=body,
-                           stream=True, timeout=(10, 300)) as r:
-            r.raise_for_status()
-            for line in r.iter_lines(decode_unicode=True):
-                if stop_flag.is_set():
-                    break
-                if not line or not line.startswith("data:"):
+        # The watch (FIRST_WORD_S, NEXT_WORD_S): a thread beside the read,
+        # because the read is what blocks. It ends the read two ways, both by
+        # shutting the response's socket (_unblock): the page gave up (the
+        # stop flag), which frees `_words` at once rather than when the
+        # server next says something; or no word in time, which is a stall,
+        # raised as Stalled once the read has come back.
+        clock = {"at": time.monotonic(), "words": False, "r": None}
+        ended = threading.Event()
+        stalled = threading.Event()
+
+        def watch():
+            while not ended.wait(0.2):
+                limit = NEXT_WORD_S if clock["words"] else FIRST_WORD_S
+                late = time.monotonic() - clock["at"] > limit
+                if not (stop_flag.is_set() or late):
                     continue
-                payload = line[5:].strip()
-                if payload == "[DONE]":
-                    break
-                try:
-                    delta = json.loads(payload)["choices"][0].get("delta", {}).get("content")
-                except Exception:
-                    continue
-                if delta:
-                    text += delta
-                    on_delta(delta)
+                if late and not stop_flag.is_set():
+                    stalled.set()
+                if clock["r"] is not None:
+                    _unblock(clock["r"])
+                    return
+
+        threading.Thread(target=watch, daemon=True, name="llm-watch").start()
+        try:
+            # The read timeout is the first word's, a little over: the headers
+            # wait on it, and nothing can be shut down before there is a
+            # response to shut. After them the watch always comes first.
+            with requests.post(f"{llm_url()}/v1/chat/completions", json=body,
+                               stream=True, timeout=(10, FIRST_WORD_S + 5)) as r:
+                clock["r"] = r
+                r.raise_for_status()
+                for line in _lines(r, stop_flag):
+                    if stalled.is_set():
+                        break
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        delta = json.loads(payload)["choices"][0].get("delta", {}).get("content")
+                    except Exception:
+                        continue
+                    if delta:
+                        clock["at"], clock["words"] = time.monotonic(), True
+                        text += delta
+                        on_delta(delta)
+        except requests.exceptions.ReadTimeout as e:
+            if stop_flag.is_set():
+                return text.strip()
+            raise Stalled(f"no word in {FIRST_WORD_S:.0f} s") from e
+        except Exception:
+            # What a shut socket raises, from wherever it was mid-read, is
+            # either of the two ends above and nothing to report.
+            if stalled.is_set():
+                raise Stalled(self._stalled_said(clock["words"])) from None
+            if stop_flag.is_set():
+                return text.strip()
+            raise
+        finally:
+            ended.set()
+        if stalled.is_set():
+            raise Stalled(self._stalled_said(clock["words"]))
         return text.strip()
+
+    @staticmethod
+    def _stalled_said(words: bool) -> str:
+        return (f"no new word in {NEXT_WORD_S:.0f} s" if words
+                else f"no word in {FIRST_WORD_S:.0f} s")
 
 
 class Voice:
@@ -525,6 +774,11 @@ class Voice:
         self.cfg_weight = None
         self.pause = None
         self.ref_path = None
+        self.tags = frozenset()  # the delivery tags the loaded voice performs
+        # The speaker conditioning per clip, derived once and kept: see
+        # _conditioned. Keyed by the clip's path, size and mtime, so a clip
+        # replaced on the shelf is derived again and a renamed one is not.
+        self._conds: dict[tuple, object] = {}
         self.stats = {}       # last chunk: generation cost vs audio produced
         self._jobs: "queue.Queue" = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True, name="voice")
@@ -571,6 +825,7 @@ class Voice:
         if self.tts is None:
             from mlx_audio.tts.utils import load_model
             self.tts = load_model(str(CB_PATH))
+            self.tags = voice_tags(CB_PATH)
         return True
 
     def load_stt(self):
@@ -638,16 +893,10 @@ class Voice:
 
         def job(o):
             self._do_load_tts()
-            # Bracketed tags are read aloud as words -- "[surprise-oh] you did
-            # it" comes back as "Surprise. Oh, you did it", and a leading one
-            # can derail the whole sentence. Nothing in the prompt asks for
-            # them any more; this is the guard for when a model emits one.
+            # The tags this voice performs stay; every other one goes. See
+            # voice_text, and voice_tags for where the list comes from.
             ends_paragraph = text.endswith("\n")
-            clean = re.sub(r"\[[a-z-]+\]", " ", text)
-            # *mmm* is a sound the model wrapped in emphasis; the marks would
-            # otherwise be at the mercy of the tokenizer.
-            clean = clean.replace("*", " ")
-            clean = re.sub(r"\s{2,}", " ", clean).strip()
+            clean = voice_text(text, self.tags)
             if not clean:
                 return
             turbo = is_turbo()
@@ -662,11 +911,20 @@ class Voice:
                 # down.
                 raise RuntimeError("no reference clip to speak from — name a "
                                    "voice; the shelf is models/voices/")
-            kw = dict(text=clean, ref_audio=str(ref), verbose=False)
+            kw = dict(text=clean, verbose=False)
             if not turbo:
                 kw["exaggeration"] = sentence_exaggeration(clean, base)
                 kw["cfg_weight"] = (self.cfg_weight if self.cfg_weight is not None
                                     else TTS_CFG)
+            # The clip's conditioning, derived once per clip rather than once
+            # per sentence -- see _conditioned, which says what that cost.
+            conds = self._conditioned(ref, kw.get("exaggeration"))
+            if conds is None:
+                kw["ref_audio"] = str(ref)
+            elif turbo:
+                self.tts._conds = conds
+            else:
+                kw["conds"] = conds
             # The model prints a line per sentence ('S3 Token -> Mel'), which
             # buries the app's own log. Only this call is muted; loading and
             # any real error still print.
@@ -707,6 +965,52 @@ class Voice:
             else:
                 return
 
+    def _conditioned(self, ref: Path, exaggeration=None):
+        """The speaker conditioning for a clip, derived the first time and
+        kept for every sentence after.
+
+        Handed `ref_audio` on every call, Chatterbox derives the whole of the
+        conditioning again each time: the clip read off disk, loudness
+        normalised, resampled twice, run through the speech tokenizer and the
+        voice encoder, and the decoder's reference embedded -- for a sentence
+        of a reply, every sentence of every reply, in a voice that has not
+        changed since the room opened. That was most of the fixed cost per
+        call the splitter's note measures (~0.4s before a word is said).
+        Derived once here, it is the same arrays every time: nothing in the
+        derivation samples, so what the voice is conditioned on is byte for
+        byte what it was conditioned on before.
+
+        Turbo keeps its conditioning on the model and reads it when no clip is
+        passed; the full model takes it as an argument, and moves its own
+        exaggeration onto it per call -- so the base is derived with the
+        exaggeration of the first sentence and the model adjusts it after,
+        exactly as it did when it derived a fresh one. A model with no
+        prepare_conditionals answers None, and the clip goes with the call as
+        it always did.
+
+        On the one MLX thread, like everything that touches the model.
+        """
+        prepare = getattr(self.tts, "prepare_conditionals", None)
+        if prepare is None:
+            return None
+        try:
+            st = ref.stat()
+        except OSError:
+            return None
+        key = (str(ref), st.st_size, st.st_mtime_ns)
+        got = self._conds.get(key)
+        if got is None:
+            if len(self._conds) >= 8:
+                self._conds.clear()      # a shelf's worth; the next derives again
+            if is_turbo():
+                prepare(str(ref), exaggeration=0.0, norm_loudness=True)
+                got = self.tts._conds
+            else:
+                got = prepare(str(ref), self.tts.sample_rate,
+                              exaggeration if exaggeration is not None else TTS_EXAG)
+            self._conds[key] = got
+        return got
+
     # ---------- teardown ----------
 
     def unload(self):
@@ -739,6 +1043,8 @@ class Voice:
             import mlx.core as mx
             for name in which:
                 setattr(self, name, None)
+            if "tts" in which:
+                self._conds.clear()      # derived from a model that is gone
             mx.clear_cache()
             return True
         try:

@@ -4,8 +4,9 @@
  * chars}` frames come back as they are made, then `{done, stats}`, every one of
  * them carrying the `id` of the chunk it belongs to. `chars` is
  * what that chunk covers *as written*, on the first frame only -- the machine
- * strips bracketed tags and asterisks before synthesis, so counting what it
- * produced would count markup nobody hears. See machine/machine.py, `speak`.
+ * strips asterisks and the tags its voice does not perform before synthesis,
+ * so counting what it produced would count markup nobody hears. See
+ * machine/models.py, `voice_text`.
  *
  * ---- one socket per room, not per reply -------------------------------------
  *
@@ -34,6 +35,7 @@
  * dropped here rather than credited to whatever is speaking now.
  */
 import {machineWs} from './address';
+import {Told} from './told';
 
 /** The little of a WebSocket this uses, so a test can be one. */
 export interface Socketish {
@@ -110,6 +112,9 @@ interface Said {
       name the machine's shelf has not got. Not the machine being unreachable,
       and not to be reported as it. */
   refused?: string;
+  /** The error is in the page's own words (told.ts): only a browser's voice
+      sends it. */
+  told?: boolean;
 }
 
 /** The machine would not speak this chunk, and said why.
@@ -118,6 +123,13 @@ interface Said {
  * a room: a refusal is one line of a file to fix and the machine is perfectly
  * well, so the amber "not answering" banner is a lie. See turn.ts. */
 export class VoiceRefused extends Error {}
+
+/** The voice could not make this chunk: its words are on the glass all the
+ * same, at the reading pace. The voice's trouble, not the pill's -- which
+ * answered -- so not the "not answering" banner either (10-10, headless
+ * WebKit, a phone's voice whose runtime would not start: the banner went up
+ * over a reply that was there, and the keys locked). See turn.ts. */
+export class VoiceFailed extends Error {}
 
 /** Frames in at whatever rate they are made, out at whatever rate they are
     read. One of these per chunk being spoken. */
@@ -146,9 +158,22 @@ function pipe() {
   };
 }
 
+/* Who answers the voice's socket when nobody says: the machine, over a real
+   WebSocket -- or, on a page with no machine, a voice running in this browser
+   that speaks the same messages (page/voice.ts). Read when a socket is opened
+   rather than when the voice is, so a room opened before the browser's voice
+   was chosen speaks through it from its next sentence. */
+let standIn: MakeSocket | null = null;
+
+/** Put a voice in front of the socket, or take it away (null). */
+export function voiceAnsweredBy(make: MakeSocket | null): void {
+  standIn = make;
+}
+
 export function openVoice(o: Options): Voice {
   const url = o.url ?? machineWs() + TTS_PATH;
-  const make = o.socket ?? ((at: string) => new WebSocket(at) as unknown as Socketish);
+  const make = o.socket ?? ((at: string) => (standIn
+    ? standIn(at) : new WebSocket(at) as unknown as Socketish));
 
   let ws: Socketish | null = null;
   let opening: Promise<Socketish> | null = null;
@@ -198,8 +223,8 @@ export function openVoice(o: Options): Voice {
         const mine = whose(said.id);
         if (!mine) return;
         if (said.error) {
-          mine.fail(said.refused === 'voice'
-            ? new VoiceRefused(said.error) : new Error(said.error));
+          mine.fail(said.refused === 'voice' ? new VoiceRefused(said.error)
+            : said.told ? new Told(said.error) : new VoiceFailed(said.error));
           return;
         }
         if (said.done) {

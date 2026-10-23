@@ -74,13 +74,13 @@ class Served(unittest.TestCase):
     def test_an_app_of_its_own_gets_the_same_document(self):
         """Mounted apps are matched before the machine's catch-all, so this only
         holds because the app itself stands aside."""
-        r = self.client.get("/lucid-talk")
+        r = self.client.get("/talk")
         self.assertEqual(r.status_code, 200)
         self.assertIn('<div id="app">', r.text)
 
     def test_and_so_does_a_room(self):
         """The address somebody actually bookmarks."""
-        r = self.client.get("/lucid-talk/lover")
+        r = self.client.get("/talk/lover")
         self.assertEqual(r.status_code, 200)
         self.assertIn('<div id="app">', r.text)
 
@@ -162,7 +162,8 @@ class NotBuilt(unittest.TestCase):
     def test_and_so_does_every_other_address(self):
         """A room is the address somebody has bookmarked, and the app answers
         for its own routes before the machine's catch-all is ever asked."""
-        for where in ("/lucid-talk", "/lucid-talk/lover", "/whatever/comes/next"):
+        # The old addresses too: the page moves them to the new ones.
+        for where in ("/talk", "/talk/lover", "/lucid-talk/lover", "/whatever/comes/next"):
             with self.subTest(where=where):
                 r = self.client.get(where)
                 self.assertEqual(r.status_code, 200)
@@ -239,7 +240,7 @@ class TheRootAnswersAHead(unittest.TestCase):
         cls.client = TestClient(S.create_app())
 
     def test_the_page_and_everything_under_it(self):
-        for where in ("/", "/lucid-talk/lover"):
+        for where in ("/", "/talk/lover"):
             with self.subTest(where=where):
                 r = self.client.head(where)
                 self.assertEqual(r.status_code, 200)

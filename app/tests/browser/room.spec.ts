@@ -44,7 +44,7 @@ function watch(page: Page): string[] {
 }
 
 async function open(page: Page, slug: string) {
-  await page.goto(`/lucid-talk/${slug}`);
+  await page.goto(`/talk/${slug}`);
   // Until the room has been tried there is no telling which of the two this
   // is, so both are held back behind a mark that says the place is opening.
   await page.waitForFunction(

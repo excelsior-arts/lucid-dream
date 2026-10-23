@@ -195,3 +195,12 @@ test('a reason cannot be a paragraph', () => {
   const [, why] = readDeltas('{"warmth": 1, "why": "' + 'x'.repeat(500) + '"}');
   expect(why.length).toBeLessThanOrEqual(120);
 });
+
+test('the standing is said in whichever words the two of them have', async () => {
+  const {describe, conduct, blank} = await import('./relation');
+  const state = {...blank(), warmth: 40, trust: 40, mood: 0, turns: 100, updated: Date.now() / 1000, spoke: Date.now() / 1000};
+  expect(describe(state)).toContain('She is fond of him. She wants him there.');
+  expect(describe(state, undefined, {self: 'it', other: 'they'})).toContain('It is fond of them. It wants them there.');
+  expect(describe(state, undefined, {self: 'they', other: 'she'})).toContain('They are fond of her. They want her there.');
+  expect(conduct({...blank(), warmth: -80}, {self: 'it', other: 'they'})).toContain('You are done with them.');
+});

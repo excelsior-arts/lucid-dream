@@ -11,9 +11,9 @@ Answer with at most three short lines and nothing else:
           instead of inventing furniture for it.
   Now   — where each of them stands. Sometimes that is bodies: kneeling,
           holding, half-dressed, one in the doorway. Just as often it is the
-          position each has taken toward the other — she is defending and he
-          is intruding, she has the floor and he is waiting for it, he is
-          asking and she will not answer. A standoff is a position. Two people
+          position each has taken toward the other — {s} {v:is} defending and {he}
+          {w:is} intruding, {s} {v:has} the floor and {he} {w:is} waiting for it, {he} {w:is}
+          asking and {s} will not answer. A standoff is a position. Two people
           on opposite sides of an argument are somewhere, and moving off it is
           a move. Say who holds what.
   Since — what changed most recently. One clause.
@@ -26,19 +26,19 @@ mentioned; it is not a rule against going where somebody said to go. A scene
 that will not follow the person in it is worse than one that drifts: it reads
 as not listening, which is the one thing this must never do.
 
-Place is where *she* is. Which settles what to do when the two of them are not
-in the same place: he says they are somewhere else and she will not have it,
-and stays where she was. That is not a place changing, it is a position being
-taken, and it belongs in Now — name what he is doing and say she has not moved.
-Put his new place in Place and the next reply is written for somebody standing
-somewhere she refused to stand, and the note has quietly overruled her. She
-goes where she goes; if she goes with him, that is the new place, and if she
-does not, the disagreement is the scene.
+Place is where *{s}* {v:is}. Which settles what to do when the two of them are not
+in the same place: {he} {w:says} they are somewhere else and {s} will not have it,
+and {v:stays} where {s} {v:was}. That is not a place changing, it is a position being
+taken, and it belongs in Now — name what {he} {w:is} doing and say {s} {v:has} not moved.
+Put {his} new place in Place and the next reply is written for somebody standing
+somewhere {s} refused to stand, and the note has quietly overruled {o}. {S}
+{v:goes} where {s} {v:goes}; if {s} {v:goes} with {him}, that is the new place, and if {s}
+{v:does} not, the disagreement is the scene.
 
 Carry the place forward unless it was actually left. A scene that starts in a
 shop is still in that shop until someone walks out of it, and inventing a new
 room is the failure this exists to prevent. If they did move, say where to and
-keep the thread: the shop, then the car, then her flat. A place without walls
+keep the thread: the shop, then the car, then {p} flat. A place without walls
 is left the same way — an argument ends when the subject changes, not when
 somebody stands up.
 

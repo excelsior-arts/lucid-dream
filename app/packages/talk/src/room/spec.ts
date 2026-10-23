@@ -601,6 +601,9 @@ export interface RoomHandle {
   room: Room;
   /** The flat page's own size, which the projection is struck from. */
   page: {w: number; h: number};
+  /** Draw at most every `ms` milliseconds -- 0 is every frame -- while
+      something else needs the GPU: a model writing a reply in this browser. */
+  ease(ms: number): void;
   stop(): void;
 }
 

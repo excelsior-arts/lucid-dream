@@ -20,6 +20,8 @@ vi.mock('@lucid/shell', () => ({
   /* The mute switch, which a replay reads: nothing is said into a muted room,
      because the machine would load a voice to make a clip the speaker drops. */
   sound: {hush: false},
+  /* Where the words come from: 'none' is a browser that cannot run the pill. */
+  host: () => ({llm: stub.llm}),
 }));
 
 /** The conversation, and the turn -- both other files', both stubbed at the
@@ -39,6 +41,7 @@ const stub = vi.hoisted(() => ({
   stale: false,
   /** How many times the transcript has been read again from disk. */
   rereads: 0,
+  llm: 'machine' as 'machine' | 'none',
 }));
 
 vi.mock('./room', () => ({
@@ -125,6 +128,7 @@ beforeEach(async () => {
   removed.length = 0;
   theRoom = null;
   stub.history = [];
+  stub.llm = 'machine';
   stub.open = true;
   stub.turns = [];
   stub.gated = false;
@@ -616,4 +620,61 @@ test('a fresh conversation stops the tape and drops what hands were holding', as
   expect(L.continuousLeft()).toBe(0);
   await tick(3000);
   expect(stub.turns.filter((t) => t.text === '(he tries the door)')).toEqual([]);
+});
+
+/* ---- silence is input ------------------------------------------------------ */
+
+test('nothing said for the persona\'s while, and the pill takes the floor itself', async () => {
+  (room() as unknown as {persona: unknown}).persona = {silence: 2, silence_line: '(he has gone quiet)'};
+  L.handsSoon();                                   // the room is entered: the timer is armed
+  await vi.advanceTimersByTimeAsync(1900);
+  expect(stub.turns).toEqual([]);
+  await vi.advanceTimersByTimeAsync(200 + 1400);   // the wait, then the hands settle
+  expect(stub.turns.map((t) => t.text)).toEqual(['(he has gone quiet)']);
+  // Answered, the floor frees and the timer is armed again for the next quiet.
+  await vi.advanceTimersByTimeAsync(2100 + 1400);
+  expect(stub.turns).toHaveLength(2);
+});
+
+test('a room looked around in a browser that cannot run the pill: no press and no quiet is a turn', async () => {
+  seeded();
+  stub.llm = 'none';
+  (room() as unknown as {persona: unknown}).persona = {silence: 1, silence_line: '(he has gone quiet)'};
+  L.handsSoon();
+  L.did('(he tries the door)');
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(stub.turns).toEqual([]);
+});
+
+test('a persona with no silence in its header waits for ever', async () => {
+  L.handsSoon();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(stub.turns).toEqual([]);
+});
+
+test('the quiet is not broken during a run, nor while a voice is still going', async () => {
+  (room() as unknown as {persona: unknown}).persona = {silence: 1};
+  stub.history.push({role: 'user', content: 'go'});
+  L.startContinuous(5, true);
+  L.handsSoon();
+  await vi.advanceTimersByTimeAsync(3000);
+  // Whatever the run said, none of it was the quiet.
+  expect(stub.turns.every((t) => t.text !== L.SILENCE)).toBe(true);
+  L.stopContinuous();
+  // And leaving the room disarms it.
+  L.handsSoon();
+  L.leaveLoop();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(stub.turns.filter((t) => t.text === L.SILENCE)).toEqual([]);
+});
+
+test('a press told not to cut in waits for the voice, and is answered after', async () => {
+  queue.q.queued = 4;                        // the voice is going
+  L.did('(he crosses into the Salt Flats)', {cutIn: false});
+  expect(queue.q.stops).toEqual([]);         // nothing was silenced
+  await vi.advanceTimersByTimeAsync(1400);
+  expect(stub.turns).toEqual([]);            // still speaking: it waits
+  queue.q.queued = 0;
+  await vi.advanceTimersByTimeAsync(1400);
+  expect(stub.turns.map((t) => t.text)).toEqual(['(he crosses into the Salt Flats)']);
 });

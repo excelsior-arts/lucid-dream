@@ -7,9 +7,12 @@
  * things you can do to a line — say it again, take it back.
  */
 import {useCallback, useMemo} from 'react';
+import {wholeSentences} from '@lucid/machine';
 import type {Line} from '@lucid/ui';
 import Pane from '@lucid/ui/Transcript/Transcript';
 import type {Turn} from '../../link/store';
+import type {Replay} from '../../routes/room/replay';
+import {REPLAY_TITLE} from '../../routes/room/replay';
 
 export interface Props {
   turns: readonly Turn[];
@@ -26,16 +29,24 @@ export interface Props {
   /** And it is thinking, and has not said anything yet. */
   musing?: boolean;
   onReplay: (text: string) => void;
+  /** What a press on a line's play key will do: say it, or first undo what
+      stands in the way (see routes/room/replay.ts). */
+  replay?: Replay;
   onDelete: (role: 'user' | 'assistant', text: string) => void;
   /** The mark pressed: turn the sound back on and say that line. */
   onUnheard: (text: string) => void;
 }
 
-const Speaker = () => (
+/* The play key's face says what a press will do: the waves when it will be
+   said, a cross where the sound is off, and an empty speaker in outline where
+   there is no voice yet or it is switched off. */
+const Speaker = ({as = 'ready'}: {as?: Replay}) => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-    <path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" />
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+             fill={as === 'missing' || as === 'off' ? 'none' : 'currentColor'} />
+    {as === 'ready' && <><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></>}
+    {as === 'silent' && <path d="M16 9.5l5 5M21 9.5l-5 5" />}
   </svg>
 );
 
@@ -65,6 +76,7 @@ export default function Transcript(props: Props) {
       streaming: turn.streaming,
       hand: turn.role === 'user' && byHand(turn.text),
       unheard: unheard?.has(i),
+      ...(turn.cut ? {cut: true} : {}),
     }));
     /* Your turn, before the words exist: it hears you now, the transcript
        arrives a second later. Without this the screen says nothing while you
@@ -83,17 +95,20 @@ export default function Transcript(props: Props) {
      second with the tick. Which makes it a rule about what the room hands in:
      the three callbacks below are useCallback'd there, and this is where that
      matters. */
-  const {onReplay, onDelete} = props;
+  const {onReplay, onDelete, replay = 'ready'} = props;
   const tools = useCallback((turn: Line) => (
     <>
       {turn.role === 'assistant' && (
-        <button className="replay" title="say it again"
-                onClick={() => onReplay(turn.text)}><Speaker /></button>
+        <button className="replay" title={REPLAY_TITLE[replay]} aria-label={REPLAY_TITLE[replay]}
+                data-replay={replay}
+                onClick={() => onReplay(turn.cut ? wholeSentences(turn.text) : turn.text)}>
+          <Speaker as={replay} />
+        </button>
       )}
       <button className="del" title="delete this — from here and from the transcript"
               onClick={() => onDelete(turn.role, turn.text)}><Trash /></button>
     </>
-  ), [onReplay, onDelete]);
+  ), [onReplay, onDelete, replay]);
 
   const told = props.onUnheard;
   const onUnheard = useCallback((turn: Line) => told(turn.text), [told]);

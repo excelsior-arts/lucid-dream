@@ -44,8 +44,8 @@ class TheSetIsComplete(unittest.TestCase):
             if not name.endswith(".png"):
                 continue
             want = int(re.search(r"(\d+)\.png$", name).group(1))
-            with self.subTest(icon=name):
-                self.assertEqual(Image.open(ICONS / name).size, (want, want))
+            with self.subTest(icon=name), Image.open(ICONS / name) as im:
+                self.assertEqual(im.size, (want, want))
 
     @unittest.skipIf(Image is None, "Pillow is not installed — see requirements.txt")
     def test_and_they_are_square_to_the_edge(self):

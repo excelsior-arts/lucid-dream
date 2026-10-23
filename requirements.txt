@@ -24,4 +24,8 @@ scipy             # mlx-audio's own; nothing here imports it
 # (tests/machine/test_icons.py) and cuts it from a photograph
 # (tools/cut_icons.py); the tests that want it skip themselves without it, so
 # this is only needed by somebody who wants the whole suite to actually run.
+# httpx2 is what Starlette's test client (tests/machine) asks for since 1.7;
+# without it the client falls back to the httpx huggingface-hub brings, and
+# warns that this is deprecated.
 #   pillow
+#   httpx2

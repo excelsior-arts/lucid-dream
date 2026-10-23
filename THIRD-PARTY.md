@@ -5,11 +5,13 @@ rooms and how they are drawn — and nothing else. Every piece below belongs to
 whoever wrote it and is used under its own terms, none of which this project
 can change and none of which changes this one.
 
-Nothing here is committed that somebody else wrote. The Python packages are
-installed from PyPI onto your machine by `setup.sh`, the models are downloaded
-from Hugging Face into `models/`, the browser's packages are installed from npm
-into `app/node_modules`, and all three are in `.gitignore`. What this
-repository holds is the code, the personas and the rooms.
+Nothing here is committed that somebody else wrote, with one exception named
+below. The Python packages are installed from PyPI onto your machine by
+`setup.sh`, the models are downloaded from Hugging Face into `models/`, the
+browser's packages are installed from npm into `app/node_modules` -- all but
+one, which comes from a licensed copy beside the checkout -- and all of that is
+in `.gitignore`. What this repository holds is the code, the personas, the
+rooms, and Burning Man's figure, whose skeleton and motions are Mixamo's.
 
 The npm packages are the ones that end up *inside* something: `npm run build`
 writes them into `app/dist`, which is the file a browser downloads. They are
@@ -39,6 +41,28 @@ request has nowhere to land. Provenance for each one is on its page.
 | pack | what it does | license |
 | --- | --- | --- |
 | [excelsior-arts/lucid-voices](https://huggingface.co/datasets/excelsior-arts/lucid-voices) | the voice each pill is cloned from | CC-BY-NC-4.0 |
+
+The sounds -- a footstep, the wind, an ember taken -- and the figure the walk
+was taken in are files too, and are not here either. They were made for Lucid
+Trip's walk, which has gone, and nothing in the app plays or draws them now;
+the shelf and its tools are still here. They live in
+**lucid-assets**, a repository beside this one, and the machine serves them
+from wherever `assets.dir` points. What this repository holds about them is
+the two tools that make them and what those write down: `tools/soundprep.py`
+is the table of which recording each sound is cut from and how, and
+`tools/figureprep.mjs` writes the source file and its hash beside the figure
+it makes. The libraries they are made from:
+
+| library | what it does | license |
+| --- | --- | --- |
+| [Adobe Audition Sound Effects](https://www.adobe.com/products/audition/offers/adobeauditiondlcsfx.html) | the sounds of a walk: the desert, the feet, the things on the ground | Adobe's terms on that page: use, modify, reproduce and distribute the files within a work; not on a standalone basis, and no trademark in them |
+| [Mixamo](https://www.mixamo.com) | the runner: a character and six of its clips (idle, walk, run, jump, running jump, flying knee), with the look replaced | Adobe's Mixamo terms: royalty-free in your own projects, modified or not; not redistributed on their own |
+
+Both say the same thing, which is why the shelf is a repository of its own
+and not a directory here: a pile of clips and characters is the standalone
+distribution those terms rule out, and inside a game they are what the terms
+allow. Point `assets.dir` at a shelf made from anything else and its terms
+apply instead.
 
 Point `llm.model` somewhere else and that model's license applies instead —
 several of the community ones are gated and carry terms you accept on their
@@ -83,16 +107,77 @@ installed.
 
 Installed from npm and bundled by Vite. MIT and Apache-2.0, which is the same
 permissive shape as everything on the Python side and for the same reason: the
-one thing that cannot be in this chain is copyleft.
+one thing that cannot be in this chain is copyleft. The one package that is not
+permissive is not copyleft either: the desert's sea is a commercial library,
+below.
 
 | package | version | license | home |
 | --- | --- | --- | --- |
-| three | 0.185.1 | MIT, © three.js authors | https://threejs.org |
-| @dimforge/rapier3d-compat | 0.20.0 | Apache-2.0, © Dimforge SAS | https://rapier.rs |
-| react | 19.2.8 | MIT, © Meta Platforms, Inc. | https://react.dev |
-| react-dom | 19.2.8 | MIT, © Meta Platforms, Inc. | https://react.dev |
-| react-router | 8.3.1 | MIT, © React Training LLC / Remix Software | https://reactrouter.com |
+| three | 0.186.1 | MIT, © three.js authors | https://threejs.org |
+| @dimforge/rapier3d-compat | 0.21.0 | Apache-2.0, © Dimforge SAS | https://rapier.rs |
+| react | 19.3.0 | MIT, © Meta Platforms, Inc. | https://react.dev |
+| react-dom | 19.3.0 | MIT, © Meta Platforms, Inc. | https://react.dev |
+| react-router | 8.4.0 | MIT, © React Training LLC / Remix Software | https://reactrouter.com |
 | zustand | 5.0.15 | MIT, © Paul Henschel | https://github.com/pmndrs/zustand |
+| @mlc-ai/web-llm | 0.2.85 | Apache-2.0, © MLC contributors | https://github.com/mlc-ai/web-llm |
+| @huggingface/transformers | 4.3.1 | Apache-2.0, © Hugging Face | https://github.com/huggingface/transformers.js |
+| @soprotts/onnx-web | 0.3.0 | Apache-2.0, © the Sopro authors (no copyright line in the package) | https://github.com/samuel-vitorino/sopro |
+| parakeet.js | 1.4.4 | MIT, © Yunus Seyhan Dede | https://github.com/ysdede/parakeet.js |
+| threejs-water-pro | `file:../../../../threejs-water-pro` — a licensed copy beside the checkout | commercial, © DRG Software Solutions LLC, licensed per developer | https://threejsroadmap.com/assets/threejs-water-pro |
+
+**three.js** draws both games: the talk rooms with its classic renderer,
+Burning Man with its WebGPU build, falling back to WebGL2.
+
+**[meshoptimizer](https://github.com/zeux/meshoptimizer)** arrives inside
+three.js as the decoder for Burning Man's compressed figure, and the piece
+cannot draw the body without it. It is MIT under its own copyright rather than
+three.js's ([license](https://github.com/zeux/meshoptimizer/blob/master/LICENSE.md)).
+
+**[WebLLM](https://github.com/mlc-ai/web-llm)** runs the language model in
+the browser on a page with no machine behind it (browser mode, see
+docs/ARCHITECTURE.md), and is loaded only there. Its compiled kernels come from
+[binary-mlc-llm-libs](https://github.com/mlc-ai/binary-mlc-llm-libs) (Apache-2.0)
+and the weights -- the `mlc-ai/Qwen3.5-*-MLC` builds of Qwen3.5, Apache-2.0 like
+the machine's -- from the Hugging Face hub, both at pinned commits and both
+fetched by the visitor's browser when they choose one; neither is bundled or
+served from here.
+
+**[transformers.js](https://github.com/huggingface/transformers.js)** and
+**[Sopro's web runtime](https://github.com/samuel-vitorino/sopro)** speak the
+replies on a page with no machine, when a voice is chosen there (browser mode),
+and are loaded only then, in the voice's worker. Both run on
+[ONNX Runtime Web](https://github.com/microsoft/onnxruntime), MIT, © Microsoft,
+which arrives inside them with its WebAssembly files. The weights -- Resemble
+AI's [chatterbox-turbo-ONNX](https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX)
+(MIT), the community [chatterbox-nano-ONNX](https://huggingface.co/owensong/chatterbox-nano-ONNX)
+(MIT) and [sopro-v2-turbo-onnx](https://huggingface.co/samuel-vitorino/sopro-v2-turbo-onnx)
+(Apache-2.0) -- and the reference clips (the voice pack above) come from the
+Hugging Face hub at pinned commits, fetched by the visitor's browser when they
+switch the voice on; none of them is bundled or served from here. Kokoro was
+measured beside them and left out: kokoro-js speaks through `phonemizer`,
+which has eSpeak NG (GPL-3.0) compiled into it.
+
+**transformers.js** and **[parakeet.js](https://github.com/ysdede/parakeet.js)**
+hear the microphone on a page with no machine, when an ear is chosen there in
+the models panel (browser mode), and are loaded only then, in the ear's worker,
+on ONNX Runtime Web's WebAssembly (parakeet.js brings its own copy, 1.24.1,
+which it pins). The weights -- Useful Sensors' Moonshine Base as
+[moonshine-base-ONNX](https://huggingface.co/onnx-community/moonshine-base-ONNX)
+(MIT), and NVIDIA's Parakeet TDT 0.6B v2 (CC-BY-4.0, the Mac's ear above) as
+[parakeet-tdt-0.6b-v2-onnx](https://huggingface.co/ysdede/parakeet-tdt-0.6b-v2-onnx)
+-- come from the Hugging Face hub at pinned commits, fetched by the visitor's
+browser when they choose one; neither is bundled or served from here.
+
+**[threejs-water-pro](https://threejsroadmap.com/assets/threejs-water-pro)** is
+the desert's sea: a commercial library from DRG Software Solutions LLC,
+licensed per developer. It is a dependency of `@lucid/world`, whose desert
+(`app/packages/world/src/desert/`) draws the sea every trip that stands there
+looks out on — Burning Man's ocean, so far. Its licence allows its compiled
+code to be deployed inside a finished work and forbids publishing its source,
+so this repository holds neither the library nor any part of it in source
+form: it is installed from a copy kept outside the checkout, beside it, and
+only the compiled ocean reaches `app/dist`. Building from a clone of this
+repository therefore needs your own licensed copy of that package.
 
 What builds and checks the page — Vite, TypeScript, Vitest, Playwright, ESLint,
 and their own dependencies — is installed the same way and is in
@@ -106,11 +191,28 @@ what your machine actually installed.
 | --- | --- | --- |
 | PolyForm Noncommercial 1.0.0 | `LICENSE` | the license text itself, from polyformproject.org |
 
+Burning Man's figure is in `app/packages/trip/src/trips/burning-man/assets/`.
+The body was modelled for the piece, in Blender, and belongs to this project.
+The skeleton it is built on and the motions it performs -- walking, turning,
+shifting weight, giving way, rising and kneeling -- are from
+[Adobe Mixamo](https://www.mixamo.com). Mixamo's terms allow that inside a
+finished work and do not allow the characters or motions to be passed on as
+assets for someone else to use. So they are here only as this piece:
+retargeted, packed into the files the page loads, and offered to nobody as a
+download. The original captures are not in this repository.
+
+Burning Man's music is not in the repository and is not served by the machine:
+the page fetches it over the network when the card is turned over, from an
+address it is handed for that one play.
+
 Everything else under `machine/`, `app/`, `tools/` and `tests/` — including the
 personas and the rooms — was written for this project and is covered by
 [LICENSE](LICENSE). The voices are not in the repository at all: a reference
 clip is fetched by `setup.sh` into `models/voices/` from the dataset named
-above, and never committed.
+above, and never committed. Nor are the sounds and the figures: they are
+made on your machine from the libraries named above, into lucid-assets, and
+`models/assets/` -- where a clone of that lands by default -- is in
+`.gitignore` with the rest of `models/`.
 
 ---
 

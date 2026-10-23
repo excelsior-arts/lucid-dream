@@ -6,6 +6,17 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "types": ["vite/client"],
+    // Burning Man stands on a water library kept outside this checkout, which
+    // carries its own copy of three's types; left to resolve on its own, a
+    // Vector3 handed across that boundary is a Vector3 of another type. Every
+    // door into three is pinned to the one copy in here. And the piece reads
+    // its score as JSON.
+    "paths": {
+      "three": ["./node_modules/@types/three/index.d.ts"],
+      "three/webgpu": ["./node_modules/@types/three/build/three.webgpu.d.ts"],
+      "three/tsl": ["./node_modules/@types/three/build/three.tsl.d.ts"]
+    },
+    "resolveJsonModule": true,
 
     // The engine and the rooms move as JavaScript: their comments are the
     // design document and their line breaks carry meaning. checkJs stays off,

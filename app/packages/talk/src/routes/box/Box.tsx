@@ -14,8 +14,9 @@ import type {CSSProperties} from 'react';
 import {useEffect, useRef, useState} from 'react';
 import {useNavigate} from 'react-router';
 import {models} from '@lucid/machine';
-import {hatch, sound, startSky, usePage} from '@lucid/shell';
+import {hatch, href, onAskForCard, sound, startSky, useLimited, usePage} from '@lucid/shell';
 import type {Card} from '@lucid/ui';
+import {counted} from '@lucid/ui';
 import BoxOpen from '@lucid/ui/Box/Box';
 import Sheet from '@lucid/ui/Sheet/Sheet';
 import {personas as shipped} from '../../conversation/bundle';
@@ -23,6 +24,7 @@ import {gameConfig} from '../../conversation/config';
 import * as F from '../../conversation/files';
 import {summary} from '../../conversation/relation';
 import {link, useLink} from '../../link/store';
+import {openModelPanel} from '../../ui/ModelCard/open';
 import {openForget, openMemory, openSessions} from '../../ui/Sheets/sheets';
 import './Box.css';
 
@@ -33,6 +35,20 @@ const TAKE_NOTHING =
 const TAKE_FIRST =
   'Nothing taken yet. Whatever happens under one is written down here and nowhere else — ' +
   'what it learns about you, and how it comes to hold you.';
+
+/* The gear in the lid's corner: drawn in the rule's thin gold line, eight
+   teeth and the hub, nothing lit. */
+const Gear = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.1"
+       strokeLinejoin="round" aria-hidden="true">
+    <path d={'M10.44 4.77L10.87 2.47L13.13 2.47L13.56 4.77L16.01 5.78L17.94 4.46L19.54 6.06'
+      + 'L18.22 7.99L19.23 10.44L21.53 10.87L21.53 13.13L19.23 13.56L18.22 16.01L19.54 17.94'
+      + 'L17.94 19.54L16.01 18.22L13.56 19.23L13.13 21.53L10.87 21.53L10.44 19.23L7.99 18.22'
+      + 'L6.06 19.54L4.46 17.94L5.78 16.01L4.77 13.56L2.47 13.13L2.47 10.87L4.77 10.44'
+      + 'L5.78 7.99L4.46 6.06L6.06 4.46L7.99 5.78Z'} />
+    <circle cx="12" cy="12" r="3.2" />
+  </svg>
+);
 
 const say = (what: string, e: unknown) =>
   hatch.say(`${what}: ${e instanceof Error ? e.message : String(e)}`, 'warn');
@@ -48,6 +64,10 @@ export default function Box() {
      still on disk from when it was not — a standing nothing is moving any
      more is a number pretending to be one. */
   const [standings, setStandings] = useState(true);
+  /* And in a browser, held: still read, moved by nothing. A word that nothing
+     moves is not a reading, so the column is not drawn there at all (Eugene,
+     10-11) -- the line keeps the pill's name, its doses and its memories. */
+  const held = useLimited('standing');
 
   /* How long a dose lasts, as the lid last had it. Held here as well as in the
      store: the sheet is redrawn from the ledger, and a number that lives only
@@ -63,6 +83,11 @@ export default function Box() {
   usePage('box');
 
   useEffect(() => (sky.current ? startSky(sky.current) : undefined), []);
+
+  /* The rail's voice switch and microphone, finding their part missing, ask
+     for the models panel at its section: the box has a sheet to open it on,
+     as a room does. */
+  useEffect(() => onAskForCard((section) => openModelPanel(section)), []);
 
   /* Two reads and no socket at all. This page is not in a conversation with
      anything: it is the pills, the sheet inside the lid, and how strong a dose
@@ -105,7 +130,7 @@ export default function Box() {
       figure: p.figure ?? '',
       title: p.pill,
       blurb: p.blurb ?? '',
-      href: `/lucid-talk/${p.slug}`,
+      href: href(`/talk/${p.slug}`),
     }));
   const remembered = ledger ? ledger.pills.reduce((n, p) => n + p.remembered, 0) : 0;
 
@@ -126,11 +151,21 @@ export default function Box() {
            off costs one model rather than three. The room's page asks again if
            this never lands. */
         onPress={() => void models.start().catch(() => {})}
-        onTake={(card) => navigate(`/lucid-talk/${card.id}`)}
+        onTake={(card) => navigate(`/talk/${card.id}`)}
         onShut={() => navigate('/')}
         lid={
           <div className={`leaf${ledger ? ' ready' : ''}`}>
             <h1>Lucid Talk</h1>
+            {/* What the pills run on: the models panel, always, whatever is
+                downloaded. In the lid's corner, over the end of the rule; the
+                box's shut-zone stops short of it (data-own-press). */}
+            <button type="button" className="gear" data-own-press
+                    aria-label="Models: what Lucid Talk runs on, and downloads"
+                    title="Models: what Lucid Talk runs on, and downloads"
+                    onPointerEnter={() => sound.hover()}
+                    onClick={(e) => { e.stopPropagation(); sound.tick(); openModelPanel(); }}>
+              <Gear />
+            </button>
             <div className="rule" />
             <div className="body">
               <div className="stack">
@@ -142,7 +177,7 @@ export default function Box() {
                 <div className="lines" id="lines">
                   {ledger?.pills.map((p) => (
                     <div
-                      className="line"
+                      className={held ? 'line bare' : 'line'}
                       key={p.slug}
                       style={{'--card': p.color || '150, 140, 130'} as CSSProperties}
                     >
@@ -157,7 +192,7 @@ export default function Box() {
                           have had, and any of them opens where you left off;
                           what it remembers opens the note it keeps and lets
                           you write in it. */}
-                      <button
+                      {!held && <button
                         type="button"
                         className="said"
                         title={`how ${p.name} is taking you — press to start from nothing`}
@@ -174,14 +209,14 @@ export default function Box() {
                         {p.doses
                           ? (standings && summary(p.standing)) || 'undecided'
                           : 'never taken'}
-                      </button>
+                      </button>}
                       <span className="count">
                         <button
                           type="button"
                           title={`conversations you have had with ${p.name}`}
                           onClick={() => openSessions(p.slug, p.name)}
                         >
-                          {p.doses || 'no'} doses
+                          {p.doses ? counted(p.doses, 'dose') : 'no doses'}
                         </button>
                         {' · '}
                         {/* "memories", not "notes": it is the word the rest of

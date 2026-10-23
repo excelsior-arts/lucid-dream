@@ -9,6 +9,146 @@
  * over yet. The machine is handed a chunk and speaks it.
  */
 
+/* ---- tags: heard, never seen ------------------------------------------------
+ *
+ * A model may mark a sound in its reply -- "You came back [laugh] I didn't
+ * think you would." Chatterbox Turbo performs the tags its tokenizer knows
+ * and the machine strips every other one (see machine/models.py, voice_text),
+ * so on the way to the voice they stay. Everywhere a reply is read rather than
+ * heard -- the transcript, what is kept, what the model is shown again -- they
+ * go. The shape is the machine's: letters, spaces and hyphens in square
+ * brackets, on one line.
+ */
+const TAG_BODY = String.raw`\[[A-Za-z][A-Za-z -]*\]`;
+const TAG = new RegExp(TAG_BODY, 'g');
+/* A tag with the blanks around it, and a line break after it when it has one:
+   a tag on a line of its own goes with its line. */
+const TAG_AROUND = new RegExp(String.raw`([ \t]*)` + TAG_BODY + String.raw`([ \t]*)(\n?)`, 'g');
+/* A sentence that opens with a tag. */
+const TAG_FIRST = new RegExp(String.raw`^\s*` + TAG_BODY);
+/* The start of a tag still being written: held back until it closes, or until
+   a character it could not contain says it was never one. */
+const TAG_OPENING = /\[[A-Za-z]?[A-Za-z -]{0,30}$/;
+
+/** Whether a piece of a reply has words of its own, its tags aside: "[sigh]"
+ * has none, "[sigh] I know." has two.
+ *
+ * A tag with no words around it is never handed to a voice. Rendered 10-12,
+ * the lover's clip on the Mac's Turbo, seven seeds a tag: "[sigh]" on its own
+ * came back in five of seven as a breath 15-32 dB under her speech -- noise,
+ * nothing of her voice in it, which the playback then lifted by up to 40 dB
+ * into a whoosh -- and the ear heard "Yeah." in four; [gasp] alone was as
+ * faint in all seven, [whispering] a stray word ("Okay.", "See me now.").
+ * In front of the words of a sentence the same tags were the sound a body
+ * makes before it speaks, in her voice: a sigh leading into the line in all
+ * seven (voiced in three) -- the one Eugene heard and kept (10-12) -- a gasp,
+ * a laugh. */
+export function hasWords(text: string): boolean {
+  return /[a-zA-Z0-9]/.test((text ?? '').replace(TAG, ''));
+}
+
+/** A reply as it is read: every tag out, and the spacing around it mended.
+ *
+ * "back [laugh] I" is "back I"; at the edge of a line, or against the
+ * punctuation that follows it, a tag takes its blanks with it, so "[sigh] Oh."
+ * is "Oh." and "back [laugh]." is "back.". */
+export function withoutTags(text: string): string {
+  return (text ?? '').replace(TAG_AROUND, (m, _a: string, _b: string, nl: string,
+                                           at: number, s: string) => {
+    const end = at + m.length;
+    const opens = at === 0 || s[at - 1] === '\n';
+    if (nl) return opens ? '' : '\n';
+    const closes = end >= s.length || /[\n,.;:!?\u2026)\]]/.test(s[end]!);
+    return opens || closes ? '' : ' ';
+  });
+}
+
+/** What of a reply still being written can be shown yet.
+ *
+ * withoutTags, less a tag still being written and the blanks at the very end
+ * -- both of which the next token can change the meaning of. What this
+ * returns for a longer text always starts with what it returned for a
+ * shorter one, so a stream of it is a stream of deltas. */
+export function showable(written: string): string {
+  const open = TAG_OPENING.exec(written);
+  const settled = open ? written.slice(0, open.index) : written;
+  return withoutTags(settled).replace(/\s+$/, '').replace(/^\s+/, '');
+}
+
+/** Where a sentence ends: a . ! or ? -- not the last dot of an ellipsis --
+    and any closing quotes or brackets after it, then a space. */
+export const SENTENCE_END = /(?<=(?<!\.\.)[.!?]["'\u201d\u2019)\]]*)\s+/;
+
+/** A text up to the end of its last whole sentence -- a sentence's end
+    (`SENTENCE_END`) or a line's -- and '' where none has ended: what of a
+    reply that broke off was finished. The rule the voice is handed
+    sentences by, so what this keeps is what could have been said. */
+export function wholeSentences(text: string): string {
+  const t = `${text.trimEnd()} `;
+  const ends = new RegExp(`${SENTENCE_END.source}|\\n`, 'g');
+  let at = 0;
+  for (let m = ends.exec(t); m; m = ends.exec(t)) at = m.index;
+  return t.slice(0, at).trimEnd();
+}
+
+/** A reply with each tag that has no words of its own moved onto the start
+ * of the sentence after it, as the voice now says it (see splitForSpeech):
+ * "Oh.\n\n[sigh]\n\nYou came back." is "Oh.\n\n[sigh] You came back.", and
+ * "I know. [sigh]" with nothing after it stays as it is. Everything else --
+ * every blank, every break -- comes back exactly as written.
+ *
+ * For the one reader that sees a reply's tags: the model, next turn. Shown
+ * its own replies with a "[sigh]" alone between two paragraphs, it writes the
+ * next one the same way, and the next: in the lover's room on 10-12 eleven
+ * replies of twelve had a [sigh] on a line by itself, from the second on. */
+export function tagsOnWords(text: string): string {
+  const t = text ?? '';
+  if (t.search(TAG) < 0) return t;
+  // Sentences with what follows each: the blank it was cut on, a break, or
+  // nothing at the very end.
+  const cut = new RegExp(`(${SENTENCE_END.source}|\\s*\\n\\s*)`, 'g');
+  const pieces: Array<{body: string; gap: string}> = [];
+  let at = 0;
+  for (let m = cut.exec(t); m; m = cut.exec(t)) {
+    pieces.push({body: t.slice(at, m.index), gap: m[0]});
+    at = m.index + m[0].length;
+  }
+  pieces.push({body: t.slice(at), gap: ''});
+  /* The tags waiting for a sentence, as they stood. A break is worth more
+     than a blank: what a lifted tag leaves between the two sentences either
+     side of it is the widest of the gaps it stood between. */
+  let held: Array<{body: string; gap: string}> = [];
+  const breaks = (gap: string) => gap.split('\n').length;
+  const out: Array<{body: string; gap: string}> = [];
+  for (const p of pieces) {
+    if (!p.body.trim()) {
+      const into = held.length ? held[held.length - 1]! : out[out.length - 1];
+      if (into) into.gap += p.gap;
+      else out.push(p);
+      continue;
+    }
+    if (!hasWords(p.body)) {
+      held.push({...p});
+      continue;
+    }
+    if (!held.length) {
+      out.push(p);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (prev) {
+      for (const h of held) if (breaks(h.gap) > breaks(prev.gap)) prev.gap = h.gap;
+    }
+    const tags = held.map((h) => h.body.trim()).join(' ');
+    const lead = /^\s*/.exec(p.body)![0];
+    out.push({body: `${lead}${tags} ${p.body.slice(lead.length)}`, gap: p.gap});
+    held = [];
+  }
+  // Nothing after them: they stay where they were written.
+  out.push(...held);
+  return out.map((p) => p.body + p.gap).join('');
+}
+
 /** Python's `str.split()`: any run of whitespace, and no empty pieces. */
 function words(text: string): string[] {
   const t = text.trim();
@@ -50,28 +190,15 @@ export function mergeFor(queuedS: number): number {
   return Math.max(0, Math.min(MERGE_MAX_WORDS, Math.round((queuedS - 1.5) * 9)));
 }
 
-// How long the very first thing said may be. Everything after it is already
-// covered by audio playing, so only this one is worth hurrying: a reply that
-// opens with a forty-word sentence takes ~3s to write and ~3s to synthesise
-// before a sound comes out, and a comma seven words in is a place a person
-// would pause anyway.
-export const FIRST_CHUNK_WORDS = 12;
-export const CLAUSE_END = /[,;:—–]\s/g;
-
-/** Cut the first chunk at a clause boundary, if it is long enough to wait for. */
-export function shortenOpening(chunk: string): string[] {
-  if (words(chunk).length <= FIRST_CHUNK_WORDS) return [chunk];
-  let cut = 0;
-  const finder = new RegExp(CLAUSE_END.source, 'g');
-  for (let m = finder.exec(chunk); m; m = finder.exec(chunk)) {
-    const end = m.index + m[0].length;
-    if (words(chunk.slice(0, end)).length > FIRST_CHUNK_WORDS) break;
-    cut = end;
-  }
-  if (!cut) return [chunk];
-  const head = chunk.slice(0, cut).trim(), tail = chunk.slice(cut).trim();
-  return head && tail ? [head, tail] : [chunk];
-}
+// The opening is a whole sentence too. It was once cut at a clause -- a
+// comma, a dash -- when it ran past twelve words, so the voice would start a
+// moment sooner; that is a sentence said as two, each with an intonation of
+// its own, and the voice speaks whole sentences, never part of one (10-08).
+// Measured in a browser on 10-09, twelve lines a pill: the opening was cut at
+// its first comma in all twelve of the lover's replies on the 4B, six on the
+// 2B, four of the thinker's -- "I settle beside you," and then, as a second
+// sentence, "letting the heavy silence roll between us as I trace your hand."
+// The same code cuts the Mac's.
 
 /** As much of the model's own text as was actually said out loud.
  *
@@ -102,9 +229,6 @@ export function spokenPrefix(full: string, chunks: readonly string[]): string {
 }
 
 export interface SplitOptions {
-  /** Hurry the opening: only the first chunk of a reply, and only until
-      something is playing. */
-  firstShort?: boolean;
   /** How many words a chunk may reach by merging the sentence after it in,
       from mergeFor. Given, every sentence is merged up to it, the first of the
       text included, and 0 is one sentence per call. Left out, the text is a
@@ -143,6 +267,10 @@ export function splitForSpeech(text: string, o: SplitOptions = {}): string[] {
     const terminated = i + 1 < pieces.length;
     if (body.trim()) paras.push([body.trim(), terminated]);
   }
+  /* Tags with no words of their own, waiting for the sentence they open --
+     the next one, whichever paragraph it is in. */
+  let carry = '';
+  let carried = false;          // whether the paragraph `carry` came from ended
   for (const [para, terminated] of paras) {
     // "Stay... just like that." is one sentence: an ellipsis is a pause,
     // not a boundary, and splitting there makes it a hard cut between clips.
@@ -151,16 +279,33 @@ export function splitForSpeech(text: string, o: SplitOptions = {}): string[] {
     // single character was cut at, so the same line delivered two ways
     // depending on which key the model happened to reach for — and the
     // typed one is the one it reaches for most.
-    const parts = para.split(/(?<=[.!?])(?<!\.\.\.)\s+/)
+    //
+    // And a sentence that ends inside a closing quote or bracket -- 'Say
+    // "please."', "Did you? (I knew it.)" -- ends there all the same: before,
+    // only a bare . ! ? was an end, and such a sentence was carried into the
+    // next one even where every sentence should go alone. The voice worker
+    // in a browser cuts by the same rule (page/voice-worker.ts, sentences).
+    const parts = para.split(SENTENCE_END)
       .map((t) => t.trim())
       .filter((t) => t);
     const merged: string[] = [];
-    for (const part of parts) {
-      const wordless = !/[a-zA-Z0-9]/.test(part.replace(/\[[a-z-]+\]/g, ''));
-      if (merged.length && wordless) {
-        // a tag with no words of its own would be dropped before synthesis
-        merged[merged.length - 1] = `${merged[merged.length - 1]} ${part}`.trim();
-      } else if (joinable(merged)
+    for (const raw of parts) {
+      /* A tag with no words of its own opens the sentence after it -- "[sigh]"
+         on a line of its own, or after a sentence's end, is "[sigh] You came
+         back." -- and never goes to the voice alone (see hasWords). */
+      if (!hasWords(raw)) {
+        carry = `${carry} ${raw}`.trim();
+        carried = terminated;
+        continue;
+      }
+      const opens = !!carry || TAG_FIRST.test(raw);
+      const part = carry ? `${carry} ${raw}` : raw;
+      carry = '';
+      /* And a sentence a tag opens starts a call of its own: Turbo performs a
+         sigh or a gasp before the first word of what it is handed, and after
+         a sentence inside the same call it let them go -- [sigh] two times
+         in four, [gasp] in none. */
+      if (!opens && joinable(merged)
                  && words(merged[merged.length - 1]!).length < cap
                  && merged[merged.length - 1]!.length + part.length < MERGE_CHARS) {
         merged[merged.length - 1] = `${merged[merged.length - 1]} ${part}`.trim();
@@ -177,8 +322,18 @@ export function splitForSpeech(text: string, o: SplitOptions = {}): string[] {
     }
     out = out.concat(merged);
   }
-  // Only the opening of a reply. Doing this everywhere would trade the wait
-  // for a stream of small calls, and Chatterbox charges a fixed cost each.
-  if (o.firstShort && out.length) out = [...shortenOpening(out[0]!), ...out.slice(1)];
+  if (carry) {
+    /* Nothing after it, as far as the text goes. While a reply is streaming
+       that is only so far -- the chunk is held until the next sentence comes
+       and takes it (reply.ts keeps the last chunk back) -- and at the end of
+       one it is said with the line before it, or, with no line left to say,
+       not at all (reply.ts, and the voices: a tag alone says nothing). */
+    const last = out.pop();
+    if (last === undefined) out.push(carry + (carried ? '\n' : ''));
+    else {
+      const ends = last.endsWith('\n') || carried;
+      out.push(`${last.replace(/\n$/, '')} ${carry}${ends ? '\n' : ''}`);
+    }
+  }
   return out;
 }

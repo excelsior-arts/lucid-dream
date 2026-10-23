@@ -40,9 +40,16 @@ const FACE = {
   skip: <path d="M4.4 5 14.9 12 4.4 19ZM16.4 5H19v14h-2.6z" />,
   record: <circle cx="12" cy="12" r="5.4" />,
   eject: <path d="M12 4.8 20 14H4ZM4.6 16.4h14.8v2.8H4.6z" />,
+  /* Three answers, for a game that asks: a tick, a cross, and a tilde that
+     has not made up its mind. Filled like the rest, on the same grid. */
+  yes: <path d="M4.6 12.6 7.1 10.1 10.2 13.2 16.9 6.5 19.4 9 10.2 18.2Z" />,
+  no: <path d="M6.6 4.8 12 10.2 17.4 4.8 19.2 6.6 13.8 12 19.2 17.4 17.4 19.2 12 13.8 6.6 19.2 4.8 17.4 10.2 12 4.8 6.6Z" />,
+  maybe: <path d="M4.6 13.4c1.1-2.6 2.6-3.9 4.5-3.9 1.4 0 2.5.7 3.4 2.1.6.9 1.2 1.3 1.9 1.3 1 0 1.8-.9 2.5-2.6l2.5 1.1c-1.1 2.6-2.6 3.9-4.5 3.9-1.4 0-2.5-.7-3.4-2.1-.6-.9-1.2-1.3-1.9-1.3-1 0-1.8.9-2.5 2.6Z" />,
+  /* A map, folded in three, for a game with ground to look back over. */
+  map: <path d="M3.4 6.2 8.4 4.3v13.6l-5 1.9Zm6.6-1.9 4 1.7v13.6l-4-1.7Zm5.6 1.7 5-1.9v13.6l-5 1.9Z" />,
 };
 
-/** The seven shapes there are. A key wears one of them. */
+/** The ten shapes there are. A key wears one of them. */
 export type Icon = keyof typeof FACE;
 
 const Face = ({name}: {name: Icon}) => (
@@ -75,6 +82,9 @@ export interface Key {
   rec?: boolean;
   /** This key is the meter. */
   meter?: Meter;
+  /** Something small worn in the key's corner: a part limited where this
+      page runs (the shell's Mark), say. The key stays a key. */
+  mark?: ReactNode;
   onPress: () => void;
 }
 
@@ -140,6 +150,7 @@ export default function Deck({keys, counter, children}: Props) {
         >
           <i data-icon={key.icon}><Face name={key.icon} /></i>
           <span>{key.label}</span>
+          {key.mark && <em className="key-mark">{key.mark}</em>}
         </button>
       ))}
       {children}

@@ -92,18 +92,38 @@ test('silence is handed back untouched, and does not move the figure', () => {
   expect(lift.voiceLift).toBe(3);
 });
 
-test('too little speech to measure falls back to the whole chunk', () => {
-  /* Under VOICE_ENOUGH voiced samples the average is taken over everything,
-     pause included -- which is what stops "Kiss me." coming out 6 dB over the
-     paragraph it sits in. */
-  const short = pcm(
-    (i) => (i < 1000 ? 0.03 * Math.sin((2 * Math.PI * 220 * i) / RATE) : 0),
-    RATE,
-  );
+/* A breath: a tenth of a second at most over VOICE.QUIET, the rest under it
+   -- what Turbo made of a "[sigh]" handed to it alone. */
+const breath = () => pcm(
+  (i) => (i < 1000 ? 0.03 * Math.sin((2 * Math.PI * 220 * i) / RATE) : 0.004 * Math.sin(i)),
+  RATE,
+);
+
+test('too little speech to measure does not move the figure', () => {
+  const lift: Lift = {voiceLift: 2.5};
+  normalize(breath(), lift);
+  expect(lift.voiceLift).toBe(2.5);
+});
+
+test('and is lifted no further than the voice is', () => {
+  const lift: Lift = {voiceLift: 2.5};
+  const raw = breath();
+  const before = new Int16Array(raw.slice().buffer);
+  const after = new Int16Array(normalize(raw, lift).buffer);
+  expect(after[200]! / before[200]!).toBeCloseTo(2.5, 2);
+});
+
+test('before there is a figure, it is played as it came', () => {
   const lift: Lift = {voiceLift: 0};
-  normalize(short, lift);
-  const loud = VOICE.RMS / Math.sqrt(1000 * 0.03 * 0.03 * 0.5 / RATE);
-  expect(lift.voiceLift).toBeCloseTo(loud, 0);        // the whole chunk's RMS
+  const raw = breath();
+  const before = [...raw];
+  expect([...normalize(raw, lift)]).toEqual(before);
+  expect(lift.voiceLift).toBe(0);
+  // and the first line of speech after it still takes its own figure whole
+  normalize(quietSine(), lift);
+  const fresh: Lift = {voiceLift: 0};
+  normalize(quietSine(), fresh);
+  expect(lift.voiceLift).toBe(fresh.voiceLift);
 });
 
 /** Everything in the buffer, as one number. Recorded rather than written out:

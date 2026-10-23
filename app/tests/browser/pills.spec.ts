@@ -54,7 +54,7 @@ test.use({viewport: {width: 1100, height: 800}});
 
 /** Open a door and wait for the machine to have arrived behind it. */
 async function room(page: Page, where: string) {
-  await page.goto(`/lucid-talk/${where}`);
+  await page.goto(`/talk/${where}`);
   await page.waitForFunction(
     () => !document.documentElement.classList.contains('waking'), null, {timeout: 20000});
   // The pill in the address is the pill the machine says it is on, and there
@@ -108,7 +108,7 @@ for (let round = 1; round <= ROUNDS; round++) {
     await room(page, 'lover');
     await check(page, 'lover');
 
-    await page.goto('/lucid-talk');                 // the lid: back to the box
+    await page.goto('/talk');                 // the lid: back to the box
     await expect(page.locator('.card')).toHaveCount(2);
     await room(page, 'thinker');                    // and take the gold one again
     await check(page, 'thinker');

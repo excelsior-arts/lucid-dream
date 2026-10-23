@@ -13,6 +13,7 @@ import {useEffect, useState, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import type {Key} from '@lucid/ui';
 import {createTape, hearing} from '@lucid/ui';
+import {Mark, useLimited} from '@lucid/shell';
 import Deck from '@lucid/ui/Deck/Deck';
 import Lcd from '@lucid/ui/Deck/Lcd';
 import type {Deck as Keys, KeyId, Machine} from './deck';
@@ -61,6 +62,14 @@ export default function TapeDeck(props: Props) {
   const level = useSyncExternalStore(heard.onChange, () => heard.level);
   const floor = useSyncExternalStore(heard.onChange, () => heard.floor);
   const keys: Keys = deck(machine);
+  /* A browser that cannot hear (no WebAssembly for its ear, or no
+     microphone on this address): the Talk key stays anyway, marked, and a
+     press says so and how to run it on your Mac (the room opens that; see
+     Room.tsx). Where the browser can, null, as on the machine. */
+  const noEar = useLimited('ear');
+  /* And a browser that cannot run the pill at all: the Type key wears the
+     mark, and a press opens what it says. */
+  const noPill = useLimited('pill');
   /* The clock, which is not a render: it is counted off a deadline of this
      page's own, five times a second, and told what the machine believes
      whenever that arrives. See tape.ts in @lucid/ui. */
@@ -83,10 +92,13 @@ export default function TapeDeck(props: Props) {
       id,
       icon: ICON[id],
       label: key.label,
-      title: id === 'rec' && hearing(ear) && !key.busy
-        ? 'hearing you — press to stop listening' : key.title,
+      title: id === 'rec' && noEar ? 'this browser can’t hear you — press to see how to speak on your Mac'
+        : id === 'rec' && hearing(ear) && !key.busy
+          ? 'hearing you — press to stop listening' : key.title,
       disabled: key.disabled,
-      hidden: id === 'rec' && !canBeHeard,
+      hidden: id === 'rec' && !canBeHeard && !noEar,
+      ...(id === 'rec' && noEar ? {mark: <Mark title="limited in this browser" />} : {}),
+      ...(id === 'type' && noPill ? {mark: <Mark title={noPill.here} />} : {}),
       pressed: key.pressed,
       down: key.down,
       playing: key.playing,

@@ -19,3 +19,22 @@ test('the whole turn goes to the recognizer as raw sixteen-bit', async () => {
   // the samples already and encoding them would be a third more bytes.
   expect([...new Int16Array(call.body)]).toEqual([0, 16384, -16384]);
 });
+
+test('an ear in this page answers instead, and nothing goes up', async () => {
+  const {heardBy} = await import('./stt');
+  const fetched = vi.fn();
+  vi.stubGlobal('fetch', fetched);
+  const got: Float32Array[] = [];
+  heardBy(async (s) => { got.push(s); return 'in the page'; });
+  try {
+    expect(await transcribe(Float32Array.from([0, 0.5]))).toBe('in the page');
+    // PCM is taken back to floats, and another rate to the ear's own.
+    expect(await transcribe(Int16Array.from([0, 16384]))).toBe('in the page');
+    await transcribe(new Float32Array(32000), 32000);
+  } finally {
+    heardBy(null);
+  }
+  expect(fetched).not.toHaveBeenCalled();
+  expect([...got[1]!]).toEqual([0, 0.5]);
+  expect(got[2]!.length).toBe(16000);
+});

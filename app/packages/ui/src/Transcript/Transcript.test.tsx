@@ -96,3 +96,32 @@ test('a pacer tick redraws the line being written, and no other', () => {
                             visible={null} />);
   expect(corner.mock.calls.map(([, at]) => at)).toContain(more.length - 1);
 });
+
+test('a line that broke off fades out where it broke, with no label and no caret', () => {
+  const {container} = render(<Transcript name="Purple" turns={[
+    {role: 'user', text: 'Tell me.'},
+    {role: 'assistant', text: 'I am here. I was thinking about the ', cut: true},
+    {role: 'user', text: 'Go on.'},
+    {role: 'assistant', text: 'It had\n ended. ', cut: true},
+    {role: 'assistant', text: 'And', cut: true},
+    {role: 'assistant', text: 'Said whole.'},
+  ]} />);
+  const [mid, ended, one, whole] = [...container.querySelectorAll('.msg.them')];
+  const steps = (el: Element) => [...el.querySelectorAll('.fade')].map((f) => [f.className, f.textContent]);
+  // The last four words step down, the last ending in a dash where it broke.
+  expect(steps(mid!)).toEqual([
+    ['fade f1', 'was'], ['fade f2', 'thinking'], ['fade f3', 'about'], ['fade f4 end', 'the\u2014']]);
+  // The words are all there, and a reader that cannot see the fade is told.
+  expect(mid!.querySelector('.body')!.textContent).toBe('I am here. I was thinking about the\u2014 cut off');
+  expect(mid!.querySelector('.cut-said')!.textContent).toBe(' cut off');
+  expect(mid!.classList.contains('streaming')).toBe(false);
+  // No dash after a sentence that had ended, and a line break kept between the steps.
+  expect(steps(ended!)).toEqual([['fade f2', 'It'], ['fade f3', 'had'], ['fade f4 end', 'ended.']]);
+  expect(ended!.querySelector('.body')!.textContent).toBe('It had\nended. cut off');
+  // One word is the faintest step alone.
+  expect(steps(one!)).toEqual([['fade f4 end', 'And\u2014']]);
+  // Anything else does not fade and says nothing.
+  expect(whole!.querySelectorAll('.fade, .cut-said')).toHaveLength(0);
+  // No label anywhere: the old CUT OFF mark is gone.
+  expect(container.querySelectorAll('.broke-off')).toHaveLength(0);
+});

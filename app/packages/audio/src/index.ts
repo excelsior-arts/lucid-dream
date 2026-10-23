@@ -28,7 +28,8 @@ export type {Meter, MicBarge, MicMode, Speaker, Tuning, Vad, VadConfig, VadEvent
 
 export {isJunk} from './junk';
 
-export {transcribe} from './stt';
+export {heardBy, transcribe} from './stt';
+export type {Hear} from './stt';
 
 export {createPacer, LEAD_S, STEP_MS} from './pacing';
 export type {Pacer, Clock as PacerClock} from './pacing';

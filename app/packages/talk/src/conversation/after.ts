@@ -14,18 +14,18 @@
  * here is a token the next reply waits for, if you answer before the pill has
  * finished speaking.
  */
-import {streamChat} from '@lucid/machine';
 import type {Message} from '@lucid/machine';
 import {hatch} from '@lucid/shell';
-import {apply as applyMsg} from '../link/reduce';
-import {link} from '../link/store';
-import * as F from './files';
-import {clean} from './memory';
+import {fill, fold, judge, readAgain, remember, stand, unstand} from './character';
+import {chat} from './refusal';
 import type {Open} from './room';
-import {opened, touched, windowOf, write} from './room';
+import {opened, windowOf, write} from './room';
 import type {Standing} from './relation';
-import {LIMIT, apply as applyDeltas, blank, decayed, describe, readDeltas, standing, standingCard} from './relation';
+import {describe, standingCard} from './relation';
 import {ASK_ALL, ASK_PLACE, GUESS, SETTLED, isNowhere, trim} from './scene';
+import {say, words} from './pronouns';
+import {voiceOf} from './character';
+import {surface} from './surface';
 
 /** Whether the room this work is for is still the room this page is in.
  *
@@ -40,48 +40,30 @@ import {ASK_ALL, ASK_PLACE, GUESS, SETTLED, isNowhere, trim} from './scene';
  */
 const still = (room: Open): boolean => opened() === room;
 
-/** Whether a hand has been on this room since this work read it.
- *
- * `still` asks whether the room is the room; this asks whether it is the room
- * it was. Both are needed and neither covers the other: the fold and the
- * judgement are each a model call long, and inside that minute somebody can
- * reset a standing from the console or rewrite a memory on the sheet. What
- * comes back is about the room as it was before they did, and writing it puts
- * their edit back the way it was -- silently, in a file nobody is looking at,
- * seconds after they made it.
- *
- * So the hand wins: the work drops what it was going to write, and the turns a
- * fold was folding are folded again after the next one. Not a queue, which
- * would make the edit wait behind the model -- the wrong way round.
- */
-const handMoved = (room: Open, era: number): boolean => room.epoch !== era;
-
-/** Fill a prompt's `{name}` slots.
- *
- * One pass, with the values handed in and never String.replace's own `$`
- * patterns: what goes in here is a memory, a transcript and a reply, all of
- * which are full of characters that would otherwise be read as instructions.
- */
-function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g,
-                          (whole, name: string) => values[name] ?? whole);
-}
-
 /** One short call, whole. Nothing here streams to anybody: these are a
     handful of bullets, three lines of a room, or one line of JSON. */
 async function ask(o: {
-  system: string; user: string; temperature: number; max_tokens: number;
+  system: string; user: string; temperature: number; max_tokens: number; label?: string;
 }): Promise<string> {
   const messages: Message[] = [
     {role: 'system', content: o.system},
     {role: 'user', content: o.user},
   ];
-  let out = '';
-  for await (const delta of streamChat({
-    messages, temperature: o.temperature, max_tokens: o.max_tokens,
-  })) out += delta;
-  return out;
+  const out = await surface().run('background', async (signal) => {
+    let got = '';
+    for await (const delta of chat({
+      messages, temperature: o.temperature, max_tokens: o.max_tokens, signal,
+    })) got += delta;
+    return got;
+  }, o.label ?? 'after');
+  return out ?? '';
 }
+
+/** The lane the fold and the judgement go down: behind anything he can
+    hear, on a page that has lanes. */
+const later = (label: string) =>
+  <T,>(job: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> =>
+    surface().run('background', job, label);
 
 /* ---- memory ---------------------------------------------------------------
  *
@@ -91,83 +73,31 @@ async function ask(o: {
  * wrote something.
  */
 
-/** Fold what just fell out of the window into long-term memory. */
+/** Fold what just fell out of the window into long-term memory.
+ *
+ * The trigger is the room's -- how much has fallen out since the mark -- and
+ * the fold itself is the character's (character.ts). The mark moves only on
+ * a fold that wrote: an answer that came back empty, or a hand on the memory
+ * while it was out, leaves these turns to be folded again after the next one.
+ */
 export async function maybeFold(room: Open): Promise<void> {
   const cfg = room.cfg.memory;
-  if (!cfg.enabled) return;
-  // Two folds running at once both read the same memory and both write: the
-  // later one wins and the earlier fold's turns are lost for good, because
-  // foldedUpto has already moved past them.
-  if (room.folding) return;
-  room.folding = true;
-  try {
-    const fellOut = room.history.length - windowOf(room.cfg);
-    if (fellOut - room.foldedUpto < cfg.fold_after) return;
-    const dropped = room.history.slice(room.foldedUpto, fellOut);
-    if (!dropped.length) return;
-
-    /* Taken before the model is asked and compared after: see `same`. */
-    const era = room.epoch;
-    const existing = room.memory || '(nothing yet)';
-    /* Named, not roled. Handed "user:" and "assistant:", the folder wrote its
-       memories about "the assistant" — and worse, read everything on a user:
-       line as something he said about himself. He does not only speak as
-       himself: he asks for a register and gives samples of it, writes lines
-       for the pill to say, sets a scene to play in. All of that arrives in the
-       first person on his turn, and has been folded into the memory as
-       biography.
-
-       A name on each turn is what makes the difference legible, and it costs
-       nothing: the pill's own name is what the memory would call her anyway. */
-    const hers = room.persona.name || room.persona.pill || 'you';
-    const convo = dropped
-      .map((m) => `${m.role === 'user' ? 'him' : hers}: ${m.content}`).join('\n');
-    const raw = await ask({
-      system: room.prompts.fold_system ?? '',
-      user: fill(room.prompts.fold_user ?? '', {
-        existing, dropped: convo, max_bullets: String(cfg.max_bullets),
-      }),
-      temperature: 0.3,
-      max_tokens: 400,
-    });
-    const kept = clean(raw, cfg.max_bullets);
-    if (!still(room)) return;          // the pill was ejected mid-fold
-    if (handMoved(room, era)) {
-      /* Somebody rewrote the memory while this was being folded. What they
-         wrote is the memory; the mark stays where it is, so these turns are
-         folded into it after the next one. */
-      hatch.say('the memory was written by hand while it was being folded — '
-        + 'the fold was dropped, and those turns are folded in after the next one',
-                'warn');
-      return;
-    }
-    if (!kept) {
-      /* Nothing was written, so nothing has been remembered, and the mark
-         stays where it is: these turns are folded again after the next one.
-         Moving it first — which is what this did — meant a fold interrupted by
-         a Stop, or one the model answered with preamble, dropped those turns
-         out of the window and out of the memory both. Silently, and for good:
-         nothing ever looks back past this mark. */
-      hatch.say('memory fold came back empty — trying again after the next turn',
-                'warn');
-      return;
-    }
-    await F.saveMemory(room.slug, kept);
-    room.memory = kept;
-    room.foldedUpto = fellOut;
-    /* And the window is re-cut on the next turn. A fold rewrites the memory
-       block in the system prompt, so the prefix has changed whatever else
-       happens -- which makes this the one moment where moving the window costs
-       nothing. See windowCut in prompt.ts. */
-    room.windowFrom = -1;
-    hatch.say(`memory: ${dropped.length} older turn${dropped.length === 1 ? '' : 's'} folded in — `
-      + 'what mattered is kept, the rest let go');
-    link.setState({remembered: {slug: room.slug, text: kept, off: false}});
-  } catch (e) {
-    hatch.say(`memory fold failed: ${why(e)}`, 'warn');
-  } finally {
-    room.folding = false;
-  }
+  if (!cfg.enabled || room.folding) return;
+  const fellOut = room.history.length - windowOf(room.cfg);
+  if (fellOut - room.foldedUpto < cfg.fold_after) return;
+  const dropped = room.history.slice(room.foldedUpto, fellOut);
+  if (!dropped.length) return;
+  const came = await fold(room, dropped, {still: () => still(room), run: later('fold')});
+  if (came !== 'folded') return;
+  room.foldedUpto = fellOut;
+  /* And the window is re-cut on the next turn. A fold rewrites the memory
+     block in the system prompt, so the prefix has changed whatever else
+     happens -- which makes this the one moment where moving the window costs
+     nothing. See windowCut in prompt.ts. */
+  room.windowFrom = -1;
+  hatch.say(`memory: ${dropped.length} older turn${dropped.length === 1 ? '' : 's'} folded in — `
+    + 'what mattered is kept, the rest let go');
+  surface().remembered({slug: room.slug, text: room.memory, off: false});
 }
 
 /* ---- the scene ------------------------------------------------------------ */
@@ -185,10 +115,10 @@ async function sceneUpdate(
   room: Open, recent: readonly Message[], settled: boolean, opening = false,
 ): Promise<string> {
   if (!recent.length) return room.scene;
-  const convo = recent
-    .map((m) => `${m.role === 'user' ? 'he' : 'she'}: ${m.content}`).join('\n');
+  const convo = readAgain(recent)
+    .map((m) => `${m.role === 'user' ? words(voiceOf(room).other).he : words(voiceOf(room).self).he}: ${m.content}`).join('\n');
   const text = await ask({
-    system: room.prompts.scene_system ?? '',
+    system: say(room.prompts.scene_system ?? '', voiceOf(room)),
     user: fill(room.prompts.scene_user ?? '', {
       heading: settled ? SETTLED : GUESS,
       ask: opening ? ASK_PLACE : ASK_ALL,
@@ -197,6 +127,7 @@ async function sceneUpdate(
     }),
     temperature: 0.2,
     max_tokens: opening ? 40 : 120,
+    label: 'scene',
   });
   if (isNowhere(text)) return '';        // they are not anywhere; carry nothing
   return trim(text) || room.scene;
@@ -206,7 +137,7 @@ async function noteScene(room: Open, fresh: string): Promise<void> {
   if (!fresh || fresh === room.scene) return;
   if (!still(room)) return;            // this room was left while it was asked
   room.scene = fresh;
-  link.setState({scene: fresh});
+  surface().scene(fresh);
   await write(room, {kind: 'scene', text: fresh});
 }
 
@@ -297,56 +228,18 @@ export async function maybeScene(room: Open): Promise<void> {
 
 /* ---- where you stand ------------------------------------------------------ */
 
-/** Judge the exchange that just happened.
+/** Judge the exchange that just happened, and light the room by it.
  *
- * Shown the exchange and nothing else -- never the accumulated score -- so it
- * cannot talk itself into a direction. Hidden turns never reach here:
- * continuous mode is the pill talking to itself, and there is nothing about you
- * in it to judge.
+ * The judgement is the character's (character.ts); what is the room's is
+ * that it must be this room still, and that a standing that moved goes onto
+ * the page. Hidden turns never reach here: continuous mode is the pill
+ * talking to itself, and there is nothing about you in it to judge.
  */
 export async function scoreRelation(
   room: Open, him: string, her: string,
 ): Promise<void> {
-  const cfg = room.cfg.relation;
-  if (!cfg.enabled || !cfg.score) return;
-  const era = room.epoch;
-  try {
-    const raw = await ask({
-      system: room.prompts.relation_system ?? '',
-      user: fill(room.prompts.relation_user ?? '',
-                 {him: him.trim(), her: her.trim().slice(0, 400)}),
-      temperature: 0.1,
-      // One line of JSON. The cap matters because the model serves one request
-      // at a time: every token this spends is a token the next reply waits
-      // for, if you answer before the pill has finished speaking.
-      max_tokens: 48,
-    });
-    const [deltas, whyMoved] = readDeltas(raw);
-    if (!Object.values(deltas).some((d) => d)) return;
-    if (!still(room)) return;
-    if (handMoved(room, era)) {
-      /* Where you stand was reset, or set by hand, while this exchange was
-         being judged. Applying these deltas would put a standing back that
-         somebody had just cleared -- and it did, a few seconds after they
-         cleared it, which read as a reset that did not work. */
-      hatch.say('where you stand was changed while that was being judged — '
-        + 'the judgement was dropped', 'warn');
-      return;
-    }
-    const state = applyDeltas(room.relation ?? blank(), deltas, whyMoved);
-    await F.saveRelation(room.slug, state);
-    const moved = state.log[state.log.length - 1];
-    /* The numbers and not the reason. The scorer's `why` is a sentence about
-       the exchange it was shown -- written out of what was said, and prompted
-       to name something he did -- and the log rule is that none of that is
-       ever written down. It is in the relation file, which is where somebody
-       asking "why did it move" is looking anyway. */
-    const [word, temper] = standing(state);
-    hatch.say(`standing moved ${moved?.moved ?? ''} — now ${word}${temper ? `, ${temper}` : ''}`);
-    landed(room, state);
-  } catch (e) {
-    hatch.say(`relation scoring failed: ${why(e)}`, 'warn');
-  }
+  const state = await judge(room, him, her, {still: () => still(room), run: later('standing')});
+  if (state) landed(room, state);
 }
 
 /** A standing that has moved: onto the room, onto disk, and onto the page.
@@ -356,17 +249,16 @@ export async function scoreRelation(
  * reduce.ts, which is what the room is watching.
  */
 function landed(room: Open, state: Standing): void {
-  room.relation = state;
+  room.relation = state;             // already so after a judgement; not after a hand
   // The room's own record either way; the page's only while it is this page's
   // room. A standing that landed after an eject lit the next pill's card.
   if (!still(room)) return;
-  link.setState(applyMsg(link.getState(), {
-    type: 'relation',
+  surface().standing({
     slug: room.slug,
     state: {warmth: round(state.warmth), trust: round(state.trust), mood: round(state.mood)},
-    text: describe(state),
-  }));
-  link.setState({standing: standingCard(state)});
+    text: describe(state, undefined, voiceOf(room)),
+    card: standingCard(state),
+  });
 }
 
 /** Put the pill at a warmth, to see what it looks like.
@@ -385,14 +277,7 @@ function landed(room: Open, state: Standing): void {
 export async function setStanding(
   room: Open, warmth: number, mood?: number,
 ): Promise<Standing> {
-  const state: Standing = {
-    ...decayed(room.relation ?? blank()),
-    warmth: Math.max(-LIMIT, Math.min(LIMIT, warmth)),
-    updated: Date.now() / 1000,
-  };
-  if (mood !== undefined) state.mood = Math.max(-LIMIT, Math.min(LIMIT, mood));
-  touched(room);                       // a hand on the axes, same as a reset
-  await F.saveRelation(room.slug, state);
+  const state = await stand(room, warmth, mood);
   landed(room, state);
   return state;
 }
@@ -414,20 +299,13 @@ export async function setStanding(
  * pill's memory from inside another one's room. */
 export async function saveMemory(slug: string, text: string): Promise<void> {
   const kept = (text || '').trim();
-  await F.saveMemory(slug, kept);
   const room = opened();
   const mine = room?.slug === slug;
-  if (mine && room) {
-    room.memory = kept;
-    // And a fold that is out at the model right now writes nothing: what it
-    // would write is the memory as it was before this was typed.
-    touched(room);
-  }
-  link.setState({remembered: {
+  await remember(room, slug, kept);
+  surface().remembered({
     slug, text: kept,
-    off: mine && room ? !room.cfg.memory.enabled
-                      : (link.getState().remembered?.off ?? false),
-  }});
+    off: mine && room ? !room.cfg.memory.enabled : surface().rememberedOff(),
+  });
 }
 
 /** Where you stand, back to nothing.
@@ -438,17 +316,9 @@ export async function saveMemory(slug: string, text: string): Promise<void> {
  * undone by the next thing said, with the file back a minute later looking as
  * though nothing had happened. */
 export async function clearStanding(slug: string): Promise<boolean> {
-  const had = await F.resetRelation(slug);
   const room = opened();
-  if (room?.slug === slug) {
-    room.relation = null;
-    // The other half of the same rule: a judgement already out at the model is
-    // about the standing this just cleared, and must not put it back.
-    touched(room);
-  }
-  if (room?.slug === slug || link.getState().slug === slug) {
-    link.setState({standing: {}, relation: null});
-  }
+  const had = await unstand(room, slug);
+  if (room?.slug === slug || surface().slug() === slug) surface().standingCleared(slug);
   return had;
 }
 

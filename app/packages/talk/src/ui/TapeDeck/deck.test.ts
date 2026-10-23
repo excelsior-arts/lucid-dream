@@ -54,3 +54,14 @@ test('the talk key says it is working while the recognizer comes up', () => {
   expect(armed.armed).toBe(true);
   expect(armed.title).toMatch(/listening/);
 });
+
+test('a room looked around where the pill cannot run: the turn keys dark, the line held open, Eject still leaves', () => {
+  const k = deck({...QUIET, noWords: true});
+  for (const id of ['back', 'play', 'skip'] as const) {
+    expect(k[id].disabled).toBe(true);
+    expect(k[id].title).toMatch(/can’t run the pill/);
+  }
+  expect(k.type.pressed).toBe(true);
+  expect(k.type.disabled).toBe(false);
+  expect(k.eject.disabled).toBe(false);
+});

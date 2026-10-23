@@ -7,6 +7,8 @@
  * being written on the machine, which is what this is.
  */
 import {useEffect, useRef} from 'react';
+import {Mark, useLimited} from '@lucid/shell';
+import {openLimit} from '../Sheet/limit';
 import type {Keys} from './draft';
 import {DRAFT, UNSENT, store, stored} from './draft';
 import './TypeLine.css';
@@ -24,13 +26,19 @@ export interface Props {
   onRestored: (text: string) => void;
   /** The two storage keys, if the defaults are not wanted. */
   keys?: Keys;
+  /** A limit that, while it holds, keeps the line on the glass and unable to
+      send: marked, saying so in a word, and a press opens its note. A
+      browser that cannot run the pill at all ('pill'). */
+  limit?: string;
 }
 
 const KEPT: Keys = {draft: DRAFT, unsent: UNSENT};
 
 export default function TypeLine({open, disabled, onSubmit, onEscape, onRestored,
-                                  keys = KEPT}: Props) {
+                                  keys = KEPT, limit}: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
+  const held = useLimited(limit ?? '');
+  const why = () => { if (limit) openLimit(limit); };
   const was = useRef(open);
 
   // Whatever was in the box when the page went away, plus anything sent that
@@ -61,6 +69,7 @@ export default function TypeLine({open, disabled, onSubmit, onEscape, onRestored
   }, [open]);
 
   function submit() {
+    if (held) { why(); return; }
     const text = box.current?.value.trim() ?? '';
     if (!text) return;
     /* Emptied only once it has actually gone. It used to empty first and send
@@ -74,15 +83,17 @@ export default function TypeLine({open, disabled, onSubmit, onEscape, onRestored
   }
 
   return (
-    <div id="say" hidden={!open}>
+    <div id="say" hidden={!open && !held} data-held={held ? '' : undefined}>
       {/* The placeholder is short because the line is narrow: the keys have
           the row and the panel is set by the room, not the window. A hint that
           wraps inside its own box reads as something broken rather than as a
           hint. What it does not say any more is on the Type key, in its
           title, which is where somebody wondering about it will be looking. */}
       <textarea
-        id="text" rows={2} spellCheck={false} placeholder="type to steer"
-        ref={box} disabled={disabled}
+        id="text" rows={2} spellCheck={false}
+        placeholder={held ? 'This browser can’t run the pill — press here to see why' : 'type to steer'}
+        ref={box} disabled={disabled} readOnly={!!held}
+        onClick={held ? why : undefined}
         onChange={() => store(keys.draft, box.current?.value ?? '')}
         onKeyDown={(e) => {
           /* Return sends; shift-return is a new line. Which is the way round
@@ -92,8 +103,14 @@ export default function TypeLine({open, disabled, onSubmit, onEscape, onRestored
           // The console has its own Escape and takes it first, so this only
           // fires when the console is shut.
           else if (e.key === 'Escape') { onEscape(); box.current?.blur(); }
+          else if (held && e.key === ' ') { e.preventDefault(); why(); }
         }}
       />
+      {held && (
+        <button type="button" className="say-held" onClick={why} aria-label={held.here}>
+          <Mark title={held.here} />
+        </button>
+      )}
     </div>
   );
 }

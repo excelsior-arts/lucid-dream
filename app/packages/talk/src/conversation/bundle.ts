@@ -17,9 +17,10 @@
  * the door an Electron build has and a directory of markdown on a server is
  * not.
  */
-import {hatch} from '@lucid/shell';
+import {hatch, host} from '@lucid/shell';
 import type {PersonaCard} from '../link/shapes';
 import type {Prompts} from './prompt';
+import {pronoun} from './pronouns';
 
 /** A markdown file's header and its body.
  *
@@ -176,6 +177,9 @@ function card(path: string, raw: string): PersonaCard {
        header nobody could read is the same thing, and for the same reason:
        everything a card is drawn from would be a default. */
     draft: Boolean(meta.draft) || !!broken,
+    /* Kept in the tray and out of the box: a character another game speaks
+       through. See character.ts. */
+    internal: Boolean(meta.internal),
     /* Two names, and the split is the point. `name` is the character's own,
        used where a character is being addressed — the prompt, and nothing
        else. `pill` is what a player is handed. */
@@ -195,6 +199,13 @@ function card(path: string, raw: string): PersonaCard {
     place: typeof meta.place === 'string' ? meta.place : '',
     temperature: number(meta.temperature),
     top_p: number(meta.top_p),
+    /* Nothing said for this many seconds, and it speaks first. Off unless
+       the header says. */
+    silence: number(meta.silence),
+    silence_line: typeof meta.silence_line === 'string' ? meta.silence_line : '',
+    /* What to call it in the third person. The pills were written as she,
+       and a header that says nothing is one of them. */
+    pronouns: pronoun(meta.pronouns, 'she'),
     prompt: body.trim(),
   };
 }
@@ -206,9 +217,10 @@ const CARDS: PersonaCard[] = Object.entries(FILES)
 export const all = (): PersonaCard[] => CARDS;
 
 /** The characters on offer, as the box and the room read them. Drafts are
-    written and not offered, and the order is the one the tray is laid out in. */
+    written and not offered, internal ones are offered elsewhere, and the
+    order is the one the tray is laid out in. */
 export const personas = (): PersonaCard[] =>
-  CARDS.filter((p) => !p.draft)
+  CARDS.filter((p) => !p.draft && !p.internal)
     .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 
 /* ---- the text it sends the model ------------------------------------------
@@ -220,7 +232,37 @@ export const personas = (): PersonaCard[] =>
 const TEXT = import.meta.glob<string>('../../content/prompts/*.md',
                                       {query: '?raw', import: 'default', eager: true});
 
-/** Every prompt, by name. */
-export const prompts = (): Prompts =>
-  Object.fromEntries(Object.entries(TEXT).map(
+/** Every prompt, by name.
+ *
+ * Words that are read rather than heard get system_text.md in place of
+ * system.md: the sound rules mean nothing there, and what a small model needs
+ * said instead is to stay in the first person and off the asterisks (the
+ * research of 10-08 found the 2B and the 4B doing both). That is a Mac whose
+ * voice is not on its shelf, and a browser, whose words come from a small
+ * model in this page, a voice there or not.
+ *
+ * A censored model -- one that sometimes answers as the model rather than as
+ * the character (host().censored; see refusal.ts), all of the browser's builds
+ * today -- gets system_page.md, wherever it runs: the same text, opened the
+ * way system.md opens: "You are heard aloud, not read." The research of 10-09
+ * found system.md's opening kept the browser 4B from answering as the model
+ * on a first line more often than the text-mode one did. Its voice lines were
+ * tried there as well, and the 4B wrote its replies as stage directions
+ * between asterisks, which the page strips: 73 of 108 replies over six
+ * evenings, five of them all evening, against 21 with this opening alone.
+ *
+ * And in a browser the content limit, page_limits.md, after it and before
+ * the persona: a rule of the web build, whatever its model. With no model
+ * flagged, a Mac's prompt -- with its voice or without -- is the one it
+ * always was, byte for byte. Read when a room opens, and again when the
+ * model in use turns out to be another (room.ts). */
+export const prompts = (): Prompts => {
+  const all: Record<string, string> = Object.fromEntries(Object.entries(TEXT).map(
     ([path, raw]) => [path.split('/').at(-1)?.replace(/\.md$/, '') ?? '', raw.trim()]));
+  if (host().censored && all.system_page) all.system = all.system_page;
+  else if ((!host().voice || host().llm === 'page') && all.system_text) all.system = all.system_text;
+  if (host().llm === 'page' && all.page_limits) all.system = `${all.system ?? ''}\n${all.page_limits}`;
+  delete all.system_page;
+  delete all.page_limits;
+  return all;
+};

@@ -1,8 +1,8 @@
 /* How a reply is cut up before it is spoken.
  *
  * Five things a splitter can get wrong: where a sentence ends, where a
- * paragraph does, a line that is only a bracketed tag, how long the very first
- * chunk may be, and what is stored when somebody cuts a reply off partway. The
+ * paragraph does, a line that is only a bracketed tag, whether the opening is
+ * spoken whole, and what is stored when somebody cuts a reply off partway. The
  * junk filter is the sixth and is beside the ear instead, in
  * audio/junk.test.ts.
  *
@@ -12,7 +12,10 @@
  */
 import {expect, test} from 'vitest';
 import type {SplitOptions} from './speech';
-import {MERGE_CHARS, MERGE_MAX_WORDS, MERGE_WORDS, mergeFor, splitForSpeech, spokenPrefix} from './speech';
+import {
+  MERGE_CHARS, MERGE_MAX_WORDS, MERGE_WORDS, hasWords, mergeFor, showable, splitForSpeech, spokenPrefix,
+  tagsOnWords, wholeSentences, withoutTags,
+} from './speech';
 
 const spoken = (text: string, o: SplitOptions = {}) => splitForSpeech(text, o);
 
@@ -38,6 +41,15 @@ test('an ellipsis is a pause and not a boundary', () => {
 
 test('a real ellipsis character too', () => {
   expect(spoken('Stay… just like that.')).toHaveLength(1);
+});
+
+test('an end inside a closing quote or bracket is still an end', () => {
+  expect(spoken('Say "please." Then come here.', {merge: 0})).toEqual(['Say "please."', 'Then come here.']);
+  expect(spoken('\u201cCome here?\u201d Then I kiss you.', {merge: 0}))
+    .toEqual(['\u201cCome here?\u201d', 'Then I kiss you.']);
+  expect(spoken('Did you? (I knew it.) Good.', {merge: 0})).toEqual(['Did you?', '(I knew it.)', 'Good.']);
+  // and an ellipsis inside one is still a pause
+  expect(spoken('I said "Stay..." and you did.', {merge: 0})).toEqual(['I said "Stay..." and you did.']);
 });
 
 test('a question and a shout are still ends', () => {
@@ -124,9 +136,7 @@ test('nothing at all comes back as nothing', () => {
 
 // ---- Tags: [sigh] and friends are delivery, not words -----------------------
 
-test('a tag with no words of its own rides with the line before it', () => {
-  // On its own it would be dropped before synthesis and the delivery would go
-  // with it.
+test('a tag the reply ends on, with no words of its own, rides with the line before it', () => {
   const out = spoken('I know. [sigh]');
   expect(out).toHaveLength(1);
   expect(out[0]).toContain('[sigh]');
@@ -136,32 +146,158 @@ test('a line that is only a tag at the very start', () => {
   expect(spoken('[laughs] Fine.').some((c) => c.includes('[laughs]'))).toBe(true);
 });
 
+test('a tag with a space in it is still a tag', () => {
+  expect(spoken('I see. [clear throat]')).toEqual(['I see. [clear throat]']);
+});
+
+test('a tag at the start of a sentence stays with that sentence', () => {
+  expect(spoken('Oh. [sigh] You came back.', {merge: 0}))
+    .toEqual(['Oh.', '[sigh] You came back.']);
+});
+
+test('words: a tag has none of its own', () => {
+  expect(hasWords('[sigh]')).toBe(false);
+  expect(hasWords(' [sigh] [clear throat]. ')).toBe(false);
+  expect(hasWords('[sigh] I know.')).toBe(true);
+  expect(hasWords('Mm.')).toBe(true);
+});
+
+/* What the lover wrote on 10-12 in eleven replies of twelve: a "[sigh]" alone
+   between two paragraphs. Handed to the voice as a chunk of its own it came
+   back as a faint breath, lifted into a whoosh; in front of the words of the
+   next sentence, a sigh in her voice. */
+test('a tag on a line of its own opens the sentence after it', () => {
+  expect(spoken('[sigh]\n\nYou came back.', {merge: 0})).toEqual(['[sigh] You came back.']);
+  expect(spoken('I waited.\n\n[sigh]\n\nYou came back. Stay.', {merge: 0}))
+    .toEqual(['I waited.\n', '[sigh] You came back.', 'Stay.']);
+  expect(spoken('I waited.\n\n[sniff]\n\nYou came back.\n\n[mumble]\n\nStay.\n', {merge: 40}))
+    .toEqual(['I waited.\n', '[sniff] You came back.\n', '[mumble] Stay.\n']);
+});
+
+test('and so does one after a sentence\'s end', () => {
+  expect(spoken('It has been four days. [sigh]\n\nI am right here.', {merge: 0}))
+    .toEqual(['It has been four days.\n', '[sigh] I am right here.']);
+});
+
+test('a sentence a tag opens starts a call of its own, however far the merge reaches', () => {
+  // Turbo performs a sigh before the first words of what it is handed, and
+  // lets it go after a sentence inside the same call.
+  expect(spoken('Come closer. [sigh] I am right here. Stay.', {merge: 40}))
+    .toEqual(['Come closer.', '[sigh] I am right here. Stay.']);
+  // a tag inside a sentence is that sentence's, and merges with it
+  expect(spoken('Come closer. You came back [laugh] I knew it.', {merge: 40}))
+    .toEqual(['Come closer. You came back [laugh] I knew it.']);
+});
+
+/** A reply streamed a character at a time, handed over as reply.ts hands it:
+    every chunk but the last of what has come, then the rest at the end. */
+function streamed(text: string, merge: number): string[] {
+  const sent: string[] = [];
+  let buffer = '';
+  for (const ch of text) {
+    buffer += ch;
+    const chunks = splitForSpeech(buffer, {merge});
+    if (chunks.length > 1) {
+      sent.push(...chunks.slice(0, -1));
+      buffer = chunks.at(-1)!;
+    }
+  }
+  return [...sent, ...splitForSpeech(buffer, {merge})];
+}
+
+test('streamed, a lone tag is never handed over alone, and opens the next sentence', () => {
+  const reply = 'It has been four days.\n\nI am right here. I can hear you.\n\n[sigh]\n\nCome here.\n\n'
+    + '[sniff] Closer. [clear throat]\n\nStay.';
+  for (const merge of [0, 9, 40]) {
+    const sent = streamed(reply, merge);
+    for (const c of sent) expect(hasWords(c), `${merge}: ${JSON.stringify(c)}`).toBe(true);
+    expect(sent.some((c) => c.startsWith('[sigh] Come here.')), `${merge}`).toBe(true);
+    expect(sent.some((c) => c.startsWith('[sniff] Closer.')), `${merge}`).toBe(true);
+    expect(sent.some((c) => c.startsWith('[clear throat] Stay.')), `${merge}`).toBe(true);
+    // and no word lost or added on the way
+    const all = (t: string) => t.split(/\s+/).filter(Boolean).sort();
+    expect(all(sent.join(' '))).toEqual(all(reply));
+  }
+});
+
+test('streamed, a reply that ends on a tag hands it over last, with no words to say', () => {
+  const sent = streamed('Come here.\n\n[sigh]', 0);
+  expect(sent.join(' ')).toContain('[sigh]');
+  expect(sent.filter((c) => !hasWords(c)).length).toBeLessThanOrEqual(1);
+});
+
+// ---- Tags shown back to the model -----------------------------------------
+
+test('shown back, a tag on a line of its own opens the sentence after it, and nothing else moves', () => {
+  expect(tagsOnWords('Oh.\n\n[sigh]\n\nYou came back.')).toBe('Oh.\n\n[sigh] You came back.');
+  expect(tagsOnWords('It has been four days. [sigh]\n\nI am here. And you.'))
+    .toBe('It has been four days.\n\n[sigh] I am here. And you.');
+  expect(tagsOnWords('A. [sniff]\nB.')).toBe('A.\n[sniff] B.');
+  for (const same of ['I know. [sigh]', '[sigh]', 'You came back [laugh] I knew it.',
+                      '[laugh] You came back.\n\nStay.', 'No tags.\n\n  Here.\n']) {
+    expect(tagsOnWords(same)).toBe(same);
+  }
+});
+
+test('streamed a token at a time, a tag is never cut through', () => {
+  const text = 'Oh. [clear throat] You came back. [laugh] Fine.';
+  for (let i = 1; i <= text.length; i++) {
+    const chunks = splitForSpeech(text.slice(0, i), {merge: 0});
+    // every chunk but the last is what gets handed over while streaming
+    for (const c of chunks.slice(0, -1)) {
+      expect(c.split('[').length, c).toBe(c.split(']').length);
+      expect(/[a-zA-Z]/.test(c.replace(/\[[^\]]*\]/g, '')), c).toBe(true);
+    }
+  }
+});
+
+// ---- Tags off the glass -----------------------------------------------------
+
+test('what is read has no tags, and no hole where one was', () => {
+  expect(withoutTags('You came back [laugh] I did not think you would.'))
+    .toBe('You came back I did not think you would.');
+  expect(withoutTags('[sigh] Oh, you came back.')).toBe('Oh, you came back.');
+  expect(withoutTags('You came back [laugh].')).toBe('You came back.');
+  expect(withoutTags('Well [clear throat], then.')).toBe('Well, then.');
+  expect(withoutTags('Oh.\n[sigh]\nYou came.')).toBe('Oh.\nYou came.');
+  expect(withoutTags('Oh.\n\n[whispering] Come here.')).toBe('Oh.\n\nCome here.');
+  expect(withoutTags('[Laugh] fine')).toBe('fine');
+});
+
+test('and what is not a tag is left alone', () => {
+  for (const t of ['*mmm* yes', 'a (shrug) b', 'one [2] three', '[leans in, smiling] hi'])
+    expect(withoutTags(t)).toBe(t);
+});
+
+test('streamed, what is shown only ever grows, and never shows a tag', () => {
+  const text = 'Oh. [sigh] You came back [laugh] I did not think\n[chuckle]\nyou would [gasp].';
+  let was = '';
+  for (let i = 1; i <= text.length; i++) {
+    const now = showable(text.slice(0, i));
+    expect(now.startsWith(was), JSON.stringify([was, now])).toBe(true);
+    expect(now).not.toMatch(/\[/);
+    was = now;
+  }
+  expect(was).toBe(withoutTags(text).trim());
+});
+
 // ---- TheOpening -------------------------------------------------------------
 
-/* firstShort is the trade between waiting and a stream of small calls, and it
-   is only made once, at the top of a reply. */
+/* The opening is a whole sentence like any other: never cut at a clause to
+   start the voice sooner (10-08). It was, past twelve words. */
 const LONG = 'I have been thinking about what you said last night, and about '
   + 'the way you said it, which is the part that stayed with me.';
 
-test('a long opening is cut at a clause so the voice starts sooner', () => {
-  const plain = spoken(LONG);
-  const short = spoken(LONG, {firstShort: true});
-  expect(plain).toHaveLength(1);
-  expect(short).toHaveLength(2);
-  expect(short[0]!.split(/\s+/).length).toBeLessThan(plain[0]!.split(/\s+/).length);
+test('a long opening is spoken whole, not cut at its commas', () => {
+  expect(spoken(LONG)).toEqual([LONG]);
+  expect(spoken(LONG, {merge: 0})).toEqual([LONG]);
+  expect(spoken(LONG + ' And then some.', {merge: 0})).toEqual([LONG, 'And then some.']);
 });
 
-test('the words are all still there and in order', () => {
-  expect(spoken(LONG, {firstShort: true}).join(' ').split(/\s+/)).toEqual(LONG.split(/\s+/));
-});
-
-test('an opening that is already short is left alone', () => {
-  expect(spoken('Yes. And no.', {firstShort: true})[0]).toBe('Yes.');
-});
-
-test('only the opening is treated this way', () => {
-  const out = spoken('Yes.\n\n' + LONG, {firstShort: true});
-  expect(out[out.length - 1]?.trim()).toBe(LONG);
+test('a dash or a colon in the opening is no cut either', () => {
+  const dash = 'I come over and put my head against your chest — listening to the rain on that glass, '
+    + 'the lamp low: all of it ours.';
+  expect(spoken(dash, {merge: 0})).toEqual([dash]);
 });
 
 // ---- AnInterruptedReplyKeepsItsShape ---------------------------------------
@@ -206,4 +342,20 @@ test('nothing spoken is nothing stored', () => {
 test('no stray space down the left', () => {
   // The signature of the old rejoin: a newline with a space after it.
   expect(spokenPrefix(WRITTEN, spoke(2))).not.toContain('\n ');
+});
+
+// ---- A reply that broke off ---------------------------------------------------
+
+test('what of a broken-off reply was finished: up to its last whole sentence', () => {
+  expect(wholeSentences('Come here. Sit down. I was thinking about the')).toBe('Come here. Sit down.');
+  expect(wholeSentences('Did you? "Yes." And then he')).toBe('Did you? "Yes."');
+  // Every sentence ended: all of it.
+  expect(wholeSentences('Come here. Sit down. ')).toBe('Come here. Sit down.');
+  // A line's end is an end too: the voice is handed it whole.
+  expect(wholeSentences('A short line\nand half of the')).toBe('A short line');
+  // An ellipsis is a pause, not an end, as it is for the voice.
+  expect(wholeSentences('Stay... just like')).toBe('');
+  // Nothing ended yet: nothing.
+  expect(wholeSentences('I was thinking about the')).toBe('');
+  expect(wholeSentences('')).toBe('');
 });

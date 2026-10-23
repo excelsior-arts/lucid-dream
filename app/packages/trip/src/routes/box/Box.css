@@ -1,0 +1,82 @@
+/* What is left of the box page once the box itself is next door.
+ *
+ * The case, the tray, the card and the flight are @lucid/ui's Box. What stayed
+ * here is what only Lucid Trip means: the sheet inside the lid, and the room
+ * the box is standing in.
+ *
+ * Every selector is under the page's own name, on <html>, while this route is
+ * mounted — the whole app is one document and every route's stylesheet is in
+ * it at once. The names inside the lid are this file's own markup, so the rule
+ * for `.leaf` here and the rule for `.leaf` in the other box on the shelf are
+ * two descriptions of the same object drawn twice, which is what a shelf of
+ * games costs and is cheaper than a mechanic that knows what is on the sheet.
+ */
+html[data-page="box"] body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
+       overflow:hidden; touch-action:manipulation; }
+/* The routes hang inside #app rather than off <body>: the room the box stands
+   in has to reach down through it, or #room is as tall as its own contents. */
+html[data-page="box"] #app { flex:1; min-height:0; display:flex; flex-direction:column; }
+
+/* Never vw. Everything in the box is inside a transform that scales with the
+   box, so the type scales with it too — which is what makes the writing part of
+   the object rather than an overlay. --type is twelve times the browser's zoom,
+   which is what cancels the box's own fit; every other proportion here is a
+   share of it. See fitOpenBox in shell/fit.ts, and the fallback is for the
+   frame before it has measured. */
+html[data-page="box"] .leaf { height:100%; display:flex; flex-direction:column; text-align:left;
+        font-size:var(--type, 12px); }
+html[data-page="box"] .leaf h1 { margin:0 0 2px; font-size:1.15em; font-weight:500; letter-spacing:.52em;
+           text-transform:uppercase; color:#d9c79b;
+           text-shadow:0 1px 0 rgba(0,0,0,.85); }
+html[data-page="box"] .leaf .rule { height:1px; margin:0 0 .9em;
+              background:linear-gradient(90deg, rgba(201,162,39,.55), rgba(201,162,39,.08)); }
+html[data-page="box"] .leaf .note { margin:0 0 2.1em; font-size:.92em; line-height:1.7; color:var(--star-dim); }
+/* The middle of the sheet: in the centre of whatever room the lid has, and
+   scrolling inside it. Auto margins rather than justify-content, which clips
+   the top of an overflowing column in every browser that has ever shipped. */
+html[data-page="box"] .leaf .body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+              display:flex; -webkit-overflow-scrolling:touch; }
+html[data-page="box"] .leaf .stack { margin:auto 0; width:100%; }
+
+/* The table: a line per card. Every rule here that names a selector the Talk
+   box's sheet also has is that sheet's rule word for word -- both stylesheets
+   are in the one document once both boxes have been open, under the same
+   page name, and whichever was loaded last wins. A rule that differed by a
+   hair moved the other box; one that is the same moves nothing. What is only
+   this box's is `.doses`, a class the Talk box does not have.
+
+   Laid out as soon as the page is, shown once the counts are in: rows
+   arriving under the copy pushed it up the sheet as they landed. */
+html[data-page="box"] .lines { opacity:0; transition:opacity .25s ease; }
+html[data-page="box"] .leaf.ready .lines { opacity:1; }
+html[data-page="box"] .lines { display:flex; flex-direction:column; gap:.55em; }
+html[data-page="box"] .line { display:grid; grid-template-columns:auto 1fr auto auto; align-items:baseline;
+        gap:.7em; padding-bottom:.5em;
+        border-bottom:1px solid rgba(201,162,39,.10); }
+html[data-page="box"] .line .tag { display:flex; align-items:center; gap:.55em;
+             letter-spacing:.22em; text-transform:uppercase; color:var(--ink); }
+html[data-page="box"] .line .tag i { width:1.5em; height:.62em; border-radius:999px;
+               background:linear-gradient(100deg, rgba(255,255,255,.8), rgba(var(--card), .7));
+               box-shadow:0 0 10px rgba(var(--card), .5); }
+/* The count, in the last column, against the right edge: the Talk box's
+   tally, in its size and colour, but not underlined -- there is nothing
+   behind a dose to open, and an underline here would promise a press. */
+html[data-page="box"] .line .doses { grid-column:-2; text-align:right; font-size:.86em; color:#8d9aad;
+               font-variant-numeric:tabular-nums; letter-spacing:.047em; white-space:nowrap; }
+
+html[data-page="box"] [hidden] { display:none !important; }
+
+@media (max-width: 700px), (pointer: coarse) {
+  /* The sheet is set in ems off one number, so the whole of it comes up with
+     it. A share of --type rather than a number of its own, or browser zoom
+     would stop reaching the sheet in a window under 700 pixels. */
+  html[data-page="box"] .leaf { font-size:calc(var(--type, 12px) * 1.042); }
+  /* The Talk box's phone line, the same words for the same reason: two
+     columns rather than four. Its count goes under the name there, because it
+     has a standing beside the name already; this one has only the count, and
+     it stays on the name's line, on the right. */
+  html[data-page="box"] .line { grid-template-columns:auto 1fr; gap:.3em .7em; padding-bottom:.7em; }
+  html[data-page="box"] .line > span:not([class]) { display:none; }     /* the desk's spacer */
+  html[data-page="box"] .line .tag { grid-column:1; }
+  html[data-page="box"] .line .doses { grid-column:2; font-size:.92em; }
+}

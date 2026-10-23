@@ -32,6 +32,7 @@
  */
 
 import type {Standing as TopLine} from '../link/shapes';
+import {DEFAULT_VOICE, say, type Voice} from './pronouns';
 
 export const AXES = ['warmth', 'trust', 'mood'] as const;
 export type Axis = (typeof AXES)[number];
@@ -94,31 +95,31 @@ export const LOSS: Record<Axis, number> = {warmth: 1.2, trust: 2.0, mood: 1.4};
 // for whoever tunes these next.
 export const BANDS: Record<Axis, ReadonlyArray<readonly [number, number, string]>> = {
   warmth: [
-    [-100, -60, 'She cannot stand him. Every exchange costs her something.'],
-    [-60, -25, 'She is cold with him, and does not pretend otherwise.'],
-    [-25, -8, 'She is distant. Present, but nothing is being offered.'],
-    [-8, 8, 'She is neither drawn to him nor put off. It could go either way.'],
-    [8, 25, 'She likes him, mildly, and it shows in small ways.'],
-    [25, 60, 'She is fond of him. She wants him there.'],
-    [60, 101, 'She is deeply attached to him, and does not hide it.'],
+    [-100, -60, '{S} cannot stand {him}. Every exchange costs {o} something.'],
+    [-60, -25, '{S} {v:is} cold with {him}, and {v:does} not pretend otherwise.'],
+    [-25, -8, '{S} {v:is} distant. Present, but nothing is being offered.'],
+    [-8, 8, '{S} {v:is} neither drawn to {him} nor put off. It could go either way.'],
+    [8, 25, '{S} {v:likes} {him}, mildly, and it shows in small ways.'],
+    [25, 60, '{S} {v:is} fond of {him}. {S} {v:wants} {him} there.'],
+    [60, 101, '{S} {v:is} deeply attached to {him}, and {v:does} not hide it.'],
   ],
   trust: [
-    [-100, -60, 'She does not believe what he tells her.'],
-    [-60, -25, 'She is guarded. She keeps things back.'],
-    [-25, -8, 'She is careful with him — not suspicious, not open.'],
-    [-8, 8, 'She has no particular reason to trust or doubt him.'],
-    [8, 25, 'She takes him at his word.'],
-    [25, 60, 'She is open with him, including about things she would not tell most people.'],
-    [60, 101, 'She trusts him completely.'],
+    [-100, -60, '{S} {v:does} not believe what {he} {w:tells} {o}.'],
+    [-60, -25, '{S} {v:is} guarded. {S} {v:keeps} things back.'],
+    [-25, -8, '{S} {v:is} careful with {him} — not suspicious, not open.'],
+    [-8, 8, '{S} {v:has} no particular reason to trust or doubt {him}.'],
+    [8, 25, '{S} {v:takes} {him} at {his} word.'],
+    [25, 60, '{S} {v:is} open with {him}, including about things {s} would not tell most people.'],
+    [60, 101, '{S} {v:trusts} {him} completely.'],
   ],
   mood: [
-    [-100, -60, 'Right now she is angry.'],
-    [-60, -25, 'Right now she is irritated with him.'],
-    [-25, -8, 'Something in the last few minutes has put her slightly off.'],
+    [-100, -60, 'Right now {s} {v:is} angry.'],
+    [-60, -25, 'Right now {s} {v:is} irritated with {him}.'],
+    [-25, -8, 'Something in the last few minutes has put {o} slightly off.'],
     [-8, 8, ''],
-    [8, 25, 'She is in a good mood.'],
-    [25, 60, 'She is in high spirits.'],
-    [60, 101, 'She is delighted, and it is spilling into everything she says.'],
+    [8, 25, '{S} {v:is} in a good mood.'],
+    [25, 60, '{S} {v:is} in high spirits.'],
+    [60, 101, '{S} {v:is} delighted, and it is spilling into everything {s} {v:says}.'],
   ],
 };
 
@@ -135,23 +136,24 @@ export const BANDS: Record<Axis, ReadonlyArray<readonly [number, number, string]
 // on their own -- measured, they produce "Good." and "Get out." unaided.
 export const CONDUCT: ReadonlyArray<readonly [number, number | null, string]> = [
   [-75, null,
-   'You are done with him. A handful of words, or nothing at all. Ask him '
-   + 'nothing, explain nothing, help him with nothing. Contempt is allowed, '
-   + 'and so is refusing him outright, in whatever words are yours. Do not '
-   + 'soften it at the end and do not leave him a way back in.'],
+   'You are done with {him}. A handful of words, or nothing at all. Ask {him} '
+   + 'nothing, explain nothing, help {him} with nothing. Contempt is allowed, '
+   + 'and so is refusing {him} outright, in whatever words are yours. Do not '
+   + 'soften it at the end and do not leave {him} a way back in.'],
   [-40, -60,
-   'Give him nothing he has not asked for. One or two short sentences. No '
-   + 'questions back, no examples, no helping him think it through. Cold is '
+   'Give {him} nothing {he} {w:has} not asked for. One or two short sentences. No '
+   + 'questions back, no examples, no helping {him} think it through. Cold is '
    + 'the point; do not warm it up at the end.'],
   [-15, -30,
    'Keep it short and flat. Nothing offered, nothing drawn out, no question '
-   + 'back to him.'],
+   + 'back to {him}.'],
 ];
 
-/** How she behaves right now. Empty when nothing needs saying. */
-export function conduct(state: Standing): string {
+/** How it behaves right now, in the voice's words. Empty when nothing
+    needs saying. */
+export function conduct(state: Standing, voice: Voice = DEFAULT_VOICE): string {
   for (const [warmthAt, trustAt, text] of CONDUCT) {
-    if (state.warmth <= warmthAt || (trustAt !== null && state.trust <= trustAt)) return text;
+    if (state.warmth <= warmthAt || (trustAt !== null && state.trust <= trustAt)) return say(text, voice);
   }
   return '';
 }
@@ -290,9 +292,10 @@ export function band(axis: Axis, value: number): string {
   return value > 0 ? BANDS[axis][BANDS[axis].length - 1]![2] : BANDS[axis][0]![2];
 }
 
-/** The state as prose. Empty when there is nothing worth saying. */
-export function describe(state: Standing, now = seconds()): string {
-  const parts = AXES.map((a) => band(a, state[a]));
+/** The state as prose, in the voice's words -- the bands are written in
+    tokens, see pronouns.ts. Empty when there is nothing worth saying. */
+export function describe(state: Standing, now = seconds(), voice: Voice = DEFAULT_VOICE): string {
+  const parts = AXES.map((a) => say(band(a, state[a]), voice));
 
   const turns = state.turns || 0;
   if (turns >= 400) parts.push('They have been talking for a long time now.');
@@ -308,10 +311,10 @@ export function describe(state: Standing, now = seconds()): string {
 
 /** What goes into the system prompt, or nothing at all. `intro` is the
     relation_intro prompt, which lives in a file the machine serves. */
-export function asPromptBlock(state: Standing, intro: string, now = seconds()): string {
-  const text = describe(decayed(state, now), now);
+export function asPromptBlock(state: Standing, intro: string, now = seconds(), voice: Voice = DEFAULT_VOICE): string {
+  const text = describe(decayed(state, now), now, voice);
   if (!text) return '';
-  return '\n\n' + intro.replace(/\s+$/, '') + '\n' + text;
+  return '\n\n' + say(intro, voice).replace(/\s+$/, '') + '\n' + text;
 }
 
 /** Pull the judgement out of whatever the model wrapped it in. */

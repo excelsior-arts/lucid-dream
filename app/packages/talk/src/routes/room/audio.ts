@@ -10,14 +10,14 @@
  * this file. It becomes a turn in this page, answered here: there is nothing
  * else to hand it to, and no wire left to hand it down.
  */
-import {awaitReady, createVoiceLoop, models} from '@lucid/machine';
+import {awaitReady, createVoiceLoop, models, status} from '@lucid/machine';
 import type {Capture, Pacer, Playback, Vad} from '@lucid/audio';
 import {cutIn, holdContinuous, putItBack} from '../../conversation/loop';
 import {current, runTurn} from '../../conversation/turn';
 import type {InputMode} from '../../link/shapes';
 import {link, sayLog} from '../../link/store';
 import type {Level} from '@lucid/shell';
-import {hatch} from '@lucid/shell';
+import {askForCard, hatch, host} from '@lucid/shell';
 
 export interface Kit {
   playback: Playback;
@@ -38,7 +38,7 @@ export function inputMode(mode: InputMode): void {
     longer than the grace it is gone. The ask is free when it is already up. */
 export function reopened(mode: InputMode): void {
   inputMode(mode);
-  if (mode === 'mic') void models.want('stt', true).catch(() => {});
+  if (mode === 'mic') void models.want('stt', true).then((got) => { seen = got.status; }, () => {});
 }
 
 /** What the loop says about itself, said twice.
@@ -130,6 +130,31 @@ export const recognizer = {
   onChange(fn: () => void) { ears.add(fn); return () => { ears.delete(fn); }; },
 };
 
+/* ---- the recognizer stays wanted while the microphone is open -----------
+ *
+ * Asked for once, on the press, and after that only by a turn reaching it --
+ * while the machine's grace is armed by any page that says it is done, over
+ * every other page's microphone, and by an off whose answer lands after the
+ * next on's. On 10-12 the machine put the recognizer away with a room open
+ * ("nothing has wanted the recognizer for 90 seconds"), and nothing on the
+ * page could say whether its microphone was on. So while it is, the page says
+ * it still wants the recognizer, well inside the grace: a lookup on a machine
+ * that has it, and on one that put it away the load a turn would otherwise
+ * have waited fifteen seconds for -- said in the console when that happens. */
+export const KEEP_MS = 30_000;
+/** What the machine last said of the recognizer to this page. */
+let seen = '';
+
+export function keepWanting(): void {
+  if (!kit?.capture.on) return;
+  void models.want('stt', true).then((got) => {
+    if (seen === 'ready' && got.status !== 'ready') {
+      say('the recognizer had been put away under an open microphone — it is loading again', 'warn');
+    }
+    seen = got.status;
+  }, () => {});
+}
+
 /** Turn the microphone on, loading the ear if it is not there.
  *
  * Settles when the key has finished changing its mind: armed, or off again
@@ -137,6 +162,31 @@ export const recognizer = {
  * and a press that failed has already been explained to somebody. */
 export async function micOn(): Promise<void> {
   const {capture} = audio();
+  /* A machine set up text-only has no ear on its shelf: the key says so and
+     opens the first-open card at its ear section, rather than asking the
+     machine for a recognizer it cannot load. Asked of the machine each press
+     -- a local GET, well inside the press's moment -- so an ear brought down
+     a minute ago is heard at once. */
+  if (host().machine) {
+    const ear = await status().then((f) => f.shelf?.ear?.[0], () => undefined);
+    if (ear && !ear.here) {
+      say(`the ear (${ear.name}) is not on this Mac — the card brings it down`, 'warn');
+      askForCard('ear');
+      return;
+    }
+  } else {
+    /* And a browser, whose ear is a download somebody chooses: none chosen,
+       or the one chosen not in this browser's cache, is the models panel at
+       its microphone section, as the voice's switch opens it at the voice. */
+    const ears = await status().then((f) => f.shelf?.ear ?? [], () => []);
+    const ear = ears.find((p) => p.using);
+    if (!ear?.here) {
+      say(ear ? `the ear (${ear.name}) is not in this browser — the models panel brings it down`
+        : 'no ear in this browser yet — the models panel brings one down', 'warn');
+      askForCard('ear');
+      return;
+    }
+  }
   /* Asked for before the device is opened, so the load and the permission
      prompt run side by side rather than one after the other. */
   const asked = models.want('stt', true).catch(() => null);
@@ -150,10 +200,15 @@ export async function micOn(): Promise<void> {
   }
   inputMode('mic');
   const said = await asked;
-  if (said?.status === 'ready') return;          // it was already there
+  seen = said?.status ?? '';
+  if (said?.status === 'ready') {                // it was already there
+    say('mic on — the recognizer is up', 'debug');
+    return;
+  }
   say('warming the recognizer — the key arms when it can hear you');
   setWarming(true);
   const ready = await awaitReady('stt');
+  if (ready) seen = 'ready';
   setWarming(false);
   // Turned off again while it warmed: that press is the answer, not this one.
   if (!capture.on || ready) return;
@@ -190,5 +245,6 @@ export function audio(): Kit {
   });
   kit = {loop, playback: loop.playback, capture: loop.capture,
          pacer: loop.pacer, vad: loop.vad};
+  setInterval(keepWanting, KEEP_MS);             // for the page's life, as the kit is
   return kit;
 }

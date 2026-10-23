@@ -155,6 +155,17 @@ test('a voice this machine has not got is refused, and nothing is written', asyn
   expect((await P.effectivePersona('lover')).voice).toBe('lucid_talk/personas/thinker');
 });
 
+test('and in a browser the shelf is the browser\'s', async () => {
+  const {MACHINE, PAGE, setHost} = await import('@lucid/shell');
+  setHost(PAGE);
+  try {
+    await expect(P.tune('lover', 'voice', 'gold')).rejects.toThrow(/^this browser has no voice called/);
+  } finally {
+    setHost(MACHINE);
+  }
+  await expect(P.tune('lover', 'voice', 'gold')).rejects.toThrow(/^this machine has no voice called/);
+});
+
 test('and a shelf nobody answered with is not a shelf to check against', async () => {
   /* Refused rather than written: the whole point of the check is that a wrong
      voice is silent from in here, and writing one unchecked would be the bug

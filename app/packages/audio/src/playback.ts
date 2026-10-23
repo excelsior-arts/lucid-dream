@@ -20,6 +20,10 @@ export interface Playback {
   credit(chars: number): void;
   /** An `audio_stop` message. Soft lets the chunk in hand finish. */
   stop(soft: boolean): void;
+  /** Down to nothing over `seconds`, then a hard stop, and the level put
+      back for whatever speaks next. A walk that is over does not cut its
+      voice off mid-word; it lets it go. */
+  fade(seconds: number): void;
   /** Pause, or let it go on. */
   hold(on: boolean): void;
   readonly queuedS: number;
@@ -139,6 +143,7 @@ export function createPlayback(o: Options): Playback {
   const queue: Chunk[] = [];
   const lift: Lift = {voiceLift: 0};
   let el: HTMLAudioElement | null = null;
+  let fading: ReturnType<typeof setInterval> | null = null;
   // busy means "a chunk is playing right now". It is cleared only when that
   // chunk ends, errors, or is stopped -- never merely because the queue is
   // empty, which used to let the next chunk cut off the one still playing.
@@ -149,6 +154,20 @@ export function createPlayback(o: Options): Playback {
   let inHand: Chunk | null = null;
   let url = '';        // the chunk in hand, so stopping can give it back
   let queuedS = 0, playingS = 0, playedS = 0, spokenChars = 0;
+  /* What is waiting, added up from what is waiting -- never kept as a running
+     total. It was one: each chunk's seconds added on the way in and taken off
+     on the way out, and floating point does not give back what it was given.
+     Half the replies of a long answer ended on 2e-15 seconds "queued" behind
+     an empty queue, and the detector read that as a reply still going out:
+     nothing playing, nothing started, so no grace had passed and nothing
+     anybody said was taken -- every word after the reply dropped without a
+     line, the meter moving, until something stopped the queue by hand. An
+     empty queue is zero because it is empty. */
+  const requeue = () => {
+    let s = 0;
+    for (const c of queue) s += c.secs;
+    queuedS = s;
+  };
   let startedAt = 0;
   let held = false, dead = false;
   /* The chunk in hand, watched. A browser drops events: Safari has ended a
@@ -213,7 +232,7 @@ export function createPlayback(o: Options): Playback {
     const chunk = queue.shift()!;
     inHand = chunk;
     playingS = chunk.secs;
-    queuedS = Math.max(0, queuedS - playingS);
+    requeue();
     /* Held where stopping can reach it. A chunk that is cut off never runs
        done(), so the browser was left holding the decoded audio for every
        sentence anybody ever interrupted -- one per barge-in, per Skip, per
@@ -343,6 +362,8 @@ export function createPlayback(o: Options): Playback {
      (The server goes on making the voice. Not making it at all is the better
      answer and a bigger one -- it would want telling the machine that nobody
      is listening, and then unloading the voice model when that stays true.) */
+  /* Silent rather than hushed since 10-08: the knob at zero is the same
+     "nothing heard" and lands the same way (sound.silent, lucid:silent). */
   const onHush = (e: Event) => {
     if ((e as CustomEvent<boolean>).detail) {
       const airborne = busy || queue.length > 0;
@@ -363,7 +384,7 @@ export function createPlayback(o: Options): Playback {
     void it.play().catch(() => { if (stalled) drop?.(); });
   };
   doc.addEventListener('visibilitychange', seen);
-  doc.addEventListener('lucid:hush', onHush);
+  doc.addEventListener('lucid:silent', onHush);
   doc.addEventListener('lucid:volume', onVolume);
 
   return {
@@ -371,7 +392,7 @@ export function createPlayback(o: Options): Playback {
       if (dead) return;
       // Muted, the words still arrive and are still read; they are simply not
       // spoken, and the line they belonged to says so.
-      if (sound.hush) { unheard(); return; }
+      if (sound.silent) { unheard(); return; }
       // A new stretch, unless this is the next sentence of one still going.
       if (!airborne() && !(expecting && startedAt)) startedAt = Date.now();
       el = voice(doc);
@@ -379,7 +400,7 @@ export function createPlayback(o: Options): Playback {
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
       const secs = bytes.length / 2 / rate;
       queue.push({blob: wavBlob(normalize(bytes, lift), rate), secs, chars: 0});
-      queuedS += secs;
+      requeue();
       playNext();
       report();
       status();
@@ -400,6 +421,24 @@ export function createPlayback(o: Options): Playback {
        somebody reads as a machine glitching; the half second it costs to let
        the sentence finish is the difference between being interrupted and
        being listened to. */
+    fade(seconds: number) {
+      if (fading) clearInterval(fading);
+      fading = null;
+      if (!el || (!airborne() && !queue.length)) { stopWav(); return; }
+      const from = el.volume;
+      const began = Date.now();
+      const ms = Math.max(1, seconds * 1000);
+      fading = setInterval(() => {
+        const t = Math.min(1, (Date.now() - began) / ms);
+        if (el) el.volume = from * (1 - t);
+        if (t < 1) return;
+        clearInterval(fading!);
+        fading = null;
+        stopWav();
+        if (el) el.volume = sound.level;
+      }, 40);
+    },
+
     stop(soft: boolean) {
       if (!soft) { stopWav(); return; }
       letGo();
@@ -519,8 +558,9 @@ export function createPlayback(o: Options): Playback {
        next room will want the unlock it is carrying -- but nothing of this
        conversation may still be coming out of it. */
     dispose() {
+      if (fading) { clearInterval(fading); fading = null; if (el) el.volume = sound.level; }
       dead = true;
-      doc.removeEventListener('lucid:hush', onHush);
+      doc.removeEventListener('lucid:silent', onHush);
       doc.removeEventListener('visibilitychange', seen);
       doc.removeEventListener('lucid:volume', onVolume);
       stopWav();

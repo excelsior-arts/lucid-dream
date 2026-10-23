@@ -104,12 +104,12 @@ afterEach(() => {
 const run = (o: Partial<Parameters<typeof runReply>[0]> = {}) => {
   const q = fakePlayback();
   const v = fakeVoice();
-  const done: Array<[string, string[]]> = [];
+  const done: Array<[string, string[], string]> = [];
   const reply = runReply({
     messages: [{role: 'user', content: 'well?'}],
     voice: v.voice,
     playback: q.playback,
-    onDone: (text, spoken) => { done.push([text, spoken]); },
+    onDone: (text, spoken, written) => { done.push([text, spoken, written]); },
     ...o,
   });
   return {reply, q, v, done};
@@ -209,14 +209,61 @@ test('the frames go into the queue, and the characters they cover with them', as
   ]);
 });
 
-test('the credit is the chunk as written, plus the space it was split on', async () => {
+test('the credit is the chunk as it is read, plus the space it was split on', async () => {
   chat.script = ['I know. [sigh]'];
   const {reply, q} = run();
   await reply.done;
-  /* Not what the voice produced: the machine strips bracketed tags and every
+  /* Not what the voice produced: the machine strips unknown tags and every
      asterisk before synthesis, so counting the characters it streamed would
-     count markup that is never said. */
-  expect(q.put).toContainEqual({chars: 'I know. [sigh]'.length + 1});
+     count markup that is never said. And not the tag either, which the page
+     never shows: the credit is paced against the glass. */
+  expect(q.put).toContainEqual({chars: 'I know.'.length + 1});
+});
+
+test('a tag goes to the voice, and never to the glass or to what is kept', async () => {
+  chat.script = ['[si', 'gh] Oh, you', ' came back [la', 'ugh] I did', ' not think so.'];
+  const deltas: string[] = [];
+  const {reply, v, done} = run({onDelta: (d) => { deltas.push(d); }});
+  await reply.done;
+  expect(v.said.map((s) => s.text).join(' ')).toContain('[sigh]');
+  expect(v.said.map((s) => s.text).join(' ')).toContain('[laugh]');
+  expect(deltas.join('')).toBe('Oh, you came back I did not think so.');
+  for (const d of deltas) expect(d).not.toMatch(/[[\]]/);
+  expect(done[0]?.[0]).toBe('Oh, you came back I did not think so.');
+});
+
+test('a tag on a line of its own is said with the sentence after it, never alone', async () => {
+  // The lover's shape on 10-12: "[sigh]" alone between two paragraphs, which
+  // reached the voice as a chunk of its own and came back a whoosh.
+  chat.script = ['It has been four days.', ' [si', 'gh]\n\n', '[sigh]\n\nI am', ' right here.\n\n', '[sniff]'];
+  const {reply, v, done} = run();
+  await reply.done;
+  const said = v.said.map((s) => s.text);
+  // and the one it ended on, with no sentence after it, with the line before
+  expect(said).toEqual(['It has been four days.', '[sigh] [sigh] I am right here. [sniff]']);
+  expect(done[0]?.[2]).toBe('It has been four days. [sigh]\n\n[sigh]\n\nI am right here.\n\n[sniff]');
+});
+
+test('what is kept is read without its tags, and handed back as written for the model', async () => {
+  chat.script = ['You came back [laugh] I did', ' not think you would.'];
+  const {reply, done} = run();
+  await reply.done;
+  expect(done[0]?.[0]).toBe('You came back I did not think you would.');
+  expect(done[0]?.[2]).toBe('You came back [laugh] I did not think you would.');
+});
+
+test('cut off, the reply as written is cut where the voice stopped, tags and all', async () => {
+  chat.script = ['[sigh] She put the glass down.\n\n', 'You were saying', '. Go on.'];
+  chat.gated = true;
+  const {reply, done} = run();
+  await new Promise((go) => setTimeout(go, 0));
+  await step();                       // the first paragraph is spoken
+  reply.interrupt();
+  letGo();
+  await reply.done;
+  const [text, , written] = done[0] ?? ['', [], ''];
+  expect(text).toBe('She put the glass down.');
+  expect(written).toBe('[sigh] She put the glass down.');
 });
 
 test('a paragraph the model finished is spoken as one', async () => {
@@ -280,8 +327,9 @@ test('cut off before a token arrived, nothing is stored at all', async () => {
   const {reply, done} = run();
   reply.interrupt();
   await reply.done;
-  // An empty turn would go into the transcript and back to the model as context.
-  expect(done).toEqual([]);
+  // Done with nothing, and said so: the page takes its caret down, and an
+  // empty turn never goes into the transcript or back to the model.
+  expect(done).toEqual([['', [], '']]);
 });
 
 test('what the persona is set to goes to the model, and nothing else does', async () => {
@@ -500,4 +548,61 @@ test('a cut from outside is an interrupt, not trouble', async () => {
   await reply.done;
   expect(trouble).toEqual([]);
   expect(done[0]?.[0]).toBe('One. Two.');
+});
+
+/** Words that come and then stop coming: a GPU letting go, a stream dropped. */
+const breaking = (deltas: string[], why = new Error('the GPU let go')) =>
+  async function* () {
+    for (const d of deltas) yield d;
+    throw why;
+  };
+
+test('a reply that breaks off is finished with every word that came, marked cut', async () => {
+  /* It used to end with trouble said and nothing else: onDone was never
+     called, so the bubble it streamed into stayed streaming -- the caret
+     blinking under a line nobody was writing -- until the next line. */
+  const trouble: Error[] = [];
+  const cut: Array<boolean | undefined> = [];
+  const {reply, v, done} = run({
+    chat: breaking(['Come here.', ' Sit [laugh] down.', ' I was thinking about the']),
+    onTrouble: (e) => trouble.push(e),
+    onDone: (text, spoken, written, broke) => { done.push([text, spoken, written]); cut.push(broke); },
+  });
+  await reply.done;
+  expect(trouble.map((e) => e.message)).toEqual(['the GPU let go']);
+  expect(cut).toEqual([true]);
+  // The words as they were shown, the fragment it broke off in included...
+  expect(done[0]?.[0]).toBe('Come here. Sit down. I was thinking about the');
+  // ...as written, tags and all, for whoever keeps it...
+  expect(done[0]?.[2]).toBe('Come here. Sit [laugh] down. I was thinking about the');
+  // ...and the voice was handed the whole sentences only: never the fragment.
+  expect(v.said.map((s) => s.text).join(' ')).not.toMatch(/thinking/);
+  expect(done[0]?.[1].join(' ')).not.toMatch(/thinking/);
+  expect(reply.holding).toBe(false);
+});
+
+test('and one that breaks before a word is done with nothing, so its bubble comes down', async () => {
+  const cut: Array<boolean | undefined> = [];
+  const {reply, done} = run({
+    chat: breaking([]),
+    onTrouble: () => {},
+    onDone: (text, spoken, written, broke) => { done.push([text, spoken, written]); cut.push(broke); },
+  });
+  await reply.done;
+  expect(done).toEqual([['', [], '']]);
+  expect(cut).toEqual([undefined]);
+});
+
+test('muted, a reply that breaks off is finished all the same', async () => {
+  const {reply, done} = run({voice: null, chat: breaking(['One.', ' Tw']), onTrouble: () => {}});
+  await reply.done;
+  expect(done[0]?.[0]).toBe('One. Tw');
+});
+
+test('a reply that is only a tag sends the voice nothing', async () => {
+  chat.script = ['[sigh]'];
+  const {reply, v, done} = run();
+  await reply.done;
+  expect(v.said).toEqual([]);
+  expect(done[0]).toEqual(['', [], '']);     // and there is nothing to keep
 });

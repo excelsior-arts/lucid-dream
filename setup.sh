@@ -67,6 +67,8 @@ RAM="$(( $(sysctl -n hw.memsize) / 1073741824 ))"
 # and the ear beside it, the middle one about 12, the small one about 8; macOS
 # wants the rest. All three are fetched -- see LLM_SIZES -- and this is only
 # which one is written into the config, which the console can change.
+# The same rule is machine/shelf.py's pick(), which the first-open card in a
+# room suggests a size by; change both.
 if [ "$RAM" -ge 32 ]; then PICK=lg
 elif [ "$RAM" -ge 16 ]; then PICK=md
 else PICK=sm
@@ -83,15 +85,15 @@ want "free disk" "$FREE GB"
 environment. There is $FREE GB free on this volume."
 
 # The interpreter, chosen the way run.sh chooses one, except that here it may
-# not exist yet. uv is not required and is much the fastest way to get 3.12.
+# not exist yet. uv is not required and is much the fastest way to get 3.14.
 PY=""
 if command -v uv >/dev/null 2>&1; then
     PY="uv"
     want "python" "uv $(uv --version 2>/dev/null | awk '{print $2}')"
 else
-    for cand in python3.12 python3; do
+    for cand in python3.14 python3.13 python3.12 python3; do
         if command -v "$cand" >/dev/null 2>&1 \
-           && "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)'; then
+           && "$cand" -c 'import sys; raise SystemExit(0 if (3, 12) <= sys.version_info[:2] <= (3, 14) else 1)'; then
             PY="$cand"
             want "python" "$("$cand" -V 2>&1)"
             break
@@ -99,15 +101,16 @@ else
     done
 fi
 if [ -z "$PY" ]; then
-    want "python" "3.12 not found"
+    want "python" "3.12-3.14 not found"
     MISSING=1
     say ""
-    say "  Python 3.12 is the one this is built against. The quickest way:"
+    say "  Python 3.14 is the one this is built against. The quickest way:"
     say ""
     say "      curl -LsSf https://astral.sh/uv/install.sh | sh"
     say ""
     say "  which installs uv, and uv fetches the interpreter itself. Or use"
-    say "  Homebrew (brew install python@3.12), or python.org. Then run this"
+    say "  python.org's -- not Homebrew's 3.14, which takes half a minute to"
+    say "  name 127.0.0.1 and so to start the language model. Then run this"
     say "  again."
 fi
 
@@ -123,7 +126,7 @@ elif [ -n "$CHECK" ]; then
 else
     want ".venv" "making it"
     if [ "$PY" = "uv" ]; then
-        uv venv --python 3.12 .venv
+        uv venv --python 3.14 --managed-python .venv
     else
         "$PY" -m venv .venv
     fi

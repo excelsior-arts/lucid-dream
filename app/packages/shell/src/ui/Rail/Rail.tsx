@@ -11,10 +11,35 @@
    object you learn once. */
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import type {CSSProperties} from 'react';
+import {host} from '../../host';
 import {hatch} from '../../shell/console';
+import {onVoiceOffer, voiceOffer, voiceOfferVersion} from '../../shell/offer';
+import type {VoiceOffer} from '../../shell/offer';
 import {matrix} from '../../shell/qr';
+import {RunOnMac} from '../Limits/Limits';
+import {useInBrowser} from '../Limits/use';
 import {sound} from '../../shell/sound';
+import type {RailNotes} from '../../manifest';
 import s from './Rail.module.css';
+
+/* A press on the rail's gutter, not on a knob, that lands over a control of
+   the page's own which takes its presses ([data-own-press]: the gear in the
+   corner of Talk's lid, on a phone where that corner lies under the gutter)
+   is that control's: aimed at something there, it is not a missed knob. Any
+   other press there is still swallowed. Found by its rectangle rather than by
+   hit-testing, which inside the box's 3-D subtree is not to be trusted on an
+   iPhone (see the shut-zone in @lucid/ui's Box). */
+const through = (e: React.MouseEvent<HTMLElement>) => {
+  if (e.target !== e.currentTarget) return;
+  for (const el of document.querySelectorAll<HTMLElement>('[data-own-press]')) {
+    if (e.currentTarget.contains(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+      el.click();
+      return;
+    }
+  }
+};
 
 const subscribe = (fn: () => void) => hatch.subscribe(fn);
 const version = () => hatch.version;
@@ -52,12 +77,87 @@ const Eye = () => (
   </svg>
 );
 
+/** The line under the voice's switch, which is on or off and nothing else:
+    the download is the first-open card's, beside the language model's, and a
+    press on a voice that is not here yet opens that card. */
+function offered(o: VoiceOffer): {name: string; line: string} {
+  if (o.missing) {
+    const size = o.mb >= 1000 ? `${(o.mb / 1000).toFixed(1)} GB` : `${o.mb} MB`;
+    return {name: 'Voices off', line: `${o.what} is not downloaded — ${size}, on the card a press opens`};
+  }
+  if (!o.on) return {name: 'Voices off', line: o.what};
+  if (o.state === 'error') return {name: 'Voices failed', line: o.why || 'it would not load'};
+  if (o.silent) {
+    return {name: 'Voices on', line: o.state === 'off'
+      ? `${o.what} — waits for the sound to come back`
+      : `${o.what} — let go of soon while the sound is off`};
+  }
+  if (o.state === 'fetching') return {name: 'Voices on', line: `${o.what} — loading`};
+  if (o.state === 'off') return {name: 'Voices on', line: `${o.what} — loads when a pill speaks`};
+  return {name: 'Voices on', line: `${o.what}, in this browser`};
+}
+
+/** The eye's panel in a browser, short, and about the whole of Lucid Dream,
+    since the rail is on every page: what holds here, that the game's AI is
+    smaller here and some of it off, and the steps to the full thing. No list
+    of parts: each says so where it is met (its mark and its note). A browser
+    that cannot run the AI at all is told that instead of "smaller", which
+    there would not be true. */
+function BrowserTale({none}: {none: boolean}) {
+  return (
+    <>
+      <b>Nothing leaves this browser.</b>
+      <p>No account, and nobody on the other end. What you play and the models stay here.</p>
+      <p className={s.full}>
+        {none ? 'This browser can’t run the game’s AI — try Chrome, Edge or Safari. '
+          : 'Here the game’s AI runs smaller, with some of it off. '}
+        For the full experience — still offline, still private — run it on your Mac.
+      </p>
+      <RunOnMac lede={false} />
+    </>
+  );
+}
+
 interface Where {phone?: boolean; urls?: string[]}
 /** What the phone panel draws: the code, and which machine it reaches. */
 interface Pocket {host: string; code: boolean[][] | null}
 
-export default function Rail({where = '', at = ''}: {where?: string; at?: string}) {
+const INTERFACE = 'How loud the interface and the voice are.';
+/* The console's knob. What it shows is whatever runs this page: the machine,
+   or -- with nothing behind the page -- this browser's own model, voice and ear. */
+const CONSOLE = (browser: boolean) => `The console — what ${browser ? 'this browser' : 'the machine'} is doing, `
+  + 'and how to tell it to do something. Type / in it for the list.';
+
+export default function Rail({where = '', app = '', at = '', notes = {}}: {where?: string; app?: string; at?: string; notes?: RailNotes}) {
+  /* What the page says about itself: whether the promise holds here, what the
+     speaker is turning up, and whether its own controls sit along the top. */
+  const {offline = true, speaker = INTERFACE, inline = false} = notes;
+  const rail = useRef<HTMLDivElement>(null);
+
+  /* Inline, the row's width is the page's business: it ends its own row a gap
+     short of it. Measured rather than counted, since the phone knob comes and
+     goes with the machine. */
+  useEffect(() => {
+    const el = rail.current;
+    if (!inline || !el) return;
+    const root = document.documentElement;
+    const said = () => {
+      const c = getComputedStyle(el);
+      const span = el.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight);
+      root.style.setProperty('--rail-span', `${Math.max(0, span)}px`);
+    };
+    said();
+    const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(said);
+    watch?.observe(el);
+    return () => { watch?.disconnect(); root.style.removeProperty('--rail-span'); };
+  }, [inline]);
   useSyncExternalStore(subscribe, version, version);
+  /* A voice this page could run itself, offered by whoever can: nothing on a
+     page with a machine behind it, whose voice is simply there. */
+  useSyncExternalStore(onVoiceOffer, voiceOfferVersion, voiceOfferVersion);
+  const offer = voiceOffer();
+  /* A page with no machine behind it: the eye says what is true here. */
+  const browser = useInBrowser();
   const [pop, setPop] = useState<'audio' | 'phone' | 'off' | null>(null);
   const [level, setLevel] = useState(sound.level);
   const [hush, setHush] = useState(sound.hush);
@@ -70,7 +170,7 @@ export default function Rail({where = '', at = ''}: {where?: string; at?: string
      not enough: a game reports the same word for its front door and for the
      shelf, so walking into one changed nothing here and the console went on
      asking for the commands that make sense nowhere. */
-  useEffect(() => { hatch.start(where); }, [where, at]);
+  useEffect(() => { hatch.start(where, app); }, [where, app, at]);
 
   // ---- one popover open at a time ----
   useEffect(() => {
@@ -87,6 +187,9 @@ export default function Rail({where = '', at = ''}: {where?: string; at?: string
   // ---- which machine, asked once ----
   useEffect(() => {
     let gone = false;
+    /* A page with no machine behind it has no phone to offer: the address it
+       is on is already the one a phone would open. */
+    if (!host().machine) return;
     fetch('/shared/where').then(r => r.json() as Promise<Where>).then(w => {
       if (gone || !w.phone || !w.urls?.length) return;      // started without a phone
       setReaches(w.urls[0]!);
@@ -144,12 +247,12 @@ export default function Rail({where = '', at = ''}: {where?: string; at?: string
       {/* One rail, in one corner, in the order you would reach for them: what
           you can hear, how to take it with you, what it promises, and the way
           under the hood. */}
-      <div className={s.rail}>
+      <div ref={rail} data-rail className={`${s.rail} ${inline ? s.inline : ''}`} onClick={through}>
         {/* ---- what you can hear ---- */}
         <div className={`${s.corner} ${pop === 'audio' ? s.open : ''}`}>
           <button className={`${s.knob} ${quiet ? s.muted : ''}`}
-                  aria-label="How loud the interface is. Its voice is set separately."
-                  title="How loud the interface is. Its voice is set separately."
+                  aria-label={speaker}
+                  title={speaker}
                   onPointerEnter={() => sound.hover()}
                   onClick={e => { e.stopPropagation(); toggle('audio'); }}>
             <Speaker on={!quiet} />
@@ -177,6 +280,20 @@ export default function Rail({where = '', at = ''}: {where?: string; at?: string
                 <em>{hush ? 'the game is boring' : 'not recommended'}</em>
               </span>
             </button>
+            {/* A page with no machine: the voices are a download, and this is
+                where somebody who wants sound asks for them. Says what it costs
+                before the press and how far it has come after. */}
+            {offer && (() => {
+              const {name, line} = offered(offer);
+              return (
+                <button className={`${s.hush} ${s.voices} ${offer.on ? s.on : ''}`} type="button"
+                        data-quiet aria-pressed={offer.on}
+                        onClick={e => { e.stopPropagation(); offer.set(!offer.on); sound.tick(); }}>
+                  <Speaker on={offer.on && offer.state === 'ready'} />
+                  <span className={s.what}><b>{name}</b><em>{line}</em></span>
+                </button>
+              );
+            })()}
             <div className={s.stepper}>
               <button className={s.step} aria-label="quieter"
                       onClick={e => { e.stopPropagation(); apply(sound.level - 0.1); }}>&minus;</button>
@@ -225,19 +342,25 @@ export default function Rail({where = '', at = ''}: {where?: string; at?: string
             is actually a promise about how the program is built. The crossed eye
             says that on its own, and the panel says it in words for anyone who
             asks. */}
-        <div className={`${s.corner} ${pop === 'off' ? s.open : ''}`}>
+        <div className={`${s.corner} ${pop === 'off' ? s.open : ''}`} hidden={!offline}>
           <button className={s.knob}
-                  aria-label="Nothing leaves this machine. Nobody is on the other end."
-                  title="Nothing leaves this machine. Nobody is on the other end."
+                  aria-label={browser ? 'Nothing leaves this browser. Nobody is on the other end.'
+                    : 'Nothing leaves this machine. Nobody is on the other end.'}
+                  title={browser ? 'Nothing leaves this browser. Nobody is on the other end.'
+                    : 'Nothing leaves this machine. Nobody is on the other end.'}
                   onPointerEnter={() => sound.hover()}
                   onClick={e => { e.stopPropagation(); toggle('off'); }}>
             <Eye />
           </button>
-          <div className={`${s.pop} ${s.tale}`} onClick={e => e.stopPropagation()}>
-            <b>Nothing leaves this room.</b>
-            <p>No account. No key. Nobody on the other end. The drugs and the dreams
-               stay on this machine — pull the plug on the network and nothing here
-               notices.</p>
+          <div className={`${s.pop} ${s.tale} ${browser ? s.limit : ''}`} onClick={e => e.stopPropagation()}>
+            {browser ? <BrowserTale none={host().llm === 'none'} /> : (
+              <>
+                <b>Nothing leaves this room.</b>
+                <p>No account. No key. Nobody on the other end. The drugs and the dreams
+                   stay on this machine — pull the plug on the network and nothing here
+                   notices.</p>
+              </>
+            )}
           </div>
         </div>
 
@@ -252,8 +375,8 @@ export default function Rail({where = '', at = ''}: {where?: string; at?: string
             // Its own, because the tilde and Escape open it too and they are not
             // presses on anything.
             data-quiet
-            aria-label="The console — what the machine is doing, and how to tell it to do something. Type / in it for the list."
-            title="The console — what the machine is doing, and how to tell it to do something. Type / in it for the list."
+            aria-label={CONSOLE(browser)}
+            title={CONSOLE(browser)}
             onPointerEnter={() => sound.hover()}
             onClick={e => { e.stopPropagation(); hatch.show(!hatch.open); }}
           >

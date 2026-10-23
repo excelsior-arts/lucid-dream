@@ -22,7 +22,7 @@ class Wire {
 beforeEach(() => {
   Wire.made = [];
   localStorage.clear();
-  history.pushState({}, '', '/lucid-talk/lover');
+  history.pushState({}, '', '/talk/lover');
   vi.stubGlobal('WebSocket', Wire);
 });
 
@@ -30,15 +30,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('where the page is standing is what it asks for', () => {
-  expect(appAt('')).toBe('lucid-talk');
-  expect(appAt('room')).toBe('lucid-talk/room');
+test('where the page is standing is what it asks for, by the game\'s name and not its address', () => {
+  expect(appAt('', 'lucid-talk')).toBe('lucid-talk');
+  expect(appAt('room', 'lucid-talk')).toBe('lucid-talk/room');
+  // Told nothing, the address is all there is to go by.
+  expect(appAt('room')).toBe('talk/room');
   history.pushState({}, '', '/');
   expect(appAt('')).toBe('');
 });
 
 test('the socket carries where it was opened from', () => {
-  new Hatch().start('room');
+  new Hatch().start('room', 'lucid-talk');
   expect(Wire.made[0]!.url).toContain('/shared/log/ws?at=lucid-talk%2Froom');
 });
 
@@ -118,14 +120,14 @@ test('a page that has moved says so, and keeps the log it is looking at', () => 
      which is what this did -- meant a room's own server-side commands were
      missing until something else dropped the socket. */
   const hatch = new Hatch();
-  hatch.start('');
+  hatch.start('', 'lucid-talk');
   const shelf = Wire.made[0]!;
   shelf.arrive();
   shelf.says({type: 'backlog', orders: [{name: 'ai_models_start', about: 'up'}],
               lines: [{at: 1, source: 'machine', level: 'info', text: 'up'}]});
   expect(hatch.rows).toHaveLength(1);
 
-  hatch.start('room');
+  hatch.start('room', 'lucid-talk');
   const room = Wire.made[1]!;
   expect(room.url).toContain('at=lucid-talk%2Froom');
   room.arrive();
@@ -137,6 +139,6 @@ test('a page that has moved says so, and keeps the log it is looking at', () => 
   expect(hatch.commands().map((o) => o.name)).toContain('mic_barge');
 
   // And asking for the same place again is nothing at all.
-  hatch.start('room');
+  hatch.start('room', 'lucid-talk');
   expect(Wire.made).toHaveLength(2);
 });

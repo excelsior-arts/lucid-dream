@@ -136,6 +136,18 @@ html.flat #chat { padding-top:max(24px, env(safe-area-inset-top)); }
 @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.25; } }
 :where(#chatwrap) .tag { color:var(--accent); opacity:.8; }
 :where(#chatwrap) .note { align-self:center; font-size:12px; color:var(--dim); font-style:italic; }
+/* A line that broke off: its last four words step down, the faintest
+   ending in the dash where it broke (Transcript.tsx, Broke). A word at a
+   time, so a wrap between them keeps the steps, and the last word holds its
+   dash on its line. The words in plain text for a reader that cannot see
+   it, and nothing on the glass. */
+:where(#chatwrap) .msg .fade.f1 { opacity:.8; }
+:where(#chatwrap) .msg .fade.f2 { opacity:.6; }
+:where(#chatwrap) .msg .fade.f3 { opacity:.42; }
+:where(#chatwrap) .msg .fade.f4 { opacity:.28; }
+:where(#chatwrap) .msg .fade.end { white-space:nowrap; }
+:where(#chatwrap) .msg .cut-said { position:absolute; width:1px; height:1px; overflow:hidden;
+       clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
 /* Your turn, before the words exist: it hears you now, the transcript
    arrives a second later. Without this the screen says nothing while you
    talk and the reply seems to come out of nowhere. */

@@ -1,0 +1,488 @@
+/* The stage's stylesheet, scoped to it.
+ *
+ * Upstream this was Burning Man's page stylesheet, written against :root,
+ * body and bare element names. Here the page is the whole app, every route's
+ * sheet is in the document at once, and a rule for `button` would reach the
+ * box on the shelf. So every selector is under `.trip-stage` -- the host the
+ * stage is built in -- and the states that were classes on <body> (playing,
+ * score-ended, hinting, loading) are classes on the host. The numbers are
+ * the same.
+ *
+ * The host is fixed to the viewport and is its own stacking context, so the
+ * loading screen and the invitation stay under the shell's corner rail. */
+.trip-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  isolation: isolate;
+  font-family: system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: #f2eade;
+  background: #000000;
+  font-synthesis: none;
+  font-weight: 400;
+  color-scheme: dark;
+  --page-gutter: clamp(18px, 3vw, 48px);
+}
+.trip-stage,
+.trip-stage * {
+  box-sizing: border-box;
+}
+.trip-stage button,
+.trip-stage input,
+.trip-stage select {
+  font: inherit;
+}
+.trip-stage button {
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid #e5d4bd42;
+  background: #1a191b73;
+  border-radius: 2px;
+  padding: 10px 16px;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+.trip-stage button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.trip-stage button:focus-visible,
+.trip-stage a:focus-visible,
+.trip-stage input:focus-visible,
+.trip-stage select:focus-visible {
+  outline: 2px solid #edba81;
+  outline-offset: 4px;
+}
+.trip-stage button:hover:not(:disabled) {
+  background: #87705b70;
+  border-color: #e5d4bd90;
+}
+.trip-stage #world {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* ---- the loading screen, until the first frame ------------------------- */
+.trip-stage.loading > :not(.loading-screen) {
+  visibility: hidden;
+}
+.trip-stage .loading-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: #000000;
+  font:
+    12px 'Helvetica Neue',
+    Arial,
+    sans-serif;
+  letter-spacing: 0.16em;
+}
+.trip-stage .loading-status {
+  margin: 0;
+}
+.trip-stage .loading-status.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.trip-stage .loading-spinner {
+  position: relative;
+  width: 32px;
+  height: 32px;
+}
+.trip-stage .loading-element {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  animation: stage-elemental-turn 5s ease-in-out infinite;
+}
+.trip-stage .loading-element:nth-child(2) {
+  animation-delay: -4s;
+}
+.trip-stage .loading-element:nth-child(3) {
+  animation-delay: -3s;
+}
+.trip-stage .loading-element:nth-child(4) {
+  animation-delay: -2s;
+}
+.trip-stage .loading-element:nth-child(5) {
+  animation-delay: -1s;
+}
+.trip-stage .loading-retry {
+  padding: 12px 22px;
+  border: 1px solid #f2eade60;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+@keyframes stage-elemental-turn {
+  0%,
+  12%,
+  100% {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+  20% {
+    opacity: 0;
+    transform: rotate(50deg) scale(0.65);
+  }
+  21%,
+  92% {
+    opacity: 0;
+    transform: rotate(-50deg) scale(0.65);
+  }
+}
+
+/* ---- the title and the working chrome ---------------------------------- */
+/* The title gives way to the working chrome over about half a second, rather
+   than one being switched off as the other is switched on. Only the one going
+   keeps its visibility to the end of the fade: the one arriving takes presses
+   from the first frame. Faded in on the same delay, the play button was hidden
+   -- and a press on it fell through to the canvas -- for as long as the first
+   heavy frames held the fade at its start. */
+.trip-stage #invitation,
+.trip-stage .masthead {
+  transition:
+    opacity 0.55s ease,
+    visibility 0s;
+}
+.trip-stage.playing #invitation,
+.trip-stage:not(.playing) .masthead {
+  transition:
+    opacity 0.55s ease,
+    visibility 0.55s;
+}
+.trip-stage #invitation {
+  opacity: 1;
+  visibility: visible;
+}
+.trip-stage.playing #invitation {
+  opacity: 0;
+  visibility: hidden;
+}
+.trip-stage .masthead {
+  opacity: 0;
+  visibility: hidden;
+}
+.trip-stage.playing .masthead {
+  opacity: 1;
+  visibility: visible;
+}
+.trip-stage #invitation {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(32px, 5vh, 56px);
+  pointer-events: none;
+}
+.trip-stage #invitation h1 {
+  margin: 0;
+  font-family: inherit;
+  font-size: clamp(16px, 3.1vw, 56px);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
+  white-space: nowrap;
+  text-shadow: 0 2px 30px #0003;
+}
+.trip-stage #start {
+  min-width: 118px;
+  min-height: 44px;
+  padding: 12px 30px;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
+  background: #211d1a59;
+  border-color: #f2eade85;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  border-radius: 999px;
+}
+.trip-stage #start:hover:not(:disabled) {
+  background: transparent;
+  border-color: #f2eade;
+}
+.trip-stage #start:active:not(:disabled) {
+  background: #211d1a73;
+}
+.trip-stage #start:disabled {
+  cursor: wait;
+}
+/* What the viewer may do, said once while he is catching and then left alone. */
+.trip-stage .hint {
+  position: absolute;
+  inset: auto 0 max(38px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0 var(--page-gutter);
+  /* Sand rather than paper: there to be found, not to be announced. */
+  color: #d9c8ad85;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 12px #000000b0;
+  opacity: 0;
+  visibility: hidden;
+}
+.trip-stage .hint svg {
+  flex: none;
+  opacity: 0.85;
+}
+.trip-stage .hint kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 3px;
+  border: 1px solid #d9c8ad4d;
+  border-radius: 5px;
+  background: #1a191b47;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+}
+.trip-stage.hinting .hint {
+  animation: stage-show-hint 4s ease 0.4s forwards;
+}
+@keyframes stage-show-hint {
+  0% {
+    opacity: 0;
+    visibility: visible;
+  }
+  12%,
+  72% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+/* The masthead and the shell's rail are one row: on a trip the rail lays its
+   knobs side by side in the top right corner, and the masthead runs up to
+   them -- the same top, a knob's height, a knob's gap short of the row's
+   width (--rail-span, which the rail measures and publishes) -- so the
+   wordmark, the transport and the rail's knobs share one centre line. The
+   numbers are the shell's (--rail-*, see its tokens.css), with its values as
+   fallbacks for a stage shown alone. */
+.trip-stage .masthead {
+  position: absolute;
+  top: var(--rail-top, max(18px, env(safe-area-inset-top)));
+  height: var(--rail-knob, 35px);
+  left: max(var(--page-gutter), env(safe-area-inset-left));
+  right: calc(var(--rail-right, max(20px, env(safe-area-inset-right))) + var(--rail-span, var(--rail-knob, 35px)) + var(--rail-gap, 9px));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+  text-shadow: 0 1px 12px #0006;
+}
+.trip-stage .wordmark {
+  font-family: inherit;
+  font-size: clamp(10px, 0.95vw, 14px);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+  pointer-events: auto;
+}
+.trip-stage .wordmark:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+/* The pause and the countdown, bare on the sky as the piece drew them: the
+   pause a knob wide and round, with a faint fill under the pointer -- the
+   look the rail takes on a trip too, so the row reads as one. */
+.trip-stage .transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--rail-bare-ink, rgba(242, 234, 222, 0.78));
+}
+.trip-stage #pause {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--rail-knob, 35px);
+  height: var(--rail-knob, 35px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: auto;
+}
+/* A knob's size to the eye, a thumb's to the finger. */
+.trip-stage #pause::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+.trip-stage #pause svg {
+  display: block;
+}
+@media (hover: hover) {
+  .trip-stage #pause:hover:not(:disabled) {
+    background: #f2eade14;
+    color: var(--rail-bare-lit, #f2eade);
+  }
+}
+.trip-stage #progress {
+  font-variant-numeric: tabular-nums;
+}
+/* These fades use wall time, including after the score clock has stopped.
+   Removing the ending class on a seek/replay restores both controls immediately. */
+.trip-stage.score-ended #pause {
+  pointer-events: none;
+  animation: stage-retire-control 0.8s ease forwards;
+}
+.trip-stage.score-ended .transport {
+  animation: stage-retire-control 0.8s ease 5s forwards;
+}
+@keyframes stage-retire-control {
+  from {
+    opacity: 1;
+    visibility: visible;
+  }
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+/* The credits wait for the piece to be over, then arrive on wall time the way
+   the controls above leave, and are gone the instant a seek puts him back. */
+.trip-stage .credits {
+  font-family: inherit;
+  position: absolute;
+  inset: auto 0 max(34px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 6px;
+  padding: 0 var(--page-gutter);
+  color: #f2eadeb3;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+  text-align: center;
+  text-shadow: 0 1px 10px #0008;
+  opacity: 0;
+  visibility: hidden;
+}
+.trip-stage .credits p {
+  margin: 0;
+}
+.trip-stage .credits span {
+  display: block;
+  color: #f2eade73;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.trip-stage .credits em {
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+.trip-stage .credits a {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+.trip-stage .credits a:hover {
+  color: #f2eade;
+  text-decoration: underline;
+}
+.trip-stage .credits-fine {
+  margin-top: 10px !important;
+  color: #f2eade59;
+  font-size: 10px;
+  letter-spacing: 0.01em;
+}
+.trip-stage.score-ended .credits {
+  animation: stage-arrive-credits 2.6s ease 4s forwards;
+}
+@keyframes stage-arrive-credits {
+  from {
+    opacity: 0;
+    visibility: visible;
+  }
+  to {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+.trip-stage [hidden] {
+  display: none !important;
+}
+@media (max-width: 600px) {
+  .trip-stage .masthead {
+    gap: 10px;
+  }
+  .trip-stage .transport {
+    gap: 10px;
+    font-size: 10px;
+  }
+  .trip-stage .credits {
+    inset: auto 0 max(20px, env(safe-area-inset-bottom));
+    font-size: 11px;
+  }
+  .trip-stage .credits-fine {
+    /* Still said on a small screen, since it is said because it is owed. */
+    margin-top: 8px !important;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-stage button,
+  .trip-stage #invitation,
+  .trip-stage .masthead {
+    transition-duration: 0.001s;
+  }
+  .trip-stage.score-ended #pause,
+  .trip-stage.score-ended .transport,
+  .trip-stage.score-ended .credits {
+    animation-duration: 0.001s;
+  }
+  .trip-stage.hinting .hint {
+    animation-duration: 6s;
+  }
+  .trip-stage .loading-element {
+    animation: none;
+  }
+  .trip-stage .loading-element:first-child {
+    opacity: 1;
+  }
+}

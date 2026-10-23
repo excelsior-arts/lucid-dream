@@ -2,6 +2,7 @@
 import {fileURLToPath} from 'node:url';
 import react from '@vitejs/plugin-react';
 import {defineConfig} from 'vite';
+import {staticHost} from './static-host.ts';
 
 // Every address the Python server owns. The page is served by Vite and the
 // backend by uvicorn, so anything that is not the bundle is forwarded rather
@@ -34,9 +35,33 @@ const suite = (name: string, environment = 'jsdom') => ({
   },
 });
 
+/* Where the build is served from. The machine serves it at the root of its
+   own origin, and that is the build with nothing set. A static host may put
+   it under a path of its own -- GitHub Pages serves this repository's at
+   /lucid-dream/ -- and LUCID_BASE says so; setting it at all (even to "/")
+   is what makes it a build for a static host, which writes the pages such a
+   host needs (static-host.ts) and does not ask for a machine that is not
+   there. LUCID_SITE is the origin it will be seen at, for the absolute
+   addresses a link preview wants:
+
+     LUCID_BASE=/lucid-dream/ LUCID_SITE=https://excelsior-arts.github.io npm run build
+*/
+const STATIC = process.env.LUCID_BASE !== undefined;
+const BASE = (process.env.LUCID_BASE || '/').replace(/\/?$/, '/');
+const SITE = (process.env.LUCID_SITE || '').replace(/\/$/, '');
+
 export default defineConfig({
-  base: '/',
-  plugins: [react()],
+  base: BASE,
+  plugins: [react(), ...(STATIC ? [staticHost({base: BASE, site: SITE})] : [])],
+  /* Whether this is a build for a static host, which the page reads to skip
+     asking for a machine: see host.ts in @lucid/machine. */
+  define: {'import.meta.env.LUCID_STATIC': JSON.stringify(STATIC)},
+  /* Burning Man, Lucid Trip's card, draws with three's WebGPU build and
+     writes its materials in TSL, which are two more entry points into the
+     same package; the talk rooms draw with the classic one. One copy of three, whichever door it is
+     reached by, or two copies disagree about what a Vector3 is. */
+  resolve: {dedupe: ['three']},
+  optimizeDeps: {include: ['three', 'three/webgpu', 'three/tsl']},
   server: {
     // Bound to the number rather than the name: "localhost" resolves to ::1
     // first on this machine, so a dev server left on the default answers the
@@ -92,6 +117,9 @@ export default defineConfig({
        loads in node, and none of what it does has a DOM in it. Run under
        jsdom it is the same arithmetic with a browser bolted to it. */
     projects: [suite('audio'), suite('machine'), suite('shell'), suite('talk'),
-               suite('ui'), suite('world', 'node')],
+               suite('trip'), suite('ui'), suite('world', 'node'),
+               /* The build's own: what a static host is handed (static-host.ts). */
+               {extends: true as const,
+                test: {name: 'host', root: '.', environment: 'node', include: ['static-host.test.ts']}}],
   },
 });

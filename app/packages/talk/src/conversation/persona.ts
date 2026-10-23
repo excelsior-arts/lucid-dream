@@ -39,7 +39,7 @@
  */
 import {voices} from '@lucid/machine';
 import {voiceName} from './bundle';
-import {hatch} from '@lucid/shell';
+import {hatch, host} from '@lucid/shell';
 import type {PersonaCard} from '../link/shapes';
 import {all} from './bundle';
 import * as F from './files';
@@ -174,6 +174,10 @@ async function read(slug: string): Promise<PersonaCard> {
  *
  * A machine that will not say what it has is not an answer to act on: the
  * shelf is unknown, not empty, and the tuning stands. */
+/* Whose shelf of voices it is: the machine's, or -- with nothing behind the
+   page -- this browser's own. */
+const here = (): string => (host().machine ? 'this machine' : 'this browser');
+
 async function onTheShelf(base: PersonaCard, tuned: Tunables): Promise<Tunables> {
   // A bare word in the file is one of this game's own, the way the header's is.
   const want = tuned.voice && voiceName(tuned.voice);
@@ -181,7 +185,7 @@ async function onTheShelf(base: PersonaCard, tuned: Tunables): Promise<Tunables>
   const shelf = await voices().catch(() => null);
   if (!shelf || shelf.includes(want)) return {...tuned, voice: want};
   hatch.say(`${base.pill || base.name || base.slug} is tuned to a voice called `
-    + `"${want}" and this machine has ${shelf.length ? shelf.join(', ') : 'none'} `
+    + `"${want}" and ${here()} has ${shelf.length ? shelf.join(', ') : 'none'} `
     + `— speaking in "${base.voice}" instead`, 'warn');
   const rest = {...tuned};
   delete rest.voice;
@@ -230,14 +234,14 @@ export async function tune(slug: string, key: string, raw: string): Promise<stri
   const said = (raw || '').trim();
   let value: number | string;
   if (name === 'voice') {
-    if (!said) throw new Error("which voice: a name on the machine's shelf");
+    if (!said) throw new Error(`which voice: a name on ${here()}'s shelf`);
     const full = voiceName(said);
     const shelf = await voices().catch(() => null);
     if (!shelf)
-      throw new Error('the machine did not say which voices it has, so '
+      throw new Error(`${here()} did not say which voices it has, so `
         + `"${full}" could not be checked — try again`);
     if (!shelf.includes(full))
-      throw new Error(`this machine has no voice called "${full}" — it has `
+      throw new Error(`${here()} has no voice called "${full}" — it has `
         + (shelf.length ? shelf.join(', ') : 'none at all'));
     value = full;
   } else {
@@ -252,7 +256,7 @@ export async function tune(slug: string, key: string, raw: string): Promise<stri
   forget(slug);
   return `${name} is ${value}`
     + (HEEDED.has(name) ? '' : ` — nothing reads ${name} yet: the delivery is `
-       + "the machine's own setting, and this is kept for the day it is not");
+       + `${host().machine ? "the machine's" : "the voice's"} own setting, and this is kept for the day it is not`);
 }
 
 /** Both files gone, and the shipped character back. Answers whether there was

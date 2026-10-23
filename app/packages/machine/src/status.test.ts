@@ -23,6 +23,17 @@ test('what is loaded, what it costs, and what the voice last managed', async () 
   expect(facts.memory.total_gb).toBe(21.4);
 });
 
+test('whether the model in use is censored, kept as the host\'s answer, and false where nothing says', async () => {
+  const {host, setHost, MACHINE} = await import('@lucid/shell');
+  answers({status: {llm: 'ready'}, llm: {size: 'sm', censored: true}});
+  await status();
+  expect(host().censored).toBe(true);
+  answers({status: {llm: 'ready'}, llm: {size: 'md'}});
+  await status();
+  expect(host().censored).toBe(false);
+  setHost(MACHINE);
+});
+
 test('somebody is still there', async () => {
   const calls = answers({status: {llm: 'ready'}});
   await ping();

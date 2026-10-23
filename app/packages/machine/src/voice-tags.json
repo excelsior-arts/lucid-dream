@@ -1,0 +1,41 @@
+{
+  "about": [
+    "Which delivery tags each voice model says well, by ear. One place, read by the machine (machine/models.py, voice_tags) and the page (voice-tags.ts).",
+    "A voice keeps, and the prompt offers, the tags its tokenizer knows that are under `say` here. Every other tag is stripped before synthesis; `not` says why, in a word.",
+    "A voice with no entry keeps every tag its tokenizer knows, and says so in the log: a new voice tries the whole range and is pruned by ear. No entry inherits another's.",
+    "A new entry: render each tokenizer tag at the start of a sentence in a pill's clip, one WAV, and Eugene's ear decides. `as` points one voice at another's entry when they are the same model.",
+    "`say` notes: 'ear' is heard and kept by him; 'on trial' is offered until he has listened (none today)."
+  ],
+  "voices": {
+    "chatterbox-turbo": {
+      "model": "Chatterbox Turbo, MLX on the Mac (models/mlx-community/chatterbox-turbo-*)",
+      "say": {
+        "[sigh]": "ear 10-12: kept, at a sentence's start",
+        "[laugh]": "ear 10-12: kept, at a sentence's start",
+        "[chuckle]": "ear 10-12: kept, at a sentence's start",
+        "[gasp]": "ear 10-12: kept, at a sentence's start",
+        "[groan]": "ear 10-12: kept, at a sentence's start",
+        "[clear throat]": "ear 10-12: kept, at a sentence's start"
+      },
+      "not": {
+        "[sniff]": "his ear: bad",
+        "[whispering]": "no whisper, garbles",
+        "[advertisement]": "a style, not a sound",
+        "[narration]": "a style, not a sound",
+        "[dramatic]": "a style, not a sound",
+        "[angry]": "an emotion named, not made",
+        "[happy]": "an emotion named, not made",
+        "[sarcastic]": "an emotion named, not made",
+        "[surprised]": "an emotion named, not made",
+        "[fear]": "an emotion named, not made",
+        "[crying]": "untried",
+        "[cough]": "untried",
+        "[shush]": "untried"
+      }
+    },
+    "browser:turbo": {
+      "model": "Chatterbox Turbo, the ONNX export in a browser: the same model as the Mac's",
+      "as": "chatterbox-turbo"
+    }
+  }
+}

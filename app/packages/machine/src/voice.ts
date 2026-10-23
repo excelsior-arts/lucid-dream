@@ -50,6 +50,11 @@ export interface VoiceLoopOptions {
   /** A noise too short to be a turn, and what it cost: `barged` means it
       stopped a reply and put nothing in its place. */
   onDropped?(ms: number, barged: boolean): void;
+  /** A turn long enough to be heard that came to nothing: no usable speech
+      in it, or the recognizer could not make it out. The console has been
+      told; this is for a page that put dots up when the voice began and
+      would otherwise leave them standing. */
+  onUnheard?(): void;
   /** The window took the microphone, or gave it back — and so what this page
       now is. Not pressing the key: that is the caller's own doing. */
   onInput?(mode: InputMode): void;
@@ -146,23 +151,42 @@ export function createVoiceLoop(o: VoiceLoopOptions): VoiceLoop {
       case 'log':
         say(e.text, 'warn');
         break;
+      case 'note':
+        say(e.text, e.level);
+        break;
       case 'utterance':
         void (async () => {
+          /* Each turn said twice into the log: handed over, and what came of
+             it -- a length and a count, never the words. A turn that went up
+             and never came back is the first line without the second. */
+          const secs = e.seconds.toFixed(1);
+          const began = Date.now();
+          const took = () => ((Date.now() - began) / 1000).toFixed(1);
+          say(`recognizer: ${secs}s of you handed over`, 'debug');
           try {
             const text = await hear(e.samples);
-            if (dead) return;
+            if (dead) {
+              say(`recognizer: ${secs}s came back after the room was put away — dropped`, 'debug');
+              return;
+            }
+            say(`recognizer: ${secs}s → ${text.trim()
+              ? `${text.trim().length} characters` + (isJunk(text) ? ', filler' : '')
+              : 'nothing'} in ${took()}s`, 'debug');
             if (isJunk(text)) {
               /* Said rather than dropped in silence: from the page a turn that
                  was heard and then quietly lost looks like a machine that has
                  stopped listening. */
               say(`heard ${e.seconds.toFixed(1)}s but no usable speech — `
                 + 'say it again, or type below');
+              o.onUnheard?.();
               return;
             }
             o.onHeard(text, Math.round(e.seconds * 10) / 10);
           } catch (err) {
+            say(`recognizer: ${secs}s failed after ${took()}s`, 'debug');
             say('could not make out that turn: '
               + ((err as Error)?.message || String(err)), 'warn');
+            if (!dead) o.onUnheard?.();
           }
         })();
         break;

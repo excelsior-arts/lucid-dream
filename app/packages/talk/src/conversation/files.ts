@@ -30,7 +30,7 @@
  * tabs in one conversation is the only real collision there is, and the loser
  * is told the count rather than overwriting.
  */
-import {machine} from '@lucid/machine';
+import {beacon, call} from '@lucid/machine';
 import {hatch} from '@lucid/shell';
 import type {LedgerPill, RoomState, SessionCard} from '../link/shapes';
 import {personas} from './bundle';
@@ -38,7 +38,11 @@ import {nameFor, whose} from './named';
 
 export const GAME = 'lucid-talk';
 
-const base = () => `${machine()}/store/${GAME}`;
+/* A path on the store, asked of whoever answers the machine's routes on this
+   page: the machine, or -- with nothing behind the page -- the stand-in that
+   keeps the same two shapes in this browser (page/store.ts in
+   @lucid/machine). Nothing here knows which. */
+const base = () => `/store/${GAME}`;
 
 /** A value, as text, or nothing at all where nothing has been written.
  *
@@ -48,7 +52,7 @@ const base = () => `${machine()}/store/${GAME}`;
  * store answers that with no bytes; a 404 means the same and is taken the same
  * way. Anything else is a real failure and is thrown. */
 async function value(path: string): Promise<string | null> {
-  const res = await fetch(`${base()}/data/${path}`);
+  const res = await call(`${base()}/data/${path}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`${path} answered ${res.status}`);
   const text = await res.text();
@@ -69,7 +73,7 @@ async function parsed<T>(path: string): Promise<T | null> {
 }
 
 async function write(path: string, body: string, type: string): Promise<void> {
-  const res = await fetch(`${base()}/data/${path}`, {
+  const res = await call(`${base()}/data/${path}`, {
     method: 'PUT',
     headers: {'Content-Type': type},
     body,
@@ -78,7 +82,7 @@ async function write(path: string, body: string, type: string): Promise<void> {
 }
 
 async function erase(path: string): Promise<boolean> {
-  const res = await fetch(`${base()}/data/${path}`, {method: 'DELETE'});
+  const res = await call(`${base()}/data/${path}`, {method: 'DELETE'});
   if (!res.ok) throw new Error(`deleting ${path} answered ${res.status}`);
   return ((await res.json()) as {removed?: boolean}).removed ?? false;
 }
@@ -335,7 +339,7 @@ interface Kept {
  * was is known without opening any of them -- which is what makes the sheet
  * inside the lid one call plus two per pill rather than one per conversation. */
 export async function conversations(persona = ''): Promise<Kept[]> {
-  const res = await fetch(`${base()}/logs/sessions/`);
+  const res = await call(`${base()}/logs/sessions/`);
   if (!res.ok) throw new Error(`the conversations answered ${res.status}`);
   const got = ((await res.json()) as {items?: Kept[]}).items ?? [];
   const mine = got.map((x) => ({...x, id: x.id.replace(/\.jsonl$/, '')}));
@@ -404,15 +408,21 @@ export async function sessions(persona = '', limit = 40): Promise<SessionCard[]>
 
 export interface Transcript {
   id: string;
-  turns: Array<{role: 'user' | 'assistant'; content: string; ts?: number}>;
+  /** `step` and `region` only on a conversation held on a walk. */
+  turns: Array<{role: 'user' | 'assistant'; content: string; sent?: string; cut?: boolean; ts?: number;
+                step?: number; region?: string}>;
   scenes: Array<{text: string; ts?: number}>;
+  /** The lines that are neither: another game's rows, kept for it to read
+      the way it wrote them. A room's transcript has none. */
+  rows: Line[];
   version: number;
   persona: string;
 }
 
 /** One line of a transcript, as it is written on disk. */
-export type Line = {kind?: string; role?: string; content?: string; text?: string;
-                    persona?: string; ts?: number} | null;
+export type Line = {kind?: string; role?: string; content?: string; sent?: string; cut?: boolean; text?: string;
+                    persona?: string; ts?: number; step?: number; region?: string;
+                    arc?: unknown; beat?: number; again?: number} | null;
 
 /** The file as it is, line for line.
  *
@@ -423,7 +433,11 @@ export type Line = {kind?: string; role?: string; content?: string; text?: strin
  * and counts as one line on both ends, so the indexes agree with the version.
  */
 export async function lines(id: string): Promise<{lines: Line[]; version: number}> {
-  const res = await fetch(`${base()}/logs/sessions/${id}.jsonl`);
+  const res = await call(`${base()}/logs/sessions/${id}.jsonl`);
+  /* Not there and empty are the same thing, here as for a value: a
+     conversation exists from its first line, and one nobody has spoken in
+     yet is a file with no lines and a version of nothing to follow. */
+  if (res.status === 404) return {lines: [], version: 0};
   if (!res.ok) throw new Error(`${id} answered ${res.status}`);
   const got = (await res.json()) as {lines?: Line[]; version?: number};
   const all = got.lines ?? [];
@@ -438,10 +452,18 @@ export async function readSession(id: string): Promise<Transcript> {
     turns: kept.filter((l) => l?.kind === 'turn').map((l) => ({
       role: l?.role === 'user' ? 'user' : 'assistant',
       content: l?.content ?? '',
+      /* What the model was shown for it, where that was not the words: see
+         Kept in prompt.ts. Only a string is taken, and only a non-empty one. */
+      ...(typeof l?.sent === 'string' && l.sent ? {sent: l.sent} : {}),
+      // A reply that broke off part-way: see brokenOff in turn.ts.
+      ...(l?.cut === true ? {cut: true} : {}),
       ts: l?.ts,
+      ...(typeof l?.step === 'number' ? {step: l.step} : {}),
+      ...(l?.region ? {region: l.region} : {}),
     })),
     scenes: kept.filter((l) => l?.kind === 'scene')
       .map((l) => ({text: l?.text ?? '', ts: l?.ts})),
+    rows: kept.filter((l) => l && l.kind !== 'turn' && l.kind !== 'scene' && l.kind !== 'meta'),
     version,
     persona: meta?.persona ?? whose(id),
   };
@@ -457,9 +479,19 @@ export const newSession = (persona: string): Promise<{id: string}> =>
   Promise.resolve({id: nameFor(persona)});
 
 export type Row =
-  | {kind: 'turn'; role: 'user' | 'assistant'; content: string}
+  /** `step` and `region` are another game's: a conversation held on a walk
+      says where each line was said, and a room reads past them. */
+  | {kind: 'turn'; role: 'user' | 'assistant'; content: string; sent?: string; cut?: boolean;
+     step?: number; region?: string}
   | {kind: 'scene'; text: string}
-  | {kind: 'meta'; persona: string; persona_name: string};
+  /** `game` names whose evening it was when it was not a room's; a room's
+      leaves it out. */
+  | {kind: 'meta'; persona: string; persona_name: string; game?: string}
+  /** Another game's again: the script a character is playing him through on
+      a walk, and each beat of it as it comes. What is in `arc` is that game's
+      shape and not read here; `text` is only so no two such rows are one
+      line to `mark`. A room reads past them. */
+  | {kind: 'arc'; text: string; arc?: unknown; beat?: number; again?: number; step?: number};
 
 /** What an append answers with: the new count, or the count it actually is. */
 export interface Appended {
@@ -476,7 +508,7 @@ export interface Appended {
 export async function append(id: string, row: Row, version: number): Promise<Appended> {
   const now = Date.now() / 1000;
   const line = row.kind === 'meta' ? {...row, started: now} : {...row, ts: now};
-  const res = await fetch(`${base()}/logs/sessions/${id}.jsonl`, {
+  const res = await call(`${base()}/logs/sessions/${id}.jsonl`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({line, version}),
@@ -504,14 +536,8 @@ export async function append(id: string, row: Row, version: number): Promise<App
  * route. Answers whether the browser took it.
  */
 export function beaconAppend(id: string, row: Row, version: number): boolean {
-  if (typeof navigator === 'undefined' || !navigator.sendBeacon) return false;
   const line = {...row, ts: Date.now() / 1000};
-  const body = new Blob([JSON.stringify({line, version})], {type: 'application/json'});
-  try {
-    return navigator.sendBeacon(`${base()}/logs/sessions/${id}.jsonl`, body);
-  } catch {
-    return false;
-  }
+  return beacon(`${base()}/logs/sessions/${id}.jsonl`, JSON.stringify({line, version}));
 }
 
 /** What a delete answers with: whether the line went, and the count to follow.
@@ -552,7 +578,7 @@ export async function removeTurn(
   if (index < 0) {
     return {removed: false, version: read};
   }
-  const gone = await fetch(`${base()}/logs/sessions/${id}.jsonl`, {
+  const gone = await call(`${base()}/logs/sessions/${id}.jsonl`, {
     method: 'DELETE',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({index, version}),

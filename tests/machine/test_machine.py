@@ -18,6 +18,7 @@ import json
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -324,6 +325,200 @@ class APageThatGoesAway(unittest.IsolatedAsyncioTestCase):
                         "the flag was set and the model never read it")
 
 
+class OneReplyAtATime(unittest.IsolatedAsyncioTestCase):
+    """Two pages asking for words at once are answered one after the other:
+    the model server is threaded and would generate both at once on one
+    model, which is how a line stalled at three words while a stone was
+    asked for beside it."""
+
+    def setUp(self):
+        clean()
+        self.llm = HoldingLLM()
+        self.was = MACHINE.set_stack(MACHINE.Stack(llm=self.llm, voice=FakeVoice()))
+        self.addCleanup(MACHINE.set_stack, self.was)
+
+    async def test_the_second_waits_for_the_first(self):
+        first = MACHINE.chat_frames({"messages": [{"role": "user", "content": "a"}]})
+        self.assertIn("one ", await first.__anext__())
+        # The first is still being written. The second is asked for now, and
+        # gets nothing until the first is let go of.
+        second = MACHINE.chat_frames({"messages": [{"role": "user", "content": "b"}]})
+        got = asyncio.ensure_future(second.__anext__())
+        await asyncio.sleep(0.15)
+        self.assertFalse(got.done(), "the second reply began while the first was being written")
+        self.llm.let_go.set()
+        self.assertIn("one ", await asyncio.wait_for(got, 2.0))
+        await first.aclose()
+        await second.aclose()
+
+    async def test_a_page_gone_while_it_waited_is_not_answered(self):
+        first = MACHINE.chat_frames({"messages": [{"role": "user", "content": "a"}]})
+        await first.__anext__()
+        stop = threading.Event()
+        second = MACHINE.chat_frames({"messages": [{"role": "user", "content": "b"}]}, stop)
+        got = asyncio.ensure_future(second.__anext__())
+        await asyncio.sleep(0.05)
+        stop.set()
+        self.llm.let_go.set()
+        # The stream ends with no reply in it: [DONE] and nothing before.
+        self.assertEqual(await asyncio.wait_for(got, 2.0), "data: [DONE]\n\n")
+        await first.aclose()
+
+
+class AModelThatStopsAnswering(unittest.TestCase):
+    """A model server that takes a request and stops: alive, its port open,
+    and no word. The reply was read with no limit of its own short of five
+    minutes; it held `_words` meanwhile, so a retry queued behind it; a page
+    that gave up did not free it, because the stop flag was read only between
+    reads; and the server was never restarted, because it was up and so read
+    as having refused. Here a real socket, on a port of the test's own, that
+    sends one word and then nothing."""
+
+    def setUp(self):
+        import http.server
+        self.hang = threading.Event()
+        self.words = ["I was "]
+        test = self
+
+        class Frozen(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                for w in test.words:
+                    self.wfile.write(("data: " + json.dumps(
+                        {"choices": [{"delta": {"content": w}}]}) + "\n\n").encode())
+                    self.wfile.flush()
+                test.hang.wait(10)
+
+            def log_message(self, *a):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Frozen)
+        self.server.daemon_threads = True
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.was = (M.LLM_PORT, M.FIRST_WORD_S, M.NEXT_WORD_S)
+        M.LLM_PORT = self.server.server_address[1]
+        self.llm = M.LLMServer("/models/pretend")
+
+    def tearDown(self):
+        self.hang.set()
+        self.server.shutdown()
+        self.server.server_close()
+        M.LLM_PORT, M.FIRST_WORD_S, M.NEXT_WORD_S = self.was
+
+    def reply(self, stop=None):
+        said = []
+        stop = stop or threading.Event()
+        began = time.monotonic()
+        try:
+            text = self.llm.stream_reply([{"role": "user", "content": "x"}],
+                                         said.append, stop)
+            return text, said, None, time.monotonic() - began
+        except Exception as e:
+            return None, said, e, time.monotonic() - began
+
+    def test_a_page_that_gives_up_frees_the_reply_at_once(self):
+        stop = threading.Event()
+        threading.Timer(0.3, stop.set).start()
+        text, said, failed, took = self.reply(stop)
+        self.assertIsNone(failed)
+        self.assertEqual((text, said), ("I was", ["I was "]))
+        self.assertLess(took, 1.5, "the read waited on a server that sends nothing")
+
+    def test_no_new_word_in_time_is_a_stall(self):
+        M.NEXT_WORD_S = 0.5
+        _, said, failed, took = self.reply()
+        self.assertIsInstance(failed, M.Stalled)
+        self.assertEqual(said, ["I was "])
+        self.assertLess(took, 2.0)
+
+    def test_and_before_the_first_word_it_is_the_longer_wait(self):
+        self.words = []
+        M.FIRST_WORD_S, M.NEXT_WORD_S = 0.8, 0.2
+        _, said, failed, took = self.reply()
+        self.assertIsInstance(failed, M.Stalled)
+        self.assertEqual(said, [])
+        self.assertGreater(took, 0.7, "the prompt's reading was cut at the next word's time")
+        self.assertLess(took, 2.5)
+
+
+class StallingLLM(FakeLLM):
+    """A word, then a stall, the way stream_reply says one."""
+
+    def __init__(self):
+        super().__init__()
+        self.stalls = 1
+
+    def stream_reply(self, messages, on_delta, stop_flag, **kw):
+        if self.stalls:
+            self.stalls -= 1
+            on_delta("I was ")
+            raise M.Stalled("no new word in 15 s")
+        return super().stream_reply(messages, on_delta, stop_flag, **kw)
+
+
+class AStallIsRecoveredFrom(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        clean()
+        self.llm = StallingLLM()
+        self.was = MACHINE.set_stack(MACHINE.Stack(llm=self.llm, voice=FakeVoice()))
+        self.addCleanup(MACHINE.set_stack, self.was)
+
+    async def frames(self, gen):
+        return [f async for f in gen]
+
+    async def test_said_as_not_answering_and_the_server_restarted(self):
+        """Up by every test it has, so it read as a refusal and was left
+        frozen. A stall restarts it: killed, and started again."""
+        got = await self.frames(MACHINE.chat_frames({"messages": [{"role": "user", "content": "a"}]}))
+        error = json.loads(got[-2][5:])
+        self.assertTrue(error.get("not_answering"), error)
+        self.assertIn("stopped answering", error["error"])
+        for _ in range(200):
+            if self.llm.started:
+                break
+            await asyncio.sleep(0.01)
+        self.assertEqual((self.llm.stopped, self.llm.started), (1, 1))
+        # And the next line has the queue and a fresh model, and is answered.
+        got = await self.frames(MACHINE.chat_frames({"messages": [{"role": "user", "content": "b"}]}))
+        said = "".join(json.loads(f[5:])["choices"][0]["delta"]["content"]
+                       for f in got[:-1])
+        self.assertEqual(said, "one two three")
+
+    def test_the_lamp_says_starting_before_the_restart_runs(self):
+        """A page asks whether the model is up again the moment it hears of
+        the stall. The frozen server's "ready", or "off" between the kill and
+        the start, would answer it wrongly; it is "starting" from the word go,
+        and "ready" once the fresh one is up."""
+        here = MACHINE.stack()
+        here.status["llm"] = "ready"
+        gate = threading.Event()
+        stop = self.llm.stop
+
+        def held():
+            gate.wait(5)
+            stop()
+        self.llm.stop = held
+        here.trouble(M.Stalled("no new word in 15 s"))
+        self.assertEqual(here.status["llm"], "starting")
+        gate.set()
+        for _ in range(200):
+            if here.status["llm"] == "ready":
+                break
+            time.sleep(0.01)
+        self.assertEqual(here.status["llm"], "ready")
+
+    async def test_a_refusal_is_still_a_refusal(self):
+        """Anything else from a model that is up is what it was: logged, and
+        nothing restarted."""
+        here = MACHINE.stack()
+        here.trouble(ValueError("bad request"))
+        await asyncio.sleep(0.05)
+        self.assertEqual((self.llm.stopped, self.llm.started), (0, 0))
+
+
 class Transcribing(Machine):
     def test_int16_comes_back_as_words(self):
         raw = (np.zeros(1600, dtype=np.int16) + 1000).tobytes()
@@ -434,7 +629,9 @@ class Speaking(Machine):
 
     def test_the_shelf_says_what_it_has(self):
         got = self.client.get("/machine/voices")
-        self.assertEqual(got.json(), {"voices": ["gold", "purple"]})
+        self.assertEqual(got.json()["voices"], ["gold", "purple"])
+        # and what the voice performs, which is whatever its tokenizer says
+        self.assertEqual(got.json()["tags"], sorted(M.voice_tags()))
 
     def test_stop_abandons_the_rest_of_the_chunk(self):
         self.voice.frames = 4
@@ -511,6 +708,83 @@ class Speaking(Machine):
         self.assertIn("tts", self.voice.loaded)
 
 
+class ATagIsPerformedOrStripped(unittest.TestCase):
+    """What the synthesiser is handed. Turbo performs the tags its tokenizer
+    has a token for and reads every other one aloud as words, so the first
+    kind stays and the second goes -- and for any other voice, all of them."""
+
+    def setUp(self):
+        self.turbo = SCRATCH / "tags" / "chatterbox-turbo-fp16"
+        self.turbo.mkdir(parents=True, exist_ok=True)
+        (self.turbo / "added_tokens.json").write_text(json.dumps(
+            {"[laugh]": 1, "[sigh]": 2, "[clear throat]": 3, "<|pad|>": 4}))
+        self.full = SCRATCH / "tags" / "Chatterbox-fp16"
+        self.full.mkdir(parents=True, exist_ok=True)
+        (self.full / "added_tokens.json").write_text(json.dumps({"[laugh]": 1}))
+        self.tags = M.voice_tags(self.turbo)
+
+    def test_the_list_is_the_tokenizer_s(self):
+        self.assertEqual(self.tags, {"[laugh]", "[sigh]", "[clear throat]"})
+
+    def test_and_only_turbo_has_one(self):
+        self.assertEqual(M.voice_tags(self.full), frozenset())
+        self.assertEqual(M.voice_tags(SCRATCH / "tags" / "nothing-turbo"), frozenset())
+
+    def test_a_known_tag_stays_and_an_unknown_one_goes(self):
+        self.assertEqual(M.voice_text("you came back [laugh] I did not think", self.tags),
+                         "you came back [laugh] I did not think")
+        self.assertEqual(M.voice_text("[surprise-oh] you did it", self.tags), "you did it")
+        self.assertEqual(M.voice_text("[leans closer] there", self.tags), "there")
+
+    def test_a_space_inside_is_still_a_tag(self):
+        self.assertEqual(M.voice_text("[clear throat] Well.", self.tags),
+                         "[clear throat] Well.")
+        self.assertEqual(M.voice_text("[Clear  Throat] Well.", self.tags),
+                         "[clear throat] Well.")
+
+    def test_any_other_voice_strips_them_all(self):
+        self.assertEqual(M.voice_text("[sigh] Well [clear throat] then.", frozenset()),
+                         "Well then.")
+
+    def test_a_tag_alone_is_nothing_to_say(self):
+        self.assertEqual(M.voice_text("[sigh]", self.tags), "")
+        self.assertEqual(M.voice_text("[sigh] [clear throat]", self.tags), "")
+        self.assertEqual(M.voice_text(" [sigh]. ", self.tags), "")
+        self.assertEqual(M.voice_text("[sigh]", frozenset()), "")
+        self.assertEqual(M.voice_text("[sigh] I know.", self.tags), "[sigh] I know.")
+
+    def test_turbo_keeps_what_the_map_says_by_ear(self):
+        """The Mac's Turbo by the shipped map: no [sniff], no [whispering],
+        no style; [sigh] kept. Read off a tokenizer with all of them."""
+        both = SCRATCH / "tags" / "map" / "chatterbox-turbo-fp16"
+        both.mkdir(parents=True, exist_ok=True)
+        (both / "added_tokens.json").write_text(json.dumps(
+            {t: i for i, t in enumerate(["[laugh]", "[sigh]", "[whispering]", "[sniff]", "[narration]"])}))
+        kept = M.voice_tags(both)
+        self.assertEqual(kept, {"[laugh]", "[sigh]"})
+        self.assertEqual(M.voice_text("[sniff] Come here.", kept), "Come here.")
+        self.assertEqual(M.voice_text("[whispering] Come here.", kept), "Come here.")
+
+    def test_a_voice_with_no_entry_keeps_what_its_tokenizer_knows_and_says_so(self):
+        other = SCRATCH / "tags" / "map" / "another-turbo-fp16"
+        other.mkdir(parents=True, exist_ok=True)
+        (other / "added_tokens.json").write_text(json.dumps({"[sniff]": 1, "[whispering]": 2}))
+        said = []
+        with mock.patch.object(M.LOG, "say", lambda text, **kw: said.append(text)):
+            self.assertEqual(M.voice_tags(other), {"[sniff]", "[whispering]"})
+            M.voice_tags(other)
+        self.assertEqual(len(said), 1)
+        self.assertIn("no entry", said[0])
+
+    def test_an_entry_can_be_another_s_model(self):
+        self.assertEqual(M.tag_entry("browser:turbo"), M.tag_entry("chatterbox-turbo"))
+        self.assertIsNone(M.tag_entry("browser:nano"))
+        self.assertEqual(M.tag_name("x/chatterbox-turbo-fp16"), "chatterbox-turbo")
+
+    def test_the_asterisks_still_go(self):
+        self.assertEqual(M.voice_text("*mmm* yes", self.tags), "mmm yes")
+
+
 class TheShelfIsWhereTheModelsAre(Machine):
     """`setup.sh --models DIR` moves every asset, and the clips are assets.
 
@@ -522,8 +796,8 @@ class TheShelfIsWhereTheModelsAre(Machine):
 
     def test_a_clip_under_a_model_root_of_its_own_is_on_the_shelf(self):
         self.assertEqual(V.names(), ["gold", "purple"])
-        self.assertEqual(self.client.get("/machine/voices").json(),
-                         {"voices": ["gold", "purple"]})
+        self.assertEqual(self.client.get("/machine/voices").json()["voices"],
+                         ["gold", "purple"])
 
     def test_and_the_name_resolves_to_the_file_under_it(self):
         self.assertEqual(V.clip("purple"), self.shelf / "purple.wav")
@@ -690,6 +964,45 @@ class Lifecycle(Machine):
         self.assertFalse(MACHINE.stack().busy())
         talking["now"] = True
         self.assertTrue(MACHINE.stack().busy())
+
+
+class TheIdleStop(Machine):
+    """How long the machine sits loaded with nobody asking, from its config.
+
+    The watchdog's one look, called by hand: what is moved is `active_at`
+    rather than a clock, so nothing here waits out half an hour.
+    """
+
+    def quiet_for(self, minutes):
+        here = MACHINE.stack()
+        here.status["llm"] = "ready"
+        here.active_at = time.time() - minutes * 60
+        return here
+
+    def test_thirty_minutes_unless_the_config_says_otherwise(self):
+        self.assertEqual(MACHINE.idle_minutes(), 30)
+        self.assertFalse(self.quiet_for(29).idle())
+        self.assertEqual(self.llm.stopped, 0)
+        self.assertTrue(self.quiet_for(31).idle())
+        self.assertEqual(self.llm.stopped, 1)
+        self.assertEqual(MACHINE.stack().status["llm"], "off")
+
+    def test_a_number_written_down_is_the_next_look_s(self):
+        C.note(idle_stop_minutes=5)
+        self.assertEqual(MACHINE.idle_minutes(), 5)
+        self.assertFalse(self.quiet_for(4).idle())
+        self.assertTrue(self.quiet_for(6).idle())
+
+    def test_and_zero_is_never(self):
+        for never in (0, -1):
+            C.note(idle_stop_minutes=never)
+            self.assertFalse(self.quiet_for(24 * 60).idle())
+        self.assertEqual(self.llm.stopped, 0)
+        self.assertEqual(MACHINE.stack().status["llm"], "ready")
+
+    def test_a_value_that_is_not_a_number_is_the_default(self):
+        C.note(idle_stop_minutes="soon")
+        self.assertEqual(MACHINE.idle_minutes(), 30)
 
 
 class WhatAPageWants(Machine):
@@ -1095,6 +1408,184 @@ class ARateIsANumberOfSamples(Machine):
                                           content=raw).status_code, 200)
 
 
+class TheFirstOpenCard(Machine):
+    """A machine with no language model on disk is offered the sizes to fetch,
+    and one with its model there is never asked. Nothing is downloaded here:
+    shelf.fetch is a stand-in that lays a checkout down where the real one
+    would."""
+
+    def bare(self, size="sm"):
+        root = SCRATCH / "bare-shelf"
+        C.note(models={"dir": str(root)}, llm={"size": size})
+        return root
+
+    def test_a_machine_with_its_model_says_so_and_offers_nothing_new(self):
+        root = self.bare()
+        home = S.where(root, "llm", "sm")
+        home.mkdir(parents=True)
+        (home / "config.json").write_text("{}")
+        (home / "model.safetensors").write_bytes(b"x")
+        (home / "tokenizer.json").write_text("{}")
+        # And one only begun: its config.json is the first file to arrive,
+        # and it is not on this Mac until the rest is.
+        begun = S.where(root, "llm", "md")
+        begun.mkdir(parents=True)
+        (begun / "config.json").write_text("{}")
+        got = self.client.get("/machine").json()["llm"]
+        self.assertTrue(got["here"])
+        self.assertEqual([o["size"] for o in got["offer"]], S.sizes())
+        self.assertEqual([o["here"] for o in got["offer"]], [True, False, False])
+        self.assertIsNone(got["fetch"])
+
+    def test_one_without_is_offered_the_three_with_this_macs_marked(self):
+        self.bare("lg")
+        got = self.client.get("/machine").json()["llm"]
+        self.assertFalse(got["here"])
+        marked = [o["size"] for o in got["offer"] if o["suggested"]]
+        self.assertEqual(marked, [S.pick(S.ram_gb())])
+        self.assertEqual({o["size"]: o["gb"] for o in got["offer"]},
+                         {s: S.entry("llm", s)["gb"] for s in S.sizes()})
+
+    def test_whether_the_size_in_use_is_censored_is_the_manifests_word(self):
+        self.bare("sm")
+        # The size the serving process is, as size() finds it by path.
+        stack = MACHINE.stack()
+        stack.size = lambda: "sm"
+        self.addCleanup(vars(stack).pop, "size", None)
+        # Nothing shipped is flagged: absent is false.
+        self.assertFalse(self.client.get("/machine").json()["llm"]["censored"])
+        self.assertFalse(any(e.get("censored") for e in S.manifest()["llm"].values()))
+        shipped = S.manifest()
+        flagged = {**shipped, "llm": {**shipped["llm"],
+                                      "sm": {**shipped["llm"]["sm"], "censored": True}}}
+        was = S.manifest
+        S.manifest = lambda: flagged
+        self.addCleanup(setattr, S, "manifest", was)
+        self.assertTrue(self.client.get("/machine").json()["llm"]["censored"])
+        # A size the manifest does not name -- or none -- is nobody's word.
+        self.assertFalse(S.censored("mine"))
+        self.assertFalse(S.censored(""))
+
+    def test_the_rule_is_setups(self):
+        self.assertEqual([S.pick(g) for g in (8, 15.9, 16, 31, 32, 48)],
+                         ["sm", "sm", "md", "md", "lg", "lg"])
+
+    def test_fetching_lays_it_down_writes_the_size_and_starts_it(self):
+        root = self.bare("lg")
+        def laid(base, role, size=None):
+            home = S.where(base, role, size)
+            home.mkdir(parents=True, exist_ok=True)
+            (home / "config.json").write_text("{}")
+            (home / "model.safetensors").write_bytes(b"x" * 1000)
+            (home / "tokenizer.json").write_text("{}")
+            return home
+        was = S.fetch
+        S.fetch = laid
+        self.addCleanup(setattr, S, "fetch", was)
+        r = self.client.post("/machine/models/fetch", json={"size": "sm"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["size"], "sm")
+        end = time.monotonic() + 2.0
+        while time.monotonic() < end and (MACHINE.stack().fetching() or {}).get("state") != "done":
+            time.sleep(0.01)
+        got = self.client.get("/machine").json()["llm"]
+        self.assertEqual(got["fetch"]["state"], "done")
+        self.assertTrue(got["here"])
+        self.assertEqual(C.written()["llm"]["size"], "sm")
+        self.assertEqual(C.load()["llm"]["model"], str(S.where(root, "llm", "sm")))
+        self.assertEqual(MACHINE.stack().status["llm"], "ready")
+
+    def test_a_download_that_fails_says_so_and_writes_nothing(self):
+        self.bare("lg")
+        def broken(base, role, size=None):
+            raise OSError("the network went")
+        was = S.fetch
+        S.fetch = broken
+        self.addCleanup(setattr, S, "fetch", was)
+        self.client.post("/machine/models/fetch", json={"size": "sm"})
+        end = time.monotonic() + 2.0
+        while time.monotonic() < end and (MACHINE.stack().fetching() or {}).get("state") != "error":
+            time.sleep(0.01)
+        got = MACHINE.stack().fetching()
+        self.assertEqual(got["state"], "error")
+        self.assertIn("the network went", got["error"])
+        self.assertEqual(C.written()["llm"]["size"], "lg")
+
+    def test_a_size_nobody_ships_is_refused(self):
+        self.bare()
+        self.assertEqual(self.client.post("/machine/models/fetch", json={"size": "xl"}).status_code, 400)
+        self.assertEqual(self.client.post("/machine/models/fetch", json={}).status_code, 400)
+
+    def laid(self, base, role, size=None):
+        home = S.where(base, role, size)
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "config.json").write_text("{}")
+        (home / "model.safetensors").write_bytes(b"x" * 1000)
+        (home / "tokenizer.json").write_text("{}")
+        return home
+
+    def test_the_voice_and_the_ear_are_offered_beside_it_with_what_they_weigh(self):
+        root = self.bare()
+        got = self.client.get("/machine").json()["shelf"]
+        self.assertEqual([(r["id"], r["gb"], r["here"]) for r in got["voice"]],
+                         [("tts", S.entry("tts")["gb"], False)])
+        self.assertEqual([(r["id"], r["gb"], r["here"]) for r in got["ear"]],
+                         [("stt", S.entry("stt")["gb"], False)])
+        self.assertIsNone(got["fetch"])
+        # Whole at the manifest's commit is here; a path of somebody's own is
+        # here when it is there at all.
+        self.laid(root, "tts")
+        mine = SCRATCH / "my-ear"
+        mine.mkdir(parents=True, exist_ok=True)
+        C.note(stt={"model": str(mine)})
+        got = self.client.get("/machine").json()["shelf"]
+        self.assertEqual([got["voice"][0]["here"], got["ear"][0]["here"]], [True, True])
+
+    def test_the_card_brings_them_down_with_the_size_or_on_their_own(self):
+        root = self.bare("lg")
+        was = S.fetch
+        S.fetch = self.laid
+        self.addCleanup(setattr, S, "fetch", was)
+        r = self.client.post("/machine/models/fetch", json={"voice": True, "ear": False})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["roles"], ["tts"])
+        end = time.monotonic() + 2.0
+        while time.monotonic() < end and (MACHINE.stack().parts_fetching() or {}).get("state") != "done":
+            time.sleep(0.01)
+        got = self.client.get("/machine").json()
+        self.assertEqual(got["shelf"]["fetch"]["state"], "done")
+        self.assertTrue(got["shelf"]["voice"][0]["here"])
+        self.assertFalse(got["shelf"]["ear"][0]["here"])
+        # Nothing about the language model moved: no size, no start.
+        self.assertEqual(C.written()["llm"]["size"], "lg")
+        self.assertIsNone(got["llm"]["fetch"])
+        # And with a size: both threads, the model started as before.
+        r = self.client.post("/machine/models/fetch", json={"size": "sm", "ear": True})
+        self.assertEqual(r.json()["size"], "sm")
+        end = time.monotonic() + 2.0
+        while time.monotonic() < end and not (
+                (MACHINE.stack().fetching() or {}).get("state") == "done"
+                and (MACHINE.stack().parts_fetching() or {}).get("state") == "done"):
+            time.sleep(0.01)
+        got = self.client.get("/machine").json()
+        self.assertTrue(got["shelf"]["ear"][0]["here"])
+        self.assertTrue(got["llm"]["here"])
+        self.assertTrue(S.whole(S.where(root, "stt"), ""))
+
+    def test_a_part_that_fails_says_so(self):
+        self.bare()
+        def broken(base, role, size=None):
+            raise OSError("the network went")
+        was = S.fetch
+        S.fetch = broken
+        self.addCleanup(setattr, S, "fetch", was)
+        self.client.post("/machine/models/fetch", json={"voice": "tts"})
+        end = time.monotonic() + 2.0
+        while time.monotonic() < end and (MACHINE.stack().parts_fetching() or {}).get("state") != "error":
+            time.sleep(0.01)
+        self.assertIn("the network went", MACHINE.stack().parts_fetching()["error"])
+
+
 class AnUtteranceHasALength(Machine):
     """A turn stops at `vad.max_turn_ms`, so anything past it was never one.
 
@@ -1224,3 +1715,85 @@ class TheSizesAModelComesIn(Machine):
         line = MACHINE._model_size("")
         self.assertIn("running sm", line)
         self.assertIn("the config says md", line)
+
+
+class TheConfigIsNeverSeenHalfWritten(unittest.TestCase):
+    """Notes made from several threads while others read: every reader sees a
+    whole file, and no note loses another's."""
+
+    def setUp(self):
+        clean()
+
+    def test_notes_from_threads_keep_each_other(self):
+        C.note(kept="yes")
+        seen, stop = [], threading.Event()
+
+        def read():
+            while not stop.is_set():
+                seen.append(C.written().get("kept"))
+
+        def write(i):
+            for j in range(40):
+                C.note(**{f"w{i}": j})
+
+        readers = [threading.Thread(target=read) for _ in range(2)]
+        writers = [threading.Thread(target=write, args=(i,)) for i in range(4)]
+        for t in readers + writers:
+            t.start()
+        for t in writers:
+            t.join()
+        stop.set()
+        for t in readers:
+            t.join()
+        self.assertNotIn(None, seen)
+        self.assertEqual({k: v for k, v in C.written().items() if k.startswith("w")},
+                         {f"w{i}": 39 for i in range(4)})
+        self.assertEqual(C.written()["kept"], "yes")
+
+
+class Assets(Machine):
+    """The asset shelves: files by kind and name, and nothing else."""
+
+    def setUp(self):
+        super().setUp()
+        from machine import assets as A
+        self.A = A
+        self.assets = SCRATCH / "elsewhere" / "assets"
+        sounds = self.assets / "sounds"
+        sounds.mkdir(parents=True, exist_ok=True)
+        for name in ("ember", "hyper-dash"):
+            (sounds / f"{name}.m4a").write_bytes(b"\x00\x00\x00\x18ftypM4A ")
+        (sounds / "notes.txt").write_text("not a clip")
+        (sounds / "Bad Name.m4a").write_bytes(b"")
+        figures = self.assets / "figures"
+        figures.mkdir(parents=True, exist_ok=True)
+        (figures / "runner.glb").write_bytes(b"glTF")
+        C.note(assets={"dir": str(self.assets)})
+
+    def test_each_shelf_says_what_it_has(self):
+        self.assertEqual(self.A.names("sounds"), ["ember", "hyper-dash"])
+        self.assertEqual(self.client.get("/machine/assets/sounds").json(), {"assets": ["ember", "hyper-dash"]})
+        self.assertEqual(self.client.get("/machine/assets/figures").json(), {"assets": ["runner"]})
+        self.assertEqual(self.client.get("/machine/assets/weights").status_code, 404)
+
+    def test_an_asset_is_served_by_name_and_only_by_name(self):
+        got = self.client.get("/machine/assets/sounds/ember")
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.headers["content-type"], "audio/mp4")
+        got = self.client.get("/machine/assets/figures/runner")
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.headers["content-type"], "model/gltf-binary")
+        # A dotted path never reaches the route -- the client folds it before
+        # sending -- so the shelf is asked directly for those.
+        for bad in ("Bad Name", "notes", "ember.m4a", "EMBER"):
+            self.assertEqual(self.client.get(f"/machine/assets/sounds/{bad}").status_code, 404, bad)
+        self.assertEqual(self.client.get("/machine/assets/figures/ember").status_code, 404)
+        for bad in ("../voices/purple", "..", "ember/../hyper-dash", "nothing-here", ""):
+            self.assertIsNone(self.A.asset("sounds", bad), bad)
+        self.assertIsNone(self.A.asset("weights", "ember"))
+
+    def test_no_shelf_is_silence_and_not_an_error(self):
+        C.note(assets={"dir": str(SCRATCH / "nowhere")})
+        self.assertEqual(self.A.names("sounds"), [])
+        self.assertEqual(self.client.get("/machine/assets/sounds").json(), {"assets": []})
+        self.assertEqual(self.client.get("/machine/assets/sounds/ember").status_code, 404)

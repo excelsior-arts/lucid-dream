@@ -223,7 +223,9 @@ class Ear(logging.Handler):
     # at warning or above still arrives; what is turned away is the running
     # commentary underneath it, which was four hundred lines of the last
     # thousand and pushed everything worth reading out of the ring.
-    QUIET = (("mlx_audio", logging.WARNING, ""),
+    # httpx says every request it makes at INFO, which is a line a file
+    # while a model is fetched from the first-open card.
+    QUIET = (("mlx_audio", logging.WARNING, ""), ("httpx", logging.WARNING, ""),
              ("asyncio", logging.ERROR, "socket.send() raised exception"))
 
     def emit(self, record: logging.LogRecord):

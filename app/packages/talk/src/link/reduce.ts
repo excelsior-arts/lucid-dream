@@ -14,6 +14,10 @@ import {link, sayLog} from './store';
  * shelf's `receive`, which is the door every simulated-state picture is taken
  * through. One path to the transcript rather than two.
  */
+
+/** A reply that broke off says so on its bubble; any other leaves it out. */
+const cut = (m: {cut?: boolean}) => (m.cut ? {cut: true} : {});
+
 export function apply(s: LinkState, m: Inbound): Partial<LinkState> {
   switch (m.type) {
     /* The whole of a page in one move. Nothing sends it: it is how the
@@ -64,12 +68,16 @@ export function apply(s: LinkState, m: Inbound): Partial<LinkState> {
       const last = transcript[transcript.length - 1];
       if (last?.role === 'assistant' && last.streaming) {
         // The whole reply, as it was kept: the deltas are what the model
-        // streamed and this is what went into the transcript.
-        transcript[transcript.length - 1] = {...last, text: m.text, streaming: false};
-      } else {
+        // streamed and this is what went into the transcript. Done with
+        // nothing is a line cut before a word was heard: the bubble that
+        // was streaming comes down rather than standing empty.
+        // A reply that broke off is finished too, and says where it broke.
+        if (m.text) transcript[transcript.length - 1] = {...last, text: m.text, streaming: false, ...cut(m)};
+        else transcript.pop();
+      } else if (m.text) {
         // Nothing was streaming -- a turn that came and went while this page
         // was away. It is still a thing that was said.
-        transcript.push({role: 'assistant', text: m.text});
+        transcript.push({role: 'assistant', text: m.text, ...cut(m)});
       }
       return {transcript};
     }

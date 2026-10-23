@@ -57,6 +57,8 @@ userdata/
         memory/       what each persona knows, and where you stand
         rooms/        what a conversation did to its room
         sessions/     one file per conversation
+      lucid-trip/
+        doses/        a line each time a trip was begun, one file per card
       tmp/
     pete/
 ```
@@ -103,7 +105,10 @@ mic, shared by every game. Two copies would not fit in memory.
     "paragraph_pause": 0.45
   },
 
+  "idle_stop_minutes": 30,          // nobody asking this long: all three put away; 0 never
+
   "voices": {},                     // "path": the shelf of reference clips, default models/voices
+  "assets": {},                     // "dir": the sounds and the figures, default models/assets
 
   "vad": {
     "floor_mult": 3.0,              // speech vs room noise — starting to talk
@@ -182,11 +187,17 @@ place: |
   A room at night. One lamp, a window with rain on it, a low couch.
 temperature: 0.85
 max_tokens: 200          # fuse, not a target — ask for length in the body
+pronouns: she            # she, he, they or it: the words the prompts use for it
+silence: 90              # seconds of nothing said before it speaks first; leave out and it waits
+silence_line: "(he has said nothing for a while)"   # what the quiet reads as, to it
 ---
 You are Nova. You are dry, curious, and you never pad an answer.
 ```
 
-`place` is a first line; say you moved and the scene follows. **lover** and
+`place` is a first line; say you moved and the scene follows. `silence` is
+a pill that will not sit through a quiet room: nothing said for that long and
+it takes the floor itself — still here? bored? — with the quiet written down
+as `silence_line`, answered the way a hand on the furniture is. **lover** and
 **thinker** are offered; **companion** and **blunt** have `draft: true` until
 they have voices. Edit, drop the flag, or add a directory — and rebuild
 (`cd app && npm run build`), because the characters and the prompts beside them
@@ -240,6 +251,33 @@ python tools/voiceprep.py some-recording.mp3 nova
 The clip is the setting. Calm six seconds → a flat companion.
 **[tools/VOICES.md](tools/VOICES.md)** is the rest.
 
+### Sounds and figures
+
+A footstep, an ember taken, the wind under a walk; the body the walk was
+taken in. These were made for Lucid Trip's walk, which has gone, and nothing
+in the app plays or draws them now; the shelf and its tools are still here.
+They are files somebody made -- recordings, a rigged character -- and they
+are not in the repository. They live in **lucid-assets**, a
+repository beside this one, and the machine serves them by name from
+`<assets.dir>/sounds/<name>.m4a` and `<assets.dir>/figures/<name>.glb` at
+`GET /machine/assets/<kind>/<name>`. Point `assets.dir` at your clone of it
+(`~/XGit/lucid-assets`, say); left empty it is beside the models. A name with
+nothing on the shelf is silence, or the figure drawn by hand: a game without
+the shelf is the same game with the assets off. The interface's own sounds
+(the latch, a key) are made in the page and need nothing from it.
+
+```sh
+python3 tools/soundprep.py --library ~/Documents/Sounds --out ../lucid-assets/sounds
+node tools/figureprep.mjs Running.fbx ../lucid-assets/figures/runner.glb Idle=Idle.fbx Walk=Walking.fbx Jump=Jumping.fbx Leap=RunningJump.fbx Dash=FlyingKnee.fbx:flat
+```
+
+is how the shelf is stocked: the first cuts a pack out of Adobe's free
+Audition sound effects library, the second makes a figure out of Mixamo
+downloads of one character -- the first with skin, the rest its clips, named
+for what the game plays them as (see [THIRD-PARTY.md](THIRD-PARTY.md) for both). The table in
+`soundprep.py` says which recording each name is cut from, and a different
+library is an edit to that table. `sox` does the trimming; `brew install sox`.
+
 `pause`, `exaggeration` and `cfg_weight` are accepted in the frontmatter and in
 `/persona_tune`, and go no further: the request that speaks a line carries the
 text, the voice and whether the paragraph ended, and nothing else. Delivery is
@@ -274,6 +312,8 @@ number is what it is: `app/packages/talk/src/manifest.ts`.
   },
   "relation": { "enabled": true, "score": true },
   "scene":    { "enabled": true, "every_words": 300 },
+  "player":   { "pronouns": "he" },   // she, he, they or it: the words used for you
+
   "llm": {
     "context_turns": 6,             // how many exchanges go up with a turn
     "context_words": 600,           // raising these is the slowest replies
@@ -289,3 +329,30 @@ number is what it is: `app/packages/talk/src/manifest.ts`.
 
 JSON on disk has no comments. Type `/` in the console for what you can change
 live.
+
+---
+
+## Lucid Trip: Burning Man
+
+Lucid Trip is a box with one card. Take it, and a man is standing on a dune
+at dusk. Press **Let it**: he catches fire and walks down to the sea, three
+minutes of music under him. Watch, or take him.
+
+**W A S D** or the arrow keys walk him relative to the camera; let go and he
+finds his own way again. Drag to orbit, scroll to zoom. **P**, **Space** or
+the pause button beside the clock pauses. The wordmark at the top,
+**BURNING MAN 2026**, takes you back to the box; so does the browser's back
+button.
+
+The card's own address is `/trip/burning-man`: bookmark it, or open it
+directly, and the piece opens with no box in between.
+
+It needs none of the machine's models, and it keeps one thing: how many
+times each trip has been taken, counted when **Let it** is pressed and shown
+inside the box's lid. No memory, no standing, nothing of what happened; the
+count is a line a dose under `players/<you>/lucid-trip/doses/`, or in the
+browser's own storage when nothing is behind the page. It does need the network. The
+song is not in the repository and the machine does not serve it; the page asks
+for it each time the card is turned over, and without a connection there is no
+music. It draws with WebGPU where the browser has it and WebGL2 where it does
+not, and lowers its own graphics on a machine that cannot keep up.

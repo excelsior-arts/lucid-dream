@@ -10,35 +10,33 @@
  * them importing another to reach it would be a circle drawn around one
  * object.
  */
-import {openVoice, voices} from '@lucid/machine';
-import type {Message, Voice} from '@lucid/machine';
-import {hatch} from '@lucid/shell';
+import {openVoice, shelf} from '@lucid/machine';
+import type {Voice} from '@lucid/machine';
+import {hatch, host, onHost} from '@lucid/shell';
 import type {PersonaCard, RoomMood, RoomState} from '../link/shapes';
-import {link} from '../link/store';
-import {prompts as shipped} from './bundle';
+import {prompts} from './bundle';
+import {surface} from './surface';
+import type {Character} from './character';
+import {card, openCharacter, refresh, touch} from './character';
 import type {GameConfig} from './config';
 import {DEFAULTS, gameConfig} from './config';
 import * as F from './files';
 import {clearFloor, cutReply} from './floor';
-import {canOpen} from './named';
-import {effectivePersona, forget} from './persona';
-import type {Prompts} from './prompt';
-import type {Standing} from './relation';
-import {decayed, read as readStanding, standingCard} from './relation';
+import {canOpen, namedWell} from './named';
+import type {Kept} from './prompt';
+import {decayed} from './relation';
 
-/** Everything a room needs, read once when it opens. */
-export interface Open {
-  slug: string;
+/** Everything a room needs, read once when it opens.
+ *
+ * A room is a character with a conversation round it: the persona, the
+ * prompts, what it remembers and where you stand are the character's -- see
+ * character.ts, which a walk in another game opens the same way -- and the
+ * rest is the evening. */
+export interface Open extends Character {
   sessionId: string;
-  persona: PersonaCard;
-  prompts: Prompts;
   /** What this game is tuned to: when to fold, whether to score, how often to
       write the room down, and the window all three are measured against. */
   cfg: GameConfig;
-  /** What the pill remembers about you, and where you stand. Both hold still
-      for most of an evening, which is why they may sit in the system prompt. */
-  memory: string;
-  relation: Standing | null;
   /** Where the two of you are, as the transcript last had it. */
   scene: string;
   /** How many turns ago that was worked out. Left at whatever the previous
@@ -49,16 +47,14 @@ export interface Open {
   /** Whether the scene is still a guess -- the room's own description of
       itself, or wherever the two of them were when this was last put down. */
   sceneNew: boolean;
-  /** The conversation as the model is shown it, which is not the same list as
-      the transcript on screen: the presses and the nudge never go in here. */
-  history: Message[];
+  /** The conversation, line by line: the words, and what the model was shown
+      for each where that differs (see Kept). Not the same list as the
+      transcript on screen: the nudge never goes in here. */
+  history: Kept[];
   /** How much of the history has already been folded into memory. Anything
       already outside the window was folded in an earlier run; don't fold it
       twice. */
   foldedUpto: number;
-  /** Two folds running at once both read the same memory and both write: the
-      later one wins and the earlier fold's turns are lost for good. */
-  folding: boolean;
   /** The line count of the file, as this page last read it. Every append says
       which version it expects to follow. */
   version: number;
@@ -66,15 +62,6 @@ export interface Open {
       append is read against: a line in the file that is not in here was put
       there by somebody else. */
   wrote: Set<string>;
-  /** What a hand has done to this room's derived state, counted.
-   *
-   * The fold and the judgement are each a model call away from the state they
-   * read, and a person is not: a memory edited or a standing reset while one of
-   * them is thinking must not be written over by an answer about the room as it
-   * was a minute ago. So they take this number when they start and compare it
-   * before they write, and the hand wins. Counted rather than flagged because
-   * two of them can be in flight at once and each has to see its own move. */
-  epoch: number;
   /** Where the context window was last cut, as an index into `history`.
    *
    * Kept so that it does not move: a window recut every turn moves the first
@@ -85,6 +72,10 @@ export interface Open {
   /** Whether the prefix has been pushed through the model this sitting. */
   warmed?: boolean;
   voice: Voice;
+  /** Text only, whatever the mute switch says: nothing this room answers
+      goes to the voice. A game that wants its character read and not
+      heard for a while sets this and clears it; the voice stays open. */
+  silent?: boolean;
 }
 
 /* When this page last wrote into a conversation, kept where a reload can find
@@ -137,6 +128,8 @@ const SAME_WRITE_S = 2;
 export class Nowhere extends Error {}
 
 let here: Open | null = null;
+/** The open room's ear on what can speak, let go of with the room. */
+let unheed: (() => void) | null = null;
 /* One open at a time. The room asks on its way in and the first turn asks
    again, and without this the second ask -- landing while the first is still
    in flight -- would name a second conversation and speak into it. */
@@ -154,6 +147,8 @@ export function leaveRoom(): void {
      asking which room is open. */
   touched(here);
   here?.voice.close();
+  unheed?.();
+  unheed = null;
   here = null;
 }
 
@@ -164,7 +159,7 @@ export function leaveRoom(): void {
  * See `epoch`: the work in flight compares itself against this and drops what
  * it was going to write. */
 export function touched(room: Open | null): void {
-  if (room) room.epoch += 1;
+  touch(room);
 }
 
 /** Everything the room reads once, and the conversation it is reading it for.
@@ -172,13 +167,19 @@ export function touched(room: Open | null): void {
  * `want` is the conversation in the address. Without one a name is asked for
  * and nothing is written: the file appears when something is actually said.
  */
-export async function openRoom(slug: string, want = ''): Promise<Open> {
+/** Open a character's room, on a conversation of its own or one named.
+ *
+ * `mine` is a page that made the name itself and knows it is this
+ * character's -- a walk, whose conversation is named for the walk and not
+ * for the narrator -- so the name is not checked against the slug. Without
+ * it a name is opened only if this room could have made it. */
+export async function openRoom(slug: string, want = '', o: {mine?: boolean} = {}): Promise<Open> {
   if (here && here.slug === slug && (!want || here.sessionId === want)) return here;
   if (opening && opening.slug === slug) {
     const already = await opening.work;
     if (!want || already.sessionId === want) return already;
   }
-  const work = open(slug, want);
+  const work = open(slug, want, !!o.mine);
   opening = {slug, work};
   try {
     return await work;
@@ -266,36 +267,43 @@ function ago(seconds: number): string {
  * opens, thinks, writes its reply and then falls silent with an error a
  * sentence deep. This is the line that says so first, in the console, by name.
  */
-async function speakable(persona: PersonaCard): Promise<void> {
-  try {
-    const shelf = await voices();
-    if (!shelf.includes(persona.voice)) {
-      hatch.say(`${persona.pill} speaks in "${persona.voice}" and this machine `
-        + `has ${shelf.length ? shelf.join(', ') : 'no voices at all'} — `
-        + 'the words will arrive, the sound will not. See setup.sh', 'warn');
-    }
-  } catch {
-    // The machine is not answering, which the lamps say louder than this could.
+async function speakable(
+  persona: PersonaCard, asked: Promise<{voices: string[]} | null>,
+): Promise<void> {
+  // Nothing speaks on a page with no machine, and that is not news per pill.
+  if (!host().voice) return;
+  const voices = (await asked)?.voices;
+  // None is the machine not answering, which the lamps say louder than this could.
+  if (voices && !voices.includes(persona.voice)) {
+    hatch.say(`${persona.pill} speaks in "${persona.voice}" and `
+      + `${host().machine ? 'this machine' : 'this browser'} `
+      + `has ${voices.length ? voices.join(', ') : 'no voices at all'} — `
+      + `the words will arrive, the sound will not${host().machine ? '. See setup.sh' : ''}`, 'warn');
   }
 }
 
-async function open(slug: string, want: string): Promise<Open> {
+async function open(slug: string, want: string, named = false): Promise<Open> {
   leaveRoom();
   const token = ++opens;
   const passed = () => token !== opens;
+  /* The machine's shelf, asked for while everything else is read: which
+     voices it has, for the line below, and which tags its voice performs,
+     for the prompt. */
+  const asked = shelf().catch(() => null);
 
   /* The pill: what the game ships with this player's own two files over it.
      The words ship in the bundle, so a room reloaded straight into its address
      has a character whatever the machine is doing; the override is two values
      in the store, and a machine that will not hand them over is the shipped
      character rather than no room at all. See conversation/persona.ts. */
-  const [persona, cfg, memory, standing] = await Promise.all([
-    effectivePersona(slug), gameConfig(), F.memory(slug),
-    F.relation(slug).catch(() => null),
-  ]);
+  const cfg = await gameConfig();
+  const who = await openCharacter(slug, {cfg});
+  const {persona, memory} = who;
   if (passed()) throw new Overtaken(slug);
-  void speakable(persona);
-  const prompts = shipped();
+  void speakable(persona, asked);
+  /* A machine that will not say is a voice that performs nothing, and the
+     prompt asks for no tags: they would only be stripped. */
+  const tags = (await asked)?.tags ?? [];
 
   /* Which conversation, ported from `_open_session` and `can_open`. Three ways
      in, and they are the three things an address can say:
@@ -314,9 +322,9 @@ async function open(slug: string, want: string): Promise<Open> {
      pill is in this page's address and this room is the only thing reading
      it. */
   let sessionId = want;
-  if (want && !canOpen(want, slug)) {
+  if (want && !(named ? namedWell(want) : canOpen(want, slug))) {
     hatch.say(`there is no conversation called ${want} — nothing was opened`, 'warn');
-    link.setState({nowhere: true, slug});
+    surface().nowhere(true, slug);
     throw new Nowhere(`no such conversation: ${want}`);
   }
   if (!sessionId) sessionId = await recentSession(slug, cfg);
@@ -324,7 +332,7 @@ async function open(slug: string, want: string): Promise<Open> {
   if (!resumed) sessionId = (await F.newSession(slug)).id;
   if (passed()) throw new Overtaken(slug);
 
-  let history: Message[] = [];
+  let history: Kept[] = [];
   let scene = '';
   let version = 0;
   if (resumed) {
@@ -333,9 +341,7 @@ async function open(slug: string, want: string): Promise<Open> {
        one looks like from here. */
     const kept = await F.readSession(sessionId).catch(() => null);
     if (kept) {
-      history = kept.turns.map((t): Message => ({
-        role: t.role === 'user' ? 'user' : 'assistant', content: t.content,
-      }));
+      history = kept.turns.map(keptLine);
       scene = kept.scenes[kept.scenes.length - 1]?.text ?? '';
       version = kept.version;
     }
@@ -352,16 +358,10 @@ async function open(slug: string, want: string): Promise<Open> {
 
   if (passed()) throw new Overtaken(slug);
   here = {
-    slug,
+    ...who,
+    tags,
     sessionId,
-    persona,
-    prompts,
     cfg,
-    memory,
-    /* Through `decayed` on the way in, the way every read of this state is:
-       what is on disk is only ever a snapshot of a moment that has since
-       passed, and a bad mood six hours old is not a bad mood. */
-    relation: standing ? decayed(readStanding(standing)) : null,
     scene,
     /* Where the scene was last written, counted in this conversation's turns. */
     sceneAt: history.length,
@@ -371,47 +371,24 @@ async function open(slug: string, want: string): Promise<Open> {
     sceneNew: true,
     history,
     foldedUpto: Math.max(0, history.length - windowOf(cfg)),
-    folding: false,
     version,
-    epoch: 0,
     wrote: new Set<string>(),
     windowFrom: -1,
     voice: openVoice({voice: persona.voice}),
   };
 
-  /* What the tick would have said, said by the page that now knows it. A room
-     running its own loop opens no socket at all, so nothing is coming down one
-     about this conversation. */
-  link.setState({
-    /* Which pill and which conversation, which is what ownership put here when
-       a socket was answering for this page. */
+  /* What the tick would have said, said to the page that now knows it. A
+     room running its own loop opens no socket at all, so nothing is coming
+     down one about this conversation. Which page is the surface's business:
+     see surface.ts. */
+  surface().opened({
     slug,
-    sid: sessionId,
-    session_id: sessionId,
-    persona: slug,
-    persona_name: persona.pill || persona.name || slug,
+    sessionId,
+    personaName: persona.pill || persona.name || slug,
     scene,
-    running: true,
-    state: 'idle',
-    adrift: false,
-    /* And whatever was wrong with the last address is not wrong with this
-       one: a room that opens is a room that is there. */
-    nowhere: false,
-    /* And the tape, which is the page's own now: a room is opened with no run
-       on it, whatever the last one was doing. */
-    continuous: false,
-    continuous_min: 0,
-    standing: cfg.relation.enabled ? standingCard(here.relation) : {},
-    remembered: {slug, text: memory, off: !cfg.memory.enabled},
-    transcript: history.map((m) => ({role: m.role as 'user' | 'assistant', text: m.content})),
-    /* And the two records that belong to a conversation rather than to a page.
-       They arrive a request later -- the room's state below, and the standing
-       with the first scored turn -- and until they do, whatever is here is the
-       last conversation's. The room reads them as it is built (`told` in
-       Room.tsx), so a lamp left on in one pill's room lit the next one's, and
-       a read that failed left it that way for the whole sitting. */
-    room: null,
-    relation: null,
+    standing: card(here),
+    memory: {text: memory, off: !cfg.memory.enabled},
+    transcript: history.map(onGlass),
   });
 
   /* And the room itself, which is what a hand has already done in this
@@ -421,9 +398,35 @@ async function open(slug: string, want: string): Promise<Open> {
      the way the socket sent it, and after the transcript rather than before
      -- most of what a room is made of is the talk. See rooms.py. */
   const mine = here;
+  /* The voice's tags, asked again whenever what can speak moves: a voice
+     brought down onto a Mac, an engine chosen in a browser (each is down,
+     then up again: page/voice.ts). Not per turn: nothing else changes them.
+     The next turn's prompt then follows the voice that will speak it; see
+     heardTags in turn.ts. */
+  /* And the prompts, where the model in use turns out to be censored, or no
+     longer is -- a size chosen on the models panel, or the first one brought
+     down into a browser after the room opened: its system prompt is its own
+     (bundle.ts `prompts`). */
+  let censored = host().censored;
+  /* And the game's config, where the context the words were loaded with moves
+     under an open room -- a browser's long context that would not load, and
+     came up short: the window a reply is sent follows it (config.ts
+     `defaults`), so a short context is never sent the long window. */
+  let context = host().context;
+  unheed = onHost(() => {
+    if (host().censored !== censored) {
+      censored = host().censored;
+      if (opened() === mine) mine.prompts = prompts();
+    }
+    if (host().context !== context) {
+      context = host().context;
+      void gameConfig().then((c) => { if (opened() === mine) mine.cfg = c; }, () => {});
+    }
+    void shelf().then((s) => { if (opened() === mine) mine.tags = s.tags; }, () => {});
+  });
   void F.roomState(sessionId).then((state) => {
     if (opened() !== mine) return;      // the room moved on while we asked
-    link.setState({room: {session: sessionId, persona: slug, state, mood: mood(mine)}});
+    surface().room(() => ({session: sessionId, persona: slug, state, mood: mood(mine)}));
   }, () => {});
   return here;
 }
@@ -459,11 +462,9 @@ function mood(room: Open): RoomMood {
 export async function refreshPersona(): Promise<void> {
   const room = here;
   if (!room) return;
-  forget(room.slug);
-  const fresh = await effectivePersona(room.slug);
+  const was = await refresh(room);
   if (here !== room) return;           // the room moved on while we asked
-  const was = room.persona;
-  room.persona = fresh;
+  const fresh = room.persona;
   if (fresh.voice !== was.voice) {
     /* Cut first. Closing the socket ends its chunks cleanly, and a reply
        half-way through would take that as spoken to the end: the rest of it
@@ -471,11 +472,10 @@ export async function refreshPersona(): Promise<void> {
     cutReply();
     room.voice.close();
     room.voice = openVoice({voice: fresh.voice});
-    void speakable(fresh);
+    void speakable(fresh, shelf().catch(() => null));
   }
   // And the lamp on the deck, which is lit by how the persona is set.
-  const now = link.getState().room;
-  if (now) link.setState({room: {...now, mood: mood(room)}});
+  surface().room((now) => (now ? {...now, mood: mood(room)} : now));
 }
 
 /** How many messages the window holds -- pairs, counted as messages. */
@@ -544,12 +544,19 @@ export async function write(room: Open, row: F.Row): Promise<Wrote> {
        and appending behind it wrote the turn into a file this page had just
        been told it does not own -- with the banner up over a line that went
        in anyway. */
+    const game = surface().game();
     if (await write(room, {kind: 'meta', persona: room.slug,
-                           persona_name: room.persona.pill || room.persona.name})
+                           persona_name: room.persona.pill || room.persona.name,
+                           ...(game ? {game} : {})})
         !== 'written') return 'nowhere';
   }
+  /* Where it was said, when the page has somewhere to say: a walk puts its
+     step and its region on every turn, and a room puts nothing. The mark is
+     the words, so a line is this page's whatever else rides on it. */
+  const where = row.kind === 'turn' ? surface().where() : null;
+  const line: F.Row = where ? {...row, ...where} : row;
   room.wrote.add(mark(row));
-  let out = await F.append(room.sessionId, row, room.version);
+  let out = await F.append(room.sessionId, line, room.version);
   if (out.stale) {
     /* What is in there that this page did not put there. Read rather than
        assumed: the count alone cannot tell a stranger's line from one of
@@ -561,13 +568,13 @@ export async function write(room: Open, row: F.Row): Promise<Wrote> {
       hatch.say(`${room.sessionId} has ${strangers.length || 'lines'} `
         + 'this page did not write — it is somebody else\'s conversation now, '
         + 'and nothing more will be written into it from here', 'warn');
-      link.setState({nowhere: true});
+      surface().nowhere(true);
       return 'nowhere';
     }
     // Ours after all: an append that landed with its answer lost. Follow the
     // count it actually is and write the line once.
     room.version = now.version;
-    out = await F.append(room.sessionId, row, room.version);
+    out = await F.append(room.sessionId, line, room.version);
   }
   room.version = out.version;
   if (!out.stale) {
@@ -578,7 +585,7 @@ export async function write(room: Open, row: F.Row): Promise<Wrote> {
   // wrong with the page, and this says which conversation and where it got to.
   hatch.say(`${room.sessionId} moved on without this page — `
     + `it is at ${out.version} now`, 'warn');
-  link.setState({nowhere: true});
+  surface().nowhere(true);
   return 'nowhere';
 }
 
@@ -596,22 +603,29 @@ export async function write(room: Open, row: F.Row): Promise<Wrote> {
  * turns already folded into memory, and moving it forward would fold them
  * twice.
  */
+/** One line of a transcript as the room keeps it, `sent` and all. */
+const keptLine = (t: F.Transcript['turns'][number]): Kept => ({
+  role: t.role === 'user' ? 'user' : 'assistant', content: t.content,
+  ...(t.sent ? {sent: t.sent} : {}),
+  ...(t.cut ? {cut: true} : {}),
+});
+
+/** One line of the conversation as the glass shows it: a reply that broke
+    off says so when read back, as it did when it broke. */
+const onGlass = (m: Kept) => ({role: m.role as 'user' | 'assistant', text: m.content,
+                               ...(m.cut ? {cut: true} : {})});
+
 export async function reread(room: Open): Promise<void> {
   const kept = await F.readSession(room.sessionId).catch(() => null);
   if (!kept) return;
-  room.history = kept.turns.map((t): Message => ({
-    role: t.role === 'user' ? 'user' : 'assistant', content: t.content,
-  }));
+  room.history = kept.turns.map(keptLine);
   room.version = kept.version;
   room.scene = kept.scenes[kept.scenes.length - 1]?.text ?? room.scene;
   room.foldedUpto = Math.min(room.foldedUpto, room.history.length);
   room.windowFrom = -1;
   if (opened() !== room) return;       // the room moved on while we read
-  link.setState({
-    scene: room.scene,
-    transcript: room.history.map((m) => ({role: m.role as 'user' | 'assistant',
-                                          text: m.content})),
-  });
+  surface().scene(room.scene);
+  surface().transcriptIs(room.history.map(onGlass));
 }
 
 /** Begin a fresh conversation with this pill.
@@ -648,8 +662,7 @@ export async function saveRoomState(state: RoomState): Promise<RoomState> {
      flight across a switch to another conversation used to put one
      evening's furniture onto the next one's page. */
   if (opened() !== room) return saved;
-  const now = link.getState().room;
-  if (now && now.session === room.sessionId) link.setState({room: {...now, state: saved}});
+  surface().room((now) => (now && now.session === room.sessionId ? {...now, state: saved} : now));
   return saved;
 }
 
@@ -669,6 +682,5 @@ export async function saveRoomState(state: RoomState): Promise<RoomState> {
 export async function forgetRoomState(): Promise<void> {
   if (!here) return;
   const state = await F.forgetRoomState(here.sessionId);
-  const now = link.getState().room;
-  if (now) link.setState({room: {...now, state}});
+  surface().room((now) => (now ? {...now, state} : now));
 }

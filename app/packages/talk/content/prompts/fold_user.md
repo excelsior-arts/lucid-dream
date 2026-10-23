@@ -4,17 +4,23 @@ CURRENT MEMORY:
 CONVERSATION ABOUT TO BE FORGOTTEN:
 {dropped}
 
+{more}
+
 Rewrite the memory as at most {max_bullets} short bullet points, each one line.
 
-Keep only what is still true tomorrow: their name, work, the people and animals
-in their life, ongoing situations, lasting likes and dislikes, boundaries, and
+Keep only what is still true tomorrow: {his} name, work, the people and animals
+in {his} life, ongoing situations, lasting likes and dislikes, boundaries, and
 anything you agreed to.
 
-The memory is his. A bullet about you — your name, what you wear, your own
-habits — is a slot spent on the wrong person. And not everything on his turn is
-about him: when he asks for a register he gives samples of it in the first
-person, because that is how a sample sounds. What he asked for may be a
+The memory is {his}. A bullet about you — your name, what you wear, your own
+habits — is a slot spent on the wrong person. And not everything on {his} turn is
+about {him}: when {he} {w:asks} for a register {he} {w:gives} samples of it in the first
+person, because that is how a sample sounds. What {he} asked for may be a
 preference; the lines themselves are yours to say.
+
+What {he} did, when it is given above the line, is as much a fact about {him}
+as what {he} said: how {he} {w:goes} at things, what {he} {w:goes} toward and what {he} {w:leaves}
+alone. That is the half of {him} only you ever see, and it belongs here.
 
 Keep facts, leave events. Actions, positions, what either of you did or said in
 a scene, and anything promised inside one belong to the transcript rather than
@@ -22,11 +28,11 @@ here, however vivid they were. A bullet that reads like a stage direction or an
 instruction to perform something is an event, and so is anybody who only exists
 inside one.
 
-How he feels about you, and you about him, is not memory. Warmth, trust,
-irritation, whether he was kind or cruel — all of that is tracked elsewhere and
+How {he} {w:feels} about you, and you about {him}, is not memory. Warmth, trust,
+irritation, whether {he} {w:was} kind or cruel — all of that is tracked elsewhere and
 recording it here counts it twice.
 
-When something turns out not to be true — he denies it, corrects it, or it is
+When something turns out not to be true — {he} {w:denies} it, {w:corrects} it, or it is
 over — delete the bullet. Do not write down the negative: "does not have a dog"
 is not a fact, it is an empty slot that keeps the dog in the room.
 

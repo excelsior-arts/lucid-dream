@@ -11,8 +11,7 @@
  * more.
  */
 import {splitForSpeech} from '@lucid/machine';
-import {hatch, sound} from '@lucid/shell';
-import {link} from '../link/store';
+import {hatch, host, sound} from '@lucid/shell';
 import {continuousNudge} from './arc';
 import * as F from './files';
 import {
@@ -22,7 +21,10 @@ import {
 import {pressed, press, settle, take} from './hands';
 import type {Open} from './room';
 import {freshSession, opened, reread} from './room';
+import {surface} from './surface';
 import {runTurn} from './turn';
+import {say as voiced} from './pronouns';
+import {voiceOf} from './character';
 
 export {silence, steer} from './floor';
 
@@ -85,12 +87,13 @@ export function skip(): void {
 export async function speakAgain(text: string): Promise<void> {
   const line = (text || '').trim();
   if (!line) return;
-  if (sound.hush) {
+  if (sound.silent) {
     /* Nothing is said into a muted room. The machine would load a voice and
        make a clip the speaker drops on arrival, which is fifteen seconds and
        several gigabytes for a silence. The mark on the bubble is the way back:
        pressing that turns the sound on and then says the line. */
-    hatch.say('the sound is off — turn it back on to hear a line again', 'warn');
+    hatch.say(sound.hush ? 'the sound is off — turn it back on to hear a line again'
+      : 'the volume is at zero — turn it up to hear a line again', 'warn');
     return;
   }
   const room = opened();
@@ -102,7 +105,7 @@ export async function speakAgain(text: string): Promise<void> {
   const free = await takeFloor();
   try {
     if (gen !== generation() || opened() !== room) return;  // silenced while queued
-    link.setState({state: 'speaking'});
+    surface().state('speaking');
     for (const chunk of splitForSpeech(line)) {
       if (gen !== generation()) break;
       /* The paragraph marker, the way the splitter writes it: a trailing
@@ -127,7 +130,7 @@ export async function speakAgain(text: string): Promise<void> {
   } finally {
     free();
   }
-  if (gen === generation()) link.setState({state: 'idle'});
+  if (gen === generation()) surface().state('idle');
 }
 
 /** A noise stopped the pill and turned out to be nothing.
@@ -253,7 +256,7 @@ function tell(): void {
   const mark = `${on}:${minutes}`;
   if (mark === shown) return;
   shown = mark;
-  link.setState({continuous: on, continuous_min: minutes});
+  surface().tape(on, minutes);
 }
 
 /** Let the pill keep going on its own for a while.
@@ -366,7 +369,7 @@ async function run(mine: number): Promise<void> {
     /* And a conversation this page is no longer the one in. Nothing it writes
        from here can land -- the file has moved on without it -- so a run that
        kept asking for turns was a dose spending itself against a banner. */
-    if (link.getState().nowhere) {
+    if (surface().isNowhere()) {
       hatch.say('this page is not the one that conversation is in any more — '
         + 'the tape stops here', 'warn');
       stopped = true;
@@ -452,10 +455,19 @@ async function run(mine: number): Promise<void> {
 
 /* ---- hands ---------------------------------------------------------------- */
 
-/** The room reporting that a hand has been put to something. */
-export function did(line: string): void {
+/** The room reporting that a hand has been put to something.
+ *
+ * `cutIn` is whether the press takes the floor from a voice that is going.
+ * A hand on the furniture does -- see below -- but a press that is the
+ * world's rather than a person's, an event of a walk, waits for the floor:
+ * a voice cut off by the ground it was talking about is a voice nobody can
+ * listen to. */
+export function did(line: string, o: {cutIn?: boolean} = {}): void {
   const text = (line || '').trim();
   if (!text) return;
+  /* Nothing here to answer it: a browser that cannot run the pill, whose room
+     is only being looked around. The book moves; nobody remarks on it. */
+  if (host().llm === 'none') return;
   /* A dose that is playing is not asking to be poked. Somebody who set a scene
      and pressed Play is lying back for a quarter of an hour, and a hand
      brushing the screen should not take the floor away from the pill
@@ -481,7 +493,7 @@ export function did(line: string): void {
      ignored it. Whoever is pressing things while it speaks is exploring the
      room rather than listening to the answer, and wants to be answered now:
      the same trade the microphone already makes. */
-  if (speaking()) silence();
+  if ((o.cutIn ?? true) && speaking()) silence();
   handsSoon();
 }
 
@@ -494,8 +506,54 @@ export function did(line: string): void {
  * in between it read as being ignored.
  */
 export function handsSoon(): void {
+  armSilence();
   if (!pressed().length) return;
   settle(handsTurn);
+}
+
+/* ---- silence ---------------------------------------------------------------
+ *
+ * Nothing said for a while is input too. A room opened and left quiet, a
+ * walk with nobody moving: after a delay the persona sets, the pill takes
+ * the floor itself -- still here? bored? scared? -- and what it makes of the
+ * silence is its own. Not a special call: the quiet becomes a line in the
+ * hands pool and the ordinary loop takes a turn on it, so it is written down
+ * as what it was and answered the way a press is.
+ *
+ * Armed whenever the floor goes free and when the room is entered, and only
+ * outside a run: a tape that is playing is already speaking by itself. A
+ * persona with no `silence` in its header never does this.
+ */
+
+/** What the quiet reads as, when the persona's header does not say. In
+    the prompts' tokens: it is a sentence the engine makes about the player,
+    and it is said in whatever words the player is said in. */
+export const SILENCE = '({he} {w:has} said nothing for a while)';
+
+let quiet: ReturnType<typeof setTimeout> | null = null;
+
+export function armSilence(): void {
+  if (quiet) clearTimeout(quiet);
+  quiet = null;
+  const room = opened();
+  const after = Number(room?.persona?.silence) || 0;
+  if (!room || !(after > 0) || continuousLeft() > 0 || host().llm === 'none') return;
+  quiet = setTimeout(() => {
+    quiet = null;
+    const now = opened();
+    if (!now || now !== room) return;
+    /* Not quiet after all: a turn in flight, a voice still going, a press
+       waiting its settle. Come back after the same wait. */
+    if (floorHeld() || speaking() || pressed().length) { armSilence(); return; }
+    did(voiced(now.persona?.silence_line || SILENCE, voiceOf(now)));
+  }, after * 1000);
+}
+
+/** Nothing said counts for nothing while the page is held: a paused world,
+    a paused voice. Armed again by `handsSoon` when it goes on. */
+export function disarmSilence(): void {
+  if (quiet) clearTimeout(quiet);
+  quiet = null;
 }
 
 /** Answer what hands have done, if this is a moment to.
@@ -604,5 +662,6 @@ export function leaveLoop(): void {
   stopContinuous(true);
   take();
   forget();
+  disarmSilence();
   shown = '';
 }

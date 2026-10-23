@@ -36,6 +36,12 @@ const RESIDUAL_BLOCKS = 10;
 // Blocks of a chunk said to be playing during which nothing reached the room
 // before the room stops believing it: three seconds.
 const STUCK_BLOCKS = Math.round(3000 / BLOCK_MS);
+/* How much voice-like sound has to have been refused, in runs no further
+   apart than a second, before the room says so -- and how long before it
+   says so again. A cough is not worth a line; a sentence is. */
+const REFUSED_BLOCKS = Math.round(1500 / BLOCK_MS);
+const REFUSED_GAP_BLOCKS = Math.round(1000 / BLOCK_MS);
+const REFUSED_AGAIN_BLOCKS = Math.round(20000 / BLOCK_MS);
 /** Absolute floor so a silent room can't arm the VAD. */
 export const FLOOR_MIN = 0.004;
 
@@ -186,7 +192,11 @@ export type VadEvent =
   | {type: 'utterance'; samples: Float32Array; seconds: number}
   | {type: 'barge'; spoken: boolean}
   | {type: 'dropped'; ms: number; barged: boolean}
-  | {type: 'log'; text: string};
+  | {type: 'log'; text: string}
+  /** What the detector decided, for the log: where the room stands when that
+      changes, a turn begun, and sound refused for long enough to be somebody
+      talking. Numbers only -- nothing anybody said is in it. */
+  | {type: 'note'; text: string; level: 'debug' | 'info'};
 
 /** The detector's numbers, for a console line when a microphone looks dead.
     Only numbers: nothing anybody said is in here, so it can go in a log. */
@@ -321,6 +331,9 @@ export function speechlike(block: Float32Array, voiced = TUNING.bargeVoiced, rat
 
 /* ---- the loop ----------------------------------------------------------- */
 
+/** Why a voice-like block was not taken. See `refused` in createVad. */
+type Refusal = 'off' | 'phantom' | 'grace' | 'learning' | 'under' | 'unvoiced' | 'gate';
+
 function rmsOf(block: Float32Array): number {
   if (!block.length) return 0;
   let sum = 0;
@@ -364,6 +377,10 @@ export function createVad(o: Options): Vad {
   let collected: Float32Array[] = [];
   let speaking = false;
   let barged = false;          // this turn began by stopping the pill
+  /* A turn begun while a reply was being made and none of it had sounded,
+     which is to stop that reply once it has shown itself to be a turn. See
+     `unsounded` below. */
+  let early = false;
   let learnedMs = 0;           // playback heard since this mic opened
   let under = 0, saidUnder = false;   // a voice under the reply, and whether it was mentioned
   /* What the microphone hears of the reply: the pill's own voice after the
@@ -377,6 +394,42 @@ export function createVad(o: Options): Vad {
   let saidLearning = false;
   let onset = 0, voicedHits = 0, silenceMs = 0;
   let lastGate = 0, lastBar = 0, lastOut = false;   // for the meter
+  /* For the log. Where the room stood at the last block, so a change is said
+     once; and the voice-like sound refused lately, by why, so a run of it is
+     said once -- every one of these was a silence before, and a silence is
+     what a microphone that hears and does not listen looks like. */
+  let regime = '';
+  let clock = 0, refusedAt = -Infinity, saidRefusedAt = -Infinity;
+  const refusals = new Map<Refusal, number>();
+  let refusedBlocks = 0;
+  const f4 = (n: number) => n.toFixed(4);
+  const note = (text: string, level: 'debug' | 'info' = 'debug') =>
+    emit({type: 'note', text, level});
+
+  /** This block was a voice, or could have been, and it was not taken. */
+  function refused(why: Refusal, rms: number): void {
+    refusedAt = clock;
+    refusedBlocks += 1;
+    refusals.set(why, (refusals.get(why) ?? 0) + 1);
+    if (refusedBlocks < REFUSED_BLOCKS || clock - saidRefusedAt < REFUSED_AGAIN_BLOCKS) return;
+    saidRefusedAt = clock;
+    let most: Refusal = why, n = 0;
+    for (const [k, v] of refusals) if (v > n) { most = k; n = v; }
+    refusals.clear();
+    refusedBlocks = 0;
+    const you = f4(rms);
+    const said: Record<Refusal, string> = {
+      off: `talking over the reply is off (you ${you}) — Skip, then speak`,
+      phantom: `a reply is said to be going out and none is playing (${speaker.queuedS.toFixed(3)}s queued)`,
+      grace: `the reply has only just begun (you ${you})`,
+      learning: 'the browser is still learning to cancel the pill\'s own voice — Skip stops it',
+      under: `under the bar a voice over the reply must clear (you ${you}, bar ${f4(lastBar)}, `
+        + `the reply as heard ${f4(residual)}) — speak up, or Skip`,
+      unvoiced: `no pitch in it (you ${you}, bar ${f4(lastBar)}) — not taken for a voice`,
+      gate: `under the gate (you ${you}, gate ${f4(lastGate)}, floor ${f4(floor)})`,
+    };
+    note('hearing you but not taking it: ' + said[most], 'info');
+  }
 
   function finish(blocks: Float32Array[]): void {
     if (!blocks.length) return;
@@ -423,8 +476,16 @@ export function createVad(o: Options): Vad {
        into it refused, and the one note about it already spent. So the
        speaker's own word is believed only while what it plays keeps
        coming; three seconds of nothing arriving, and this is a quiet room. */
+    /* And a queue said to be waiting with nothing playing it, which is the
+       same lie told the other way: a speaker plays whatever is queued the
+       moment it is free, so that is never true for longer than a call. It was
+       true for good once -- a running total that floating point left at
+       2e-15 seconds behind an empty queue (see playback.ts) -- and the room
+       waited for a reply that was over. */
     if (speaker.playing) {
       stuck = gained > 0 ? 0 : stuck + 1;
+    } else if (speaker.queuedS > 0 && !speaker.held) {
+      stuck += 1;
     } else {
       stuck = 0;
     }
@@ -452,6 +513,30 @@ export function createVad(o: Options): Vad {
     lastGate = gate;
     lastOut = outActive;
     const sustain = Math.max(floor * tune.sustainMult, FLOOR_MIN * 0.7);
+
+    clock += 1;
+    if (clock - refusedAt > REFUSED_GAP_BLOCKS && refusedBlocks) {
+      refusedBlocks = 0;
+      refusals.clear();
+    }
+    /* Where the room stands, said when it moves: whether what the mic hears
+       is measured as a quiet room or as somebody talking over a reply. */
+    const now = speaker.held ? 'held' : speaker.stalled ? 'stalled'
+      : stuck >= STUCK_BLOCKS ? (speaker.playing ? 'stuck' : 'phantom')
+      : outActive ? 'out' : 'quiet';
+    if (now !== regime && mode === 'hands_free') {
+      regime = now;
+      note('detector: ' + (
+        now === 'out' ? 'a reply going out — ' + (barge ? 'a voice over it takes the floor'
+                                                        : 'talking over it is off')
+        : now === 'held' ? `the voice is paused — a quiet room (gate ${f4(gate)})`
+        : now === 'stalled' ? `the browser stopped the voice — a quiet room (gate ${f4(gate)})`
+        : now === 'stuck' ? 'the voice says it is playing and nothing has played for 3 s — '
+                            + `a quiet room (gate ${f4(gate)})`
+        : now === 'phantom' ? `${speaker.queuedS.toFixed(3)}s said to be queued and nothing playing `
+                              + `for 3 s — a quiet room (gate ${f4(gate)})`
+        : `a quiet room (floor ${f4(floor)}, gate ${f4(gate)})`));
+    }
 
     if (mode === 'push_to_talk') {
       if (ptt && !pttWas) {
@@ -496,8 +581,44 @@ export function createVad(o: Options): Vad {
         ? Math.max(gate, residual * tune.bargeOver, FLOOR_MIN * 2)
         : Math.max(floor * tune.bargeMult, FLOOR_MIN * 2);
       lastBar = bar;
+      /* A reply being made of which nothing has sounded yet: the model is
+         still writing its first sentence, or the voice is still making it.
+         Nothing has come out of this page, so there is nothing for a
+         canceller to have learned and no echo for a voice to be mistaken
+         for -- this is a quiet room with a reply on its way. It used to be
+         read as the reply: the grace below is measured from the first sound
+         and never began, so everything said in this stretch was dropped
+         without a word -- the second of two lines said a breath apart, said
+         while the first one's answer was being written. So it is heard as it
+         would be in a quiet room, at the ordinary gate, and taken as talking
+         over the reply: the turn starts here, and the reply is stopped once
+         the turn is long enough to be one (a cough does not cost the pill
+         its answer), or the moment the reply starts to sound, whichever is
+         first, so the pill's voice is never collected into it. Where talking
+         over is off it is not taken, and the room says so below. */
+      const unsounded = !speaker.playing && speaker.queuedS <= 0 && speaker.sinceStartMs <= 0;
+      if (unsounded && barge) {
+        preroll.push(block);
+        if (preroll.length > PREROLL_BLOCKS) preroll.shift();
+        voicedHits = 0;
+        if (rms > gate) {
+          onset += 1;
+          if (onset >= ONSET_BLOCKS) {
+            collected = [...preroll];
+            speaking = true;
+            early = true;
+            onset = 0;
+            silenceMs = 0;
+            note(`detector: hearing you before the reply has sounded (you ${f4(rms)}, gate ${f4(gate)})`);
+          }
+        } else {
+          onset = 0;
+        }
+        return;
+      }
       const loud = rms > bar;
-      const pastGrace = speaker.sinceStartMs > tune.bargeGraceMs;
+      // (Still unsounded here only where talking over is off.)
+      const pastGrace = unsounded || speaker.sinceStartMs > tune.bargeGraceMs;
       const learning = learnedMs < tune.bargeLearnMs;
       if (learning && barge && loud && pastGrace && !saidLearning) {
         // Only if somebody actually talked over it, and only once: otherwise
@@ -512,7 +633,9 @@ export function createVad(o: Options): Vad {
          stopped working after the page came back. So the first time a voice
          clears the ordinary gate and not this one, the room says so, and says
          what would work. */
-      if (!loud && rms > gate && pastGrace && !saidUnder) {
+      /* And before the reply has made a sound, where talking over it is off:
+         any voice there is somebody's, since nothing has come out yet. */
+      if ((!loud || unsounded) && rms > gate && pastGrace && !saidUnder) {
         under += 1;
         if (under >= ONSET_BLOCKS) {
           saidUnder = true;
@@ -524,13 +647,23 @@ export function createVad(o: Options): Vad {
       } else if (!(rms > gate)) {
         under = 0;
       }
+      /* Sound over the ordinary gate is what a voice would be, and each way
+         it is not taken here is counted -- see `refused`. */
+      if (rms > gate) {
+        if (!barge) refused('off', rms);
+        else if (!pastGrace) refused(speaker.sinceStartMs <= 0 ? 'phantom' : 'grace', rms);
+        else if (learning) refused(loud ? 'learning' : 'under', rms);
+        else if (!loud) refused('under', rms);
+      }
       if (barge && loud && pastGrace && !learning) {
         onset += 1;
         // Somewhere in the run there has to be a voice. Consonants are
         // unvoiced, so one block out of the three is enough -- what this
         // rejects is a run with no pitch in it at all.
         if (tune.bargeVoiced && speechlike(block, tune.bargeVoiced)) voicedHits += 1;
+        if (onset >= ONSET_BLOCKS && !voicedHits && tune.bargeVoiced) refused('unvoiced', rms);
         if (onset >= ONSET_BLOCKS && (voicedHits || !tune.bargeVoiced)) {
+          note(`detector: hearing you over the reply (you ${f4(rms)}, bar ${f4(bar)})`);
           emit({type: 'barge', spoken: true});
           collected = [...preroll];
           speaking = true;
@@ -563,10 +696,15 @@ export function createVad(o: Options): Vad {
           speaking = true;
           onset = 0;
           silenceMs = 0;
+          note(`detector: hearing you (you ${f4(rms)}, gate ${f4(gate)})`);
           emit({type: 'listening', active: true});
         }
       } else {
         onset = 0;
+        /* Under the gate and still a voice: a room whose floor has risen to
+           meet whoever is talking in it. Only asked of what is over the
+           sustain bar, so a quiet room costs nothing. */
+        if (rms > sustain && speechlike(block, tune.bargeVoiced || TUNING.bargeVoiced)) refused('gate', rms);
       }
       return;
     }
@@ -577,9 +715,23 @@ export function createVad(o: Options): Vad {
     // syllable.
     silenceMs = rms > sustain ? 0 : silenceMs + BLOCK_MS;
     const lengthMs = collected.length * BLOCK_MS;
+    /* A turn begun before the reply made a sound, taking the floor from it:
+       now that it is long enough to be a turn -- what is heard of it only
+       grows from here, so it will not be dropped -- or now that the reply is
+       about to be heard, so its voice is never collected into this one. */
+    if (early && (lengthMs - silenceMs >= tune.minTurnMs
+                  || speaker.playing || speaker.queuedS > 0)) {
+      early = false;
+      barged = true;
+      emit({type: 'barge', spoken: true});
+      emit({type: 'listening', active: true});
+    }
     if (silenceMs >= tune.hangoverMs || lengthMs >= tune.maxTurnMs) {
       speaking = false;
-      emit({type: 'listening', active: false});
+      /* One that never took the floor never said it was listening: it was a
+         noise in the room while the reply was being made, which goes on. */
+      if (!early) emit({type: 'listening', active: false});
+      early = false;
       if (lengthMs - silenceMs >= tune.minTurnMs) {
         finish(collected);
       } else {
@@ -632,12 +784,13 @@ export function createVad(o: Options): Vad {
       /* Said, if it had said the opposite: the page's state is left by
          `listening: false` and by nothing else, and a microphone the window
          took mid-turn left it on "listening" for as long as the page stood. */
-      const was = speaking || pttWas;
+      const was = (speaking && !early) || pttWas;
       carry = new Float32Array(0);
       preroll = [];
       collected = [];
       speaking = false;
       barged = false;
+      early = false;
       pttWas = false;
       learnedMs = 0;
       heardS = speaker.playedS + speaker.position();
@@ -650,6 +803,10 @@ export function createVad(o: Options): Vad {
       onset = voicedHits = 0;
       silenceMs = 0;
       level = 0;
+      regime = '';                   // said again when the next mic opens
+      refusals.clear();
+      refusedBlocks = 0;
+      saidRefusedAt = -Infinity;
       changed();
       if (was) emit({type: 'listening', active: false});
     },

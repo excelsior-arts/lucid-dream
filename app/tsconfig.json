@@ -5,6 +5,7 @@
     {"path": "./packages/machine"},
     {"path": "./packages/shell"},
     {"path": "./packages/talk"},
+    {"path": "./packages/trip"},
     {"path": "./packages/ui"},
     {"path": "./packages/world"},
     {"path": "./tsconfig.app.json"},

@@ -80,7 +80,7 @@ def _shape(path: str) -> str:
 # Read as a whole file rather than a declaration at a time: the calls are no
 # longer one line each -- a listing is fetched, a log is read and then a line
 # of it deleted -- and what is wanted is every address, wherever it is written.
-FETCH = re.compile(r"""fetch\(\s*`\$\{base\(\)\}([^`]*)`""")
+FETCH = re.compile(r"""(?:fetch|call)\(\s*`\$\{base\(\)\}([^`]*)`""")
 METHOD = re.compile(r"""method:\s*['"](\w+)['"]""")
 
 # The four helpers at the top of the file, which every value goes through and
@@ -128,11 +128,19 @@ def _asked_of_the_machine() -> set[tuple[str, str]]:
         if ".test." in f.name:
             continue
         src = f.read_text()
-        for path in re.findall(r"""\bjson<[^>]*>\(\s*['"](/machine[^'"]*)['"]""", src):
+        # A template with the kind in it is one address with a star in it.
+        for path in re.findall(r"""\bjson<[^>]*>\(\s*[`'"](/machine[^`'"]*)[`'"]""", src):
             out.add((_shape(path), "GET"))
         for path in re.findall(r"""\bpost<[^>]*>\(\s*['"](/machine[^'"]*)['"]""", src):
             out.add((_shape(path), "POST"))
+        # A clip is bytes rather than JSON, and named in the address.
+        for path in re.findall(r"""\bbytes\(\s*`(/machine[^`]*)`""", src):
+            out.add((_shape(path), "GET"))
         for path in re.findall(r"""machine\(\)\s*\+\s*['"](/machine[^'"?]*)""", src):
+            out.add((_shape(path), "POST"))
+        # And through the seam a stand-in can answer in place of the machine
+        # (address.ts `call`), which is how chat is asked for now.
+        for path in re.findall(r"""\bcall\(\s*['"](/machine[^'"?]*)""", src):
             out.add((_shape(path), "POST"))
         for path in re.findall(r"""TTS_PATH\s*=\s*['"](/machine[^'"]*)['"]""", src):
             out.add((_shape(path), "WEBSOCKET"))
@@ -157,12 +165,15 @@ class EveryAddressThePageCallsIsAnswered(unittest.TestCase):
         ("/machine/stt", "POST"),              # what was heard
         ("/machine/tts", "WEBSOCKET"),         # and what is said back
         ("/machine/voices", "GET"),            # the shelf of clips
+        ("/machine/assets/*", "GET"),          # and a shelf of assets, by kind
+        ("/machine/assets/*/*", "GET"),        # one of them, as bytes
         ("/machine/models/start", "POST"),
         # What this page is using: the ear, and the voice. Neither is loaded
         # until somebody says so -- see Stack.want.
         ("/machine/models/stt", "POST"),
         ("/machine/models/tts", "POST"),
         ("/machine/models/llm", "POST"),       # which size of it to run
+        ("/machine/models/fetch", "POST"),     # and one fetched, from a room's first-open card
         ("/machine/models/stop", "POST"),
         ("/machine/models/warm", "POST"),
         ("/machine/ping", "POST"),             # somebody is still here

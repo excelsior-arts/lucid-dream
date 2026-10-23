@@ -261,3 +261,17 @@ test('turning the sound back on lands on the next reply, not this one', () => {
   expect(pacer.visible).toBe('and this one is spoken');
   pacer.dispose();
 });
+
+test('a reply that broke off lands whole at once, while its voice still talks', () => {
+  /* done() would walk the tail out against the voice still saying the
+     sentences it was handed, the caret under a reply that has ended. */
+  const {voice, pacer} = measured();
+  voice.set({playing: true, queuedS: 4});
+  pacer.feed(LINE);
+  vi.advanceTimersByTime(STEP_MS);
+  expect(pacer.visible.length).toBeLessThan(LINE.length);
+  pacer.cut(LINE);
+  expect(pacer.settled).toBe(true);
+  expect(pacer.visible).toBe(LINE);
+  pacer.dispose();
+});

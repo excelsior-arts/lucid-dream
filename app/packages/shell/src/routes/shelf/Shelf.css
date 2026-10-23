@@ -32,10 +32,33 @@ html[data-page='shelf'] main {
   padding:max(20px, env(safe-area-inset-top)) 16px 56px;
 }
 
+/* Laid out by Shelf.tsx: how many to a row (its width, so a short last row is
+   centred under the others), the gap between them, and where the group
+   stands -- in a row across a wide window, a column down a tall one, rows
+   balanced, the group in the middle of the window and clear of the rail. */
 html[data-page='shelf'] .table {
-  display:flex; gap:80px; justify-content:center; flex-wrap:wrap;
+  display:flex; flex-wrap:wrap; justify-content:center; align-items:center;
+  align-content:center; gap:var(--gap, 110px); flex:none;
   perspective:1900px; perspective-origin:50% 42%;
+  /* The boxes stand smaller than they open: the whole table is scaled, by
+     --rest (measured so it fits the room, see Shelf.tsx), and comes up to
+     full size as one box goes to the middle to open. Scaling the table rather
+     than the boxes keeps each box's own geometry, so the opening still ends
+     on the open page's first frame. */
+  transform:translate(var(--rest-x, 0px), var(--rest-y, 0px)) scale(var(--rest, 1));
+  transition:transform calc(var(--travel, 0ms) + 80ms) cubic-bezier(.3,.7,.3,1);
 }
+/* Taking a box, the table keeps its size while the box goes to the middle,
+   and comes to full size as the box comes up to meet you, on the box's own
+   curve -- so the two read as one movement, larger all the way, whichever of
+   them is the bigger on this screen. */
+html[data-page='shelf'] .table.focus { transform:none;
+  transition:transform .85s cubic-bezier(.22,.7,.16,1) var(--travel, 0ms); }
+html[data-page='shelf'] .table.priming,
+html[data-page='shelf'] .table.fitting { transition:none !important; }
+html[data-page='shelf'] .table.fitting { transform:none !important; }
+html[data-page='shelf'] .table.still,
+html[data-page='shelf'] .table.still * { transition:none !important; }
 
 /* ---- an app, as an object you can open ---------------------------------
    A box seen from above and slightly in front: the floor of it is a plate,
@@ -47,20 +70,68 @@ html[data-page='shelf'] .object {
   display:block; text-decoration:none; color:inherit;
   touch-action:manipulation; -webkit-tap-highlight-color:transparent;
   -webkit-user-select:none; user-select:none;
-  transform-style:preserve-3d; cursor:pointer;
+  transform-style:preserve-3d; cursor:pointer; flex:none;
   transform:none;
-  transition:transform .85s cubic-bezier(.22,.7,.16,1);
+  transition:transform .85s cubic-bezier(.22,.7,.16,1), --fade .3s ease;
 }
+/* The others step out of the way while one is taken, and back in after.
+   Faded surface by surface rather than as a whole: opacity on the object
+   flattens its 3-D, and a box fading in was drawn flat, without perspective,
+   until the moment it was whole and its depth snapped back. --fade is
+   registered so it can be animated, and each face takes it.
+
+   And faded into the night rather than into glass. Each face made see-through
+   showed the faces behind it -- the far walls and the floor drawn through the
+   lid, a box of lines with no front to it, which reads as flat as the old
+   fade did. So a face goes dark as it goes, whole and still in front of what
+   it hides, and only lets the sky through in the last two fifths, when it is
+   too dark for what shows through it to be seen. And it goes as it darkens:
+   back into the room, through the table's one perspective, the way the
+   others come out from behind a box put back. */
+/* While boxes move, the one being opened or put back is in front, whatever
+   order the page has them in (see `front` in Shelf.tsx). */
+html[data-page='shelf'] .object.front { position:relative; z-index:2; }
+html[data-page='shelf'] .object.back { position:relative; z-index:1; }
+@property --fade { syntax:'<number>'; inherits:true; initial-value:1; }
+html[data-page='shelf'] .object :is(.face, .lid .out, .lid .in) { opacity:clamp(0, var(--fade) * 2.5, 1); }
+/* The filter only while a box is going or coming: a face with any filter on
+   it is a layer of its own, and the lid's two faces are the ones WebKit
+   already paints unreliably (box.css). */
+html[data-page='shelf'] .object:is(.away, .arriving) :is(.face, .lid .out, .lid .in) {
+  filter:brightness(var(--fade)); }
+html[data-page='shelf'] .object.away { --fade:0; pointer-events:none; }
+html[data-page='shelf'] .object.away:not(.behind) {
+  transform:translateZ(-220px);
+  transition:transform .6s cubic-bezier(.3,.6,.3,1), --fade .5s cubic-bezier(.4,0,.7,.6); }
+/* Each box leans to a mouse that comes near it, by its own --lean-x and
+   --lean-y (lean.ts), eased there a frame at a time -- so not on a transition
+   too, which would trail every frame's step by most of a second. Level by
+   default: the window-wide lean on <html> is the open box's, not these. */
 @media (hover: hover) {
   html[data-page='shelf'] .object {
-    transform:rotateX(calc(var(--lean-x, 0) * 1deg))
-              rotateY(calc(var(--lean-y, 0) * 1deg));
+    --lean-x:0; --lean-y:0;
+    transform:rotateX(calc(var(--lean-x) * 1deg))
+              rotateY(calc(var(--lean-y) * 1deg));
+    transition:--fade .3s ease;
   }
 }
 /* Opening sinks the object by exactly the overhang of the standing lid —
    the same number the inside of the box uses to center itself. That is what
    makes the last frame here and the first frame there the same picture. */
-html[data-page='shelf'] .object.opening { transform:translateY(var(--sink, 0px)); }
+html[data-page='shelf'] .object.opening {
+  transform:translate(var(--to-x, 0px), calc(var(--to-y, 0px) + var(--sink, 0px)));
+  transition:transform var(--travel, 0ms) cubic-bezier(.3,.7,.3,1), --fade .3s ease;
+}
+/* Back from its open page: shut, in the middle, at full size -- where that
+   page left it -- and from there home. In front of the others, which start
+   hidden behind it, a little further back and smaller, and come out to their
+   places as it goes to its own, fading in late and slowly enough to be seen
+   arriving rather than appearing. */
+html[data-page='shelf'] .object.returning { transform:translate(var(--to-x, 0px), var(--to-y, 0px)); }
+html[data-page='shelf'] .object.behind {
+  transform:translate(var(--to-x, 0px), var(--to-y, 0px)) translateZ(-180px) scale(.9); }
+html[data-page='shelf'] .object.arriving {
+  transition:transform 1s cubic-bezier(.22,.7,.16,1), --fade 1.05s ease .18s; }
 /* Restored from the back button, everything is where it belongs before the
    first frame: Safari hands the page back exactly as you left it — box open,
    mid-flight — and without this you watch it shut itself. In one document
@@ -70,22 +141,24 @@ html[data-page='shelf'] .object.priming .box,
 html[data-page='shelf'] .object.priming .lid,
 html[data-page='shelf'] .object.priming .lamp,
 html[data-page='shelf'] .object.priming .contents { transition:none !important; }
-/* Only where a pointer can really hover. A touch screen reports :hover on
-   the very tap that opens the box, so without this the phone plays the peek
-   and the opening at once — and leaves the peek stuck there afterwards.
+/* The peek: a pointer resting on a box (.peek, handed out by intent.ts after
+   it has rested there a moment -- never at the first crossing, and never for
+   a touch, which reports :hover on the very tap that opens the box and would
+   play the peek and the opening at once). Leaving lets the lid down from
+   wherever it had got to, on these same transitions.
 
    The lid angle is positive, and that matters: hinged along the far edge, a
    negative angle swings the near edge down through the floor — the lid opens
    into the box and you see nothing. Up is +. */
-@media (hover: hover) {
-  html[data-page='shelf'] .object:hover .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
-  html[data-page='shelf'] .object:hover .lid { transform:translateZ(var(--h)) rotateX(10deg); }
-  html[data-page='shelf'] .object:hover .lamp { opacity:.65; }
-  html[data-page='shelf'] .object:hover .contents { opacity:1; }
-  html[data-page='shelf'] .object:hover .contents i { opacity:.9;
-          box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 26px rgba(var(--card), .32); }
-  html[data-page='shelf'] .object:hover .contents i:nth-child(3) { opacity:.28; }
-}
+html[data-page='shelf'] .object.peek .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
+html[data-page='shelf'] .object.peek .lid { transform:translateZ(var(--h)) rotateX(10deg); }
+html[data-page='shelf'] .object.peek .lamp { opacity:.65; }
+html[data-page='shelf'] .object.peek .contents { opacity:1; }
+html[data-page='shelf'] .object.peek .contents i { opacity:.9;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 26px rgba(var(--card), .32); }
+html[data-page='shelf'] .object.peek .contents i:nth-child(3) { opacity:.28; }
+html[data-page='shelf'] .object:is(.peek, :focus-visible) .cut path { stroke:rgba(201,162,39,.75); fill:rgba(201,162,39,.07); }
+html[data-page='shelf'] .object:is(.peek, :focus-visible) .plaque span { color:var(--brass); }
 /* Keyboard focus gets the same look, on any device. */
 html[data-page='shelf'] .object:focus-visible .box { animation:none; transform:rotateX(52deg) translateZ(26px) scale(1.03); }
 html[data-page='shelf'] .object:focus-visible .lid { transform:translateZ(var(--h)) rotateX(10deg); }
@@ -98,10 +171,13 @@ html[data-page='shelf'] .object:focus-visible { outline:none; }
    the page loads, so the box lands the same size on a phone and a monitor. */
 html[data-page='shelf'] .object.opening .box { animation:none;
         transform:rotateX(44deg) scale3d(var(--zoom,1), var(--zoom,1), var(--zoom,1));
-        transition:transform .85s cubic-bezier(.22,.7,.16,1); }
+        transition:transform .85s cubic-bezier(.22,.7,.16,1) var(--travel, 0ms); }
 html[data-page='shelf'] .object.opening .lid { transform:translateZ(var(--h)) rotateX(108deg);
-        transition:transform .8s cubic-bezier(.3,.8,.25,1) .18s; }
+        transition:transform .8s cubic-bezier(.3,.8,.25,1) calc(var(--travel, 0ms) + .18s); }
 html[data-page='shelf'] .object.opening .lamp { opacity:1; }
+/* The light and the lining wait for the trip to the middle, as the lid does. */
+html[data-page='shelf'] .object.opening :is(.lamp, .contents, .w-back::after, .w-left::after, .w-right::after) {
+  transition-delay:var(--travel, 0ms); }
 html[data-page='shelf'] .object.opening .label { opacity:0; }
 
 html[data-page='shelf'] .label { margin-top:34px; text-align:center; transition:opacity .5s ease; }

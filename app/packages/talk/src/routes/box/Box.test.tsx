@@ -9,12 +9,14 @@
 import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {MemoryRouter, Route, Routes} from 'react-router';
 import {afterEach, beforeEach, expect, test, vi} from 'vitest';
+import {MACHINE, PAGE, setHost} from '@lucid/shell';
 import type {LedgerPill, PersonaCard} from '../../link/shapes';
 import {EMPTY, link} from '../../link/store';
 // ?raw so this stays a string the test parses, and not a module the bundler
 // has already made its own idea of.
 import sampleJson from './fixtures/box.json?raw';
 import Box from './Box';
+import '../../limits';
 
 const sample = JSON.parse(sampleJson) as {
   personas: PersonaCard[];
@@ -66,6 +68,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setHost(MACHINE);
   link.setState({...EMPTY});
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -75,10 +78,10 @@ afterEach(() => {
 /** The box, with what it asked for already back. */
 const box = async () => {
   const shown = render(
-    <MemoryRouter initialEntries={['/lucid-talk']}>
+    <MemoryRouter initialEntries={['/talk']}>
       <Routes>
-        <Route path="/lucid-talk" element={<Box />} />
-        <Route path="/lucid-talk/:slug" element={<p>the room</p>} />
+        <Route path="/talk" element={<Box />} />
+        <Route path="/talk/:slug" element={<p>the room</p>} />
         <Route path="/" element={<p>the shelf</p>} />
       </Routes>
     </MemoryRouter>,
@@ -107,6 +110,46 @@ test('the sheet inside the lid is the record, not a score', async () => {
   expect(screen.getByText('4 memories')).toBeInTheDocument();
   // 7 + 4, counted here rather than sent.
   expect(container.querySelector('.tally')?.textContent).toBe('Doses 97 · Remembered 11');
+});
+
+test('on your Mac each line says how the pill is taking you, unmarked', async () => {
+  const {container} = await box();
+  expect(container.querySelectorAll('.line .said')).toHaveLength(2);
+  expect(container.querySelector('.line.bare')).toBeNull();
+  expect(container.querySelector('[data-limit-mark]')).toBeNull();
+});
+
+test('in a browser, where you stand is held and its column is not drawn at all', async () => {
+  setHost(PAGE);
+  const {container} = await box();
+  const lines = container.querySelectorAll('.line');
+  expect(lines).toHaveLength(2);
+  // No standing word, no "never taken", no mark: the cell is gone.
+  expect(container.querySelector('.line .said')).toBeNull();
+  expect(screen.queryByText('close')).toBeNull();
+  expect(screen.queryByText('never taken')).toBeNull();
+  expect(container.querySelector('[data-limit-mark]')).toBeNull();
+  // The line keeps the pill's name, its doses and its memories, three columns.
+  for (const line of lines) expect(line).toHaveClass('bare');
+  expect(lines[0]!.querySelector('.tag')).toBeInTheDocument();
+  expect(screen.getByText('37 doses')).toBeInTheDocument();
+  expect(screen.getByText('4 memories')).toBeInTheDocument();
+  expect(container.querySelector('.tally')?.textContent).toBe('Doses 97 · Remembered 11');
+});
+
+test('one dose is one dose, and none is no doses', async () => {
+  const [first, second] = BOOK.pills;
+  const was = [first!.doses, second!.doses];
+  first!.doses = 1;
+  second!.doses = 0;
+  try {
+    await box();
+    expect(screen.getByText('1 dose')).toBeInTheDocument();
+    expect(screen.queryByText('1 doses')).toBeNull();
+    expect(screen.getByText('no doses')).toBeInTheDocument();
+  } finally {
+    [first!.doses, second!.doses] = was as [number, number];
+  }
 });
 
 test('the strength is set on the lid, and written where the game reads it', async () => {

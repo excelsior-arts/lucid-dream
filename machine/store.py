@@ -61,6 +61,7 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
+from starlette.requests import ClientDisconnect
 
 from . import log as LOG
 from . import paths as P
@@ -108,11 +109,32 @@ async def raw(req: Request, most: int = MOST) -> bytes | None:
     if said.isdigit() and int(said) > most:
         return None
     out = bytearray()
-    async for piece in req.stream():
-        out += piece
-        if len(out) > most:
-            return None
+    try:
+        async for piece in req.stream():
+            out += piece
+            if len(out) > most:
+                return None
+    except ClientDisconnect:
+        raise HungUp() from None
     return bytes(out)
+
+
+class HungUp(Exception):
+    """The caller went before its body had all arrived.
+
+    Not the machine's fault and not news: a page cuts off a call it no
+    longer needs -- an answer it has moved past, a page that was closed --
+    and sometimes the cut lands while the body is still on its way in.
+    Starlette raises on the read, and unhandled that was a full traceback in
+    the server's log under "Exception in ASGI application" every few
+    minutes of play. Answered with a short reply nobody is there to read,
+    which is what the situation is.
+    """
+
+
+def hung_up():
+    return JSONResponse({"error": "the caller hung up before its body had arrived"},
+                        status_code=400)
 
 
 def too_much(most: int):
@@ -134,7 +156,10 @@ async def asked(req: Request, most: int = MOST_LINE):
     out here: a body is a body, and a caller with a bug is one whatever it
     was asking for.
     """
-    body = await raw(req, most)
+    try:
+        body = await raw(req, most)
+    except HungUp:
+        return hung_up()
     if body is None:
         return too_much(most)
     try:
@@ -362,7 +387,10 @@ def routes(app):
         p = one(game, path)
         if p is None:
             return not_a_path(path)
-        body = await raw(req)
+        try:
+            body = await raw(req)
+        except HungUp:
+            return hung_up()
         if body is None:
             return too_much(MOST)
         beside(p, body)

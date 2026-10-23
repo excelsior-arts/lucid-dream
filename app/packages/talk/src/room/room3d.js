@@ -143,6 +143,31 @@ import {smallest} from './aim.js';
 
 export {THREE};
 
+/* The three r186 compensation, in one place. r186 made the physically based
+   materials conserve energy at the diffuse layer: light a surface reflects at
+   its specular interface no longer reaches its diffuse colour (direct light
+   weighted by 1 - Fresnel, hemisphere and ambient light by 1 - the specular
+   lobe's albedo; specular itself unchanged). Measured headless against r185
+   in the lover's and the thinker's rooms, the rough surfaces lost up to
+   1.4 % in code values -- most on the floor, seen at a grazing angle, least
+   on the walls, seen square on. So the diffuse is given back: every rough,
+   mostly dielectric material the room built has its albedo lifted by one
+   factor, fitted over both rooms. It is right on average; a floor and a wall
+   ask for slightly different amounts, and a factor cannot tell them apart.
+   The desert's own is in app/packages/world/src/desert/scene/fresnel-186.ts. */
+const DIFFUSE_LIFT_186 = 1.02;
+function liftDiffuse186(root) {
+  const lifted = new Set();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material)) {
+      if (lifted.has(m) || !m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) continue;
+      lifted.add(m);
+      if (m.roughness >= .5 && m.metalness < .5) m.color.multiplyScalar(DIFFUSE_LIFT_186);
+    }
+  });
+}
+
 /* Textures are drawn here rather than shipped: the game is offline, and a
    canvas costs less than a PNG anyway. */
 export function paint(px, draw) {
@@ -621,7 +646,9 @@ export function mount(spec, {stage, glass, under}) {
   const renderer = new THREE.WebGLRenderer({canvas, antialias: true, powerPreference: 'low-power'});
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));   // three models share this GPU
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // PCFShadowMap is the soft one now: PCFSoftShadowMap has drawn as it since
+  // r185 and is gone in r186, which says so in the console once per room.
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = rgb(P.void);
@@ -2560,6 +2587,7 @@ export function mount(spec, {stage, glass, under}) {
   room.told = knows;
 
   if (S.dress) S.dress(room);
+  liftDiffuse186(scene);
   /* And the room's rest pose, now that it has one: everything is composed,
      and nothing has been pressed. See `atRest`. */
   atRest();
@@ -3267,6 +3295,9 @@ export function mount(spec, {stage, glass, under}) {
     glide(1);                          // so a resize still shows something now
   }
 
+  // The gap between drawn frames while eased, in ms, and when one last was.
+  let eased = 0, drewAt = 0;
+
   function glide(dt) {
     const k = 1 - Math.pow(.0006, Math.min(dt, .25));
     eye.at.lerp(goal.at, k);
@@ -3278,7 +3309,14 @@ export function mount(spec, {stage, glass, under}) {
     camera.updateProjectionMatrix();
   }
 
+  /** Whether the camera is still on its way somewhere. */
+  function gliding() {
+    return eye.at.distanceToSquared(goal.at) > 1e-8
+      || eye.look.distanceToSquared(goal.look) > 1e-8 || Math.abs(goal.fov - eye.fov) > 1e-3;
+  }
+
   function resize() {
+    drewAt = 0;                      // a canvas resized is a canvas cleared
     smudge();                        // the type is re-sized, so it re-wraps
     camera.aspect = innerWidth / innerHeight;
     // Again, and not only at mount: a window dragged from a laptop panel to
@@ -3380,6 +3418,20 @@ export function mount(spec, {stage, glass, under}) {
     }
     if (fittingTick) fittingTick(t);
     if (S.tick) S.tick(room, t);
+    /* Eased: a reply is being written by a model on this same GPU (a page
+       with no machine behind it, see ease() below). The room is drawn a few
+       times a second rather than at the screen's rate, unless a hand has set
+       something moving or an animation is running -- those keep their frames.
+       Everything above still runs, so the moon and the clock are where they
+       would have been and the next drawn frame is no jump. A camera still
+       gliding keeps its frames too: the glass is laid on the room every frame
+       and would slide off a picture that was not. What is skipped is the
+       GPU's part: the shadow sheet, the reflections and the render. */
+    if (eased && !stirring && !running.length && !gliding() && now - drewAt < eased) {
+      layOut();
+      return;
+    }
+    drewAt = now;
     shadows();
     reflections();
     renderer.render(scene, camera);
@@ -3512,6 +3564,14 @@ export function mount(spec, {stage, glass, under}) {
 
   return {
     scene, camera, renderer, room, page,
+    /* Draw at most every `ms` while something else needs the GPU, or at the
+       screen's rate again with 0. Measured with a 4B writing in this browser
+       on this Mac, at a retina 1728x1000: a key's input to its paint at the
+       90th percentile went from 40-48 ms with the room drawn every frame to
+       24 ms with it held, which is what an idle room gives. */
+    ease(ms) {
+      eased = Math.max(0, +ms || 0);
+    },
     stop() {
       alive = false;
       cancelAnimationFrame(loop);

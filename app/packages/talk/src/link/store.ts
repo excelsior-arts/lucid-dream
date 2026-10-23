@@ -26,7 +26,13 @@ export interface Turn {
   streaming?: boolean;
   /** Its voice never played -- interrupted, or the page was not listening. */
   unheard?: boolean;
+  /** It broke off part-way -- the GPU let go, the stream dropped -- and says
+      so at its end. Finished all the same: no caret. */
+  cut?: boolean;
 }
+
+/** Whether the pill is being woken, and whether a line waits on it. */
+export type Waking = '' | 'waking' | 'line';
 
 export interface LinkState {
   // ---- the socket
@@ -46,6 +52,16 @@ export interface LinkState {
   nowhere: boolean;
   /** Nothing on the other end of the machine. */
   adrift: boolean;
+  /** Why, where the page has its own words for it (Told, in @lucid/machine):
+      the GPU in this browser letting go of the pill, the pill stalling. ''
+      for the banner's own. */
+  adrift_said: string;
+  /** The pill stopped answering part-way -- it stalled, the GPU let go of
+      it, the stream dropped -- and is being woken: said quietly over the
+      deck, not as a banner, and nothing is locked. `line` is a line given
+      meanwhile, answered once it is up. Gone with the next reply's first
+      word. '' when it is answering. */
+  waking: Waking;
 
   // ---- what this page's conversation is doing
   //
@@ -102,6 +118,8 @@ export const EMPTY: LinkState = {
   sid: '',
   nowhere: false,
   adrift: false,
+  adrift_said: '',
+  waking: '',
   state: 'stopped',
   running: false,
   input_mode: 'type',

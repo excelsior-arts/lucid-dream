@@ -9,20 +9,23 @@
  *
  * Ported from session.py `reply_to`, `_keep_unanswered` and `_reply`.
  */
-import {VoiceRefused, runReply, streamChat} from '@lucid/machine';
+import {NotAnswering, Told, VoiceFailed, VoiceRefused, awaitReady, models, runReply, streamChat, wholeSentences} from '@lucid/machine';
 import type {Message, Reply} from '@lucid/machine';
-import {hatch, sound} from '@lucid/shell';
-import {apply as applyMsg} from '../link/reduce';
-import {link} from '../link/store';
+import {hatch, host, sound} from '@lucid/shell';
 import {afterTurn, sceneOpening} from './after';
 import * as F from './files';
 import {
   costOfTurn, current, generation, playback, remainingS, replying, takeFloor,
 } from './floor';
 import {take as takeHands} from './hands';
-import {scenePress, statePress, systemFor, unstick, windowCut} from './prompt';
+import {front, readAgain, voiceOf} from './character';
+import {chat} from './refusal';
+import {
+  asSent, offersTags, placeLine, scenePress, soundPress, statePress, unstick, windowCut,
+} from './prompt';
 import type {Open} from './room';
 import {Nowhere, lastWrote, openRoom, opened, write} from './room';
+import {surface} from './surface';
 
 export type {Open} from './room';
 export {leaveRoom, openRoom, opened} from './room';
@@ -45,7 +48,31 @@ export {current, playInto} from './floor';
 function trouble(e: unknown, what: string, {adrift = true} = {}): void {
   const why = e instanceof Error ? e.message : String(e);
   hatch.say(`${what}: ${why}`, 'error');
-  if (adrift) link.setState({adrift: true, state: 'idle'});
+  /* And where the page has its own words for what went wrong -- the GPU in
+     this browser letting go of the pill, the pill stalling (Told) -- the
+     banner says them rather than only that the pill did not answer. */
+  if (adrift) surface().adrift(true, e instanceof Told ? e.message : '');
+}
+
+/* The pill stopped answering part-way: it stalled, the GPU let go of it, the
+ * stream dropped (NotAnswering, stall.ts in @lucid/machine). Not the banner:
+ * the reply is already finished on the glass, its last words fading where it
+ * broke, and what is left to say is that the pill is being woken -- quietly,
+ * over the deck, with nothing locked (Eugene, 10-10). Typing and Talk go on
+ * working, and a line given meanwhile is answered once it is up. The label
+ * goes the moment the pill is up again, nobody having to say anything to
+ * find out (Eugene, 10-10) -- or, with a line waiting on it, with that
+ * reply's first word. Woken here as well as by the machine itself (a Mac's
+ * restarts its model server on a stall): a browser's starts again from its
+ * cache only when asked, and this asks. One that never comes up leaves the
+ * label where it is, which is true. */
+function notAnswering(e: NotAnswering): void {
+  hatch.say(`the pill stopped answering: ${e.message}`, 'warn');
+  surface().waking('waking');
+  void models.start()
+    .then(() => awaitReady('llm'))
+    .then((up) => { if (up && surface().isWaking() === 'waking') surface().waking(''); })
+    .catch(() => {});
 }
 
 export interface TurnRequest {
@@ -61,6 +88,11 @@ export interface TurnRequest {
       the transcript stays a conversation rather than filling with
       machine-generated "keep going" lines. */
   hidden?: boolean;
+  /** Told the moment this turn has the floor and is about to be answered --
+      after whatever was speaking has been cut and has written its half. A
+      caller that wants the reply to *this* turn, and not the tail of the one
+      before it, waits for this rather than for the next line to arrive. */
+  onTaken?: () => void;
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' ? v : null);
@@ -106,7 +138,17 @@ function fingerprint(text: string): string {
 /** Say something, and be answered. */
 export async function runTurn(o: TurnRequest): Promise<void> {
   const text = (o.text || '').trim();
+  /* A line somebody said that goes no further says so, at the quietest
+     level there is: from the room, a turn that was heard and never shown is
+     a microphone that stopped working. Never the words. */
+  const dropped = (why: string) => {
+    if (o.heard) hatch.say(`a heard line (${text.length} characters) dropped: ${why}`, 'debug');
+  };
   if (!text) return;
+  /* No words anywhere: a browser that cannot run the pill, stepped into to
+     look around. Nothing is asked of a model that is not there, and nothing
+     is said about it -- the line and the keys already say so. */
+  if (host().llm === 'none') { dropped('there is no language model here'); return; }
   /* Whose turn this was meant to be, and taken here rather than at the floor:
      everything below is a promise away, so five Skips in one breath would all
      read the number after the last of their silences and all five would still
@@ -120,17 +162,14 @@ export async function runTurn(o: TurnRequest): Promise<void> {
        which has said so and put the banner up. It is not the machine being
        unreachable and must not be reported as it. */
     if (!(e instanceof Nowhere)) trouble(e, 'could not open this room');
+    else dropped('this room is not one that can be opened');
     return;
   }
 
   /* Your turn on the screen first, and on disk second. The bubble is the answer
      to the key you pressed, and a page that waited for a file to be written
      before drawing it would feel like a page that had not heard you. */
-  if (!o.hidden) {
-    link.setState(applyMsg(link.getState(), {
-      type: 'user', text, seconds: o.seconds ?? 0,
-    }));
-  }
+  if (!o.hidden) surface().transcript({type: 'user', text, seconds: o.seconds ?? 0});
 
   /* Anything that takes the floor while we queue -- Stop, Skip, a cut-in --
      moves the number on, and an unprompted turn that wakes up behind one of
@@ -138,7 +177,10 @@ export async function runTurn(o: TurnRequest): Promise<void> {
      not five. */
   const free = await takeFloor();
   try {
-    if (opened() !== room) return;      // the room changed while we queued
+    if (opened() !== room) {            // the room changed while we queued
+      dropped('the room changed while it waited its turn');
+      return;
+    }
     if (gen !== generation()) {
       if (o.hidden) return;             // silenced, or superseded, while queued
       /* Somebody's own words, and Stop pressed while they waited their turn.
@@ -153,6 +195,7 @@ export async function runTurn(o: TurnRequest): Promise<void> {
       await keepUnanswered(room, text);
       return;
     }
+    o.onTaken?.();
     await reply(room, text, !!o.hidden);
   } finally {
     free();
@@ -205,6 +248,34 @@ export function keepOnLeaving(): boolean {
     and the answer stops mattering the moment the reply is collected. */
 const kept = new WeakSet<Reply>();
 
+/** The tags the voice speaking this reply performs: the room's voice's, and
+ * none when the reply will not be heard -- the sound off or the knob at zero,
+ * a room told to be read and not heard, or nothing to speak with (a Mac
+ * without its voice, a browser whose voice is not up). The same test that
+ * decides whether the reply goes to the voice at all; see `voice:` in reply.
+ *
+ * Read per turn, so the prompt follows what will actually speak: a tagless
+ * voice is asked for sounds as words (the `{if tags}` blocks, see ifTags in
+ * prompt.ts) and a voice that performs tags is offered them. The front of
+ * the prompt moves only when this does, so the server's cache misses once
+ * on the turn after an engine change or after the sound goes off or comes
+ * back, and holds for every turn in between. */
+export function heardTags(room: Open): readonly string[] {
+  return sound.silent || room.silent || !host().voice ? [] : room.tags ?? [];
+}
+
+/** Whether the room is said once, at the end of the system prompt, rather
+ * than pressed onto his every line: with the scene off, where it is the
+ * persona's place all evening and never moves -- a browser's default
+ * (config.ts PAGE_DEFAULTS), and a player's choice anywhere. See placeLine.
+ * With the scene on, it is pressed as it always was. */
+const placedOnce = (room: Open): boolean => !room.cfg.scene.enabled;
+
+/** The system prompt for a reply: the front, and the room where it is said
+    once. The same bytes for the warm-up and every reply, or the cache misses. */
+const systemOf = (room: Open, tags: readonly string[]): string =>
+  front(room, tags) + (placedOnce(room) ? placeLine(room.scene, room.prompts, voiceOf(room)) : '');
+
 /** Push the conversation's prefix through the model once, so the first reply
  * of the evening is not the one that pays for it.
  *
@@ -218,14 +289,16 @@ const kept = new WeakSet<Reply>();
 export async function warmPrefix(room: Open): Promise<boolean> {
   if (room.warmed || opened() !== room) return false;
   room.warmed = true;
-  const system = systemFor(room.persona, room.prompts, room.memory, room.relation);
+  const tags = heardTags(room);
+  const system = systemOf(room, tags);
   const cut = windowCut(room.history, {
     contextTurns: room.cfg.llm.context_turns,
     contextWords: room.cfg.llm.context_words,
     from: room.windowFrom,
   });
   room.windowFrom = cut.from;
-  const messages: Message[] = [{role: 'system', content: system}, ...cut.messages];
+  const messages: Message[] = [
+    {role: 'system', content: system}, ...asSent(readAgain(cut.messages), offersTags(room.prompts, tags))];
   /* A chat has to end with somebody's line for the model's template to accept
      it -- a system prompt alone was refused -- and what is being bought here is
      the prefix in front of that line, which is the same bytes whatever the line
@@ -282,7 +355,7 @@ async function keptHisLine(room: Open, row: F.Row): Promise<boolean> {
  */
 function lostIt(): void {
   hatch.say('the pill was not asked: that line is not on disk', 'warn');
-  link.setState({state: 'idle'});
+  surface().state('idle');
 }
 
 async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
@@ -301,7 +374,7 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
     extra.push({role: 'user', content: said});
     if (hands) {
       room.history.push({role: 'user', content: hands});
-      link.setState(applyMsg(link.getState(), {type: 'user', text: hands, seconds: 0}));
+      surface().transcript({type: 'user', text: hands, seconds: 0});
       if (!await keptHisLine(room, {kind: 'turn', role: 'user', content: hands})) {
         lostIt();
         return;
@@ -318,9 +391,14 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
     await sceneOpening(room);
   }
 
-  link.setState({state: 'thinking', adrift: false});
+  surface().adrift(false);
+  /* A line given while the pill is being woken: answered once it is up, and
+     the label over the deck says so. */
+  if (!hidden && surface().isWaking()) surface().waking('line');
+  surface().state('thinking');
 
-  const system = systemFor(room.persona, room.prompts, room.memory, room.relation);
+  const tags = heardTags(room);
+  const system = systemOf(room, tags);
   // The prefix, named rather than quoted. See fingerprint.
   hatch.say(frontLine(system, 'sent'), 'debug');
 
@@ -337,11 +415,35 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
   const messages: Message[] = [
     {role: 'system', content: system},
     ...scenePress(
-      statePress(
-        unstick([...cut.messages, ...extra]),
-        room.relation),
-      room.scene, room.prompts),
+      soundPress(
+        statePress(
+          unstick([...asSent(readAgain(cut.messages), offersTags(room.prompts, tags)), ...extra]),
+          room.relation, undefined, voiceOf(room)),
+        room.prompts, tags, voiceOf(room)),
+      placedOnce(room) ? '' : room.scene, room.prompts, voiceOf(room)),
   ];
+  /* And his line is kept as it was sent, the room and the standing pressed on
+     it and all, for the model to be shown again next turn.
+
+     That is the prompt cache. mlx_lm can only go on from a point it saved --
+     this model's cache cannot be cut back to a shorter prefix -- and the
+     point it saves is the end of the prompt it was sent: this line with its
+     presses on. Shown it bare next turn, the prompt parted from the saved one
+     at the start of this line, and the only thing the server could use again
+     was the system prompt: every turn read the whole conversation again.
+     Measured over a ten-turn evening, at the median: 740-930 tokens read and
+     2.1-3.3 s to the first token, against about 240 tokens and 1.0-1.4 s kept
+     as sent; only a turn where the window is cut again reads it all. The
+     window is still measured on the words (see windowCut above), or the
+     presses would fill it and cut it every other turn. The words on screen
+     and on disk are the same words they were; this is `sent`, which only the
+     model is shown (see Kept). Not for a turn the room asked for itself: its
+     nudge is not in the history to keep. */
+  const his = room.history[room.history.length - 1];
+  const sentLast = messages[messages.length - 1]!;
+  if (!hidden && his?.role === 'user' && sentLast.role === 'user' && sentLast.content !== his.content) {
+    his.sent = sentLast.content;
+  }
 
   const speaker = playback();
   if (!speaker) {
@@ -361,36 +463,60 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
      variable of its own rather than read off the call below, which has not
      returned yet the first time the reply says anything. */
   let mine: Reply | null = null;
+  /* Down the page's lane, where the page has one: a walk puts the
+     narrator's words ahead of the ground it is drawing and cuts a region
+     short for them; a room runs it straight. */
+  const ran = await surface().run('speech', async (signal) => {
   const it = runReply({
+    signal,
+    /* Through the refusal guard where the model in use is a censored one:
+       see refusal.ts. Straight to the model otherwise. */
+    chat,
     messages,
     temperature: num(room.persona.temperature),
     top_p: num(room.persona.top_p),
     max_tokens: num(room.persona.max_tokens),
     /* And whether it is spoken at all. Fully muted is a text-only evening:
+       (muted, or the knob at zero: sound.silent)
        nothing goes to the voice, so no socket is opened and the machine loads
        no voice for words nobody is going to hear. Read here, once, at the top
        of the reply -- turning the sound back on lands on the next one, because
-       this one's first half was never sent anywhere. */
-    voice: sound.hush ? null : room.voice,
+       this one's first half was never sent anywhere. And nothing to speak
+       with at all -- a page with no machine behind it -- is the same. */
+    voice: sound.silent || room.silent || !host().voice ? null : room.voice,
     playback: speaker,
     onDelta: (delta) => {
-      link.setState(applyMsg(link.getState(), {type: 'assistant_delta', text: delta}));
+      // Answering again: whatever was being woken is up.
+      surface().waking('');
+      surface().transcript({type: 'assistant_delta', text: delta});
     },
-    onSpeaking: () => link.setState({state: 'speaking'}),
+    onSpeaking: () => surface().state('speaking'),
     /* What went to the voice, in counts: how the reply was cut, and what the
        queue was when each cut was made. For reading a session back against
        the splitter's rule -- see mergeFor -- without a word of it in the log. */
     onChunk: (c) => hatch.say(
       `voice chunk ${c.n}: ${c.words} words, ${c.chars} chars — ${c.queuedS}s queued, cap ${c.merge}`
       + (c.paragraph ? ', ends a paragraph' : ''), 'debug'),
-    onDone: (text) => {
-      answered = text;
-      link.setState(applyMsg(link.getState(), {type: 'assistant_done', text}));
+    onDone: (text, _spoken, written, cut) => {
+      /* A reply that broke off -- a stall, a GPU letting go, a stream
+         dropped (notAnswering above) -- is finished here like any other: it stays on
+         the glass and on disk as far as it got, marked cut, with no caret.
+         The model is shown only its whole sentences (asSent in prompt.ts),
+         and so is the judgement. */
+      answered = cut ? wholeSentences(text) : text;
+      surface().transcript({type: 'assistant_done', text, ...(cut ? {cut} : {})});
+      /* Nothing heard: the page has been told to take its caret down, and
+         there is no line to keep or write. */
+      if (!text) return;
       // Unless the page already left with it: a bfcache restore comes back to
       // the same reply, and its line is on disk and in this history already.
       if (mine && kept.has(mine)) return;
-      room.history.push({role: 'assistant', content: text});
-      stored = write(room, {kind: 'turn', role: 'assistant', content: text})
+      /* The words, and -- where its voice made a sound in them -- the reply
+         as it was written, for the model to be shown next turn. See Kept. */
+      const sent = written && written !== text ? {sent: written} : {};
+      const broke = cut ? {cut: true} : {};
+      room.history.push({role: 'assistant', content: text, ...sent, ...broke});
+      stored = write(room, {kind: 'turn', role: 'assistant', content: text, ...sent, ...broke})
         .catch((e: unknown) => trouble(e, 'could not write that down', {adrift: false}));
     },
     onTrouble: (e) => {
@@ -403,6 +529,16 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
         hatch.say(`${e.message} — /persona_tune voice <name> sets it`, 'warn');
         return;
       }
+      if (e instanceof NotAnswering) {
+        notAnswering(e);
+        return;
+      }
+      /* The voice could not say a chunk: the words are there, at the
+         reading pace. The console's, not the banner's. */
+      if (e instanceof VoiceFailed) {
+        hatch.say(`the voice could not say that — ${e.message}; the words go on`, 'warn');
+        return;
+      }
       trouble(e, 'the pill did not answer');
     },
   });
@@ -410,12 +546,15 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
   replying(it);
   await it.done;
   replying(null);
+  return true;
+  }, 'reply');
+  if (ran === undefined) hatch.say('the reply was not asked for: the lane was taken', 'debug');
   await stored;
 
   if (!answered) {
     // Cut off before a single token arrived: an empty turn would go into the
     // transcript and back to the model as context.
-    link.setState({state: 'idle'});
+    surface().state('idle');
     return;
   }
 
@@ -440,5 +579,5 @@ async function reply(room: Open, said: string, hidden: boolean): Promise<void> {
      the floor until they came back: no press answered, no run resumed, and no
      way to see why. */
   while (remainingS() > 0.05 && !playback()?.held && opened() === room) await sleep(100);
-  link.setState({state: 'idle'});
+  surface().state('idle');
 }

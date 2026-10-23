@@ -101,3 +101,10 @@
   :where(#deck) .key { min-width:29px; padding:6px 2px 5px; }
   #deck { gap:2px; }
 }
+
+/* A mark worn in a key's corner (a part limited where the page runs): drawn
+   over the key, not in its row, so the key keeps its size. */
+:where(#deck) .key { position:relative; }
+:where(#deck) .key .key-mark { position:absolute; top:3px; right:3px; display:flex;
+                                font-style:normal; line-height:0; pointer-events:none; }
+:where(#deck) .key .key-mark > * { margin:0; width:9px; height:9px; }

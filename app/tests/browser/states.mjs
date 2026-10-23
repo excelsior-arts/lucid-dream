@@ -161,7 +161,7 @@ async function room(ctx, slug, sid) {
     try { localStorage.removeItem('lucid.draft'); localStorage.removeItem('lucid.unsent'); }
     catch { /* private window */ }
   });
-  await page.goto(`${BASE}/lucid-talk/${slug}?session=${sid}`, {waitUntil: 'networkidle'});
+  await page.goto(`${BASE}/talk/${slug}?session=${sid}`, {waitUntil: 'networkidle'});
   await page.waitForTimeout(2500);
   try {
     await page.waitForFunction(

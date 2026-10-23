@@ -30,18 +30,20 @@ import {useShallow} from 'zustand/react/shallow';
 import type {Knows, Mounted, RoomHandle, RoomSpec} from '../../room';
 import {canBeHeard} from '@lucid/audio';
 import {awaitReady, models} from '@lucid/machine';
-import {expose, hatch, sound, usePage} from '@lucid/shell';
-import {UNSENT, ask, store, stored} from '@lucid/ui';
+import {expose, hatch, host, onAskForCard, onHost, sound, useLimited, usePage} from '@lucid/shell';
+import {UNSENT, ask, openLimit, store, stored} from '@lucid/ui';
 import ConfirmDialog from '@lucid/ui/ConfirmDialog/ConfirmDialog';
 import Glass from '@lucid/ui/Glass/Glass';
 import Sheet from '@lucid/ui/Sheet/Sheet';
 import Stage from '@lucid/ui/Stage/Stage';
 import TypeLine from '@lucid/ui/TypeLine/TypeLine';
 import Banners from '../../ui/Banners/Banners';
+import {modelWanted, openModelCard} from '../../ui/ModelCard/open';
 import {openCharacter, openForget, openMemory, openSessions} from '../../ui/Sheets/sheets';
 import TapeDeck from '../../ui/TapeDeck/TapeDeck';
 import Transcript from '../../ui/Transcript/Transcript';
 import {audio, micOff, micOn, recognizer} from './audio';
+import {onReplayState, replay, replayState} from './replay';
 import {useDots} from './dots';
 import {FIGURE, TYPING} from './kept';
 import type {KeyId, Machine} from '../../ui/TapeDeck/deck';
@@ -63,6 +65,10 @@ import '../../rooms/thinker.css';
    At module scope because the stage tears its room down and builds it again
    whenever either changes, and a function written in a render is a different
    function every time. */
+/* How often the room is drawn while a model in this browser writes: a few
+   frames a second, enough that the moon and the rain do not stop. */
+const EASED_MS = 125;
+
 const roomOf = (slug: string) => import('../../rooms').then((m) => m.roomOf(slug));
 const build = (spec: RoomSpec, into: Mounted) =>
   import('../../rooms').then((m) => m.build(spec, into));
@@ -117,6 +123,8 @@ export default function Room() {
     input_mode: x.input_mode,
     nowhere: x.nowhere,
     adrift: x.adrift,
+    adrift_said: x.adrift_said,
+    waking: x.waking,
     minutes: x.minutes,
     mic_follow: x.mic_follow,
     persona_name: x.persona_name,
@@ -133,10 +141,12 @@ export default function Room() {
      * whatever they had come for. The microphone does not do that, and this is
      * the same kind of thing: a way in that you choose. Unless there is no
      * microphone on this address, where typing is the only way in and a line
-     * waiting is the kindest thing there is. Either way a choice, once made,
-     * outranks both. */
+     * waiting is the kindest thing there is. And in a browser, whose ear is a
+     * download most visitors never make: typing is its way in, and speaking
+     * the one somebody chooses. Either way a choice, once made, outranks
+     * them. */
     const saved = stored(TYPING);
-    return saved ? saved === '1' : !canBeHeard();
+    return saved ? saved === '1' : !canBeHeard() || !host().machine;
   });
   const [unheard, setUnheard] = useState<ReadonlySet<number>>(new Set());
 
@@ -360,10 +370,38 @@ export default function Room() {
            through the box, and the first reply paid the cold start. And once
            it is up, the conversation's prefix pushed through it, so the first
            reply answers from the second token -- see warmPrefix. */
-        void models.start()
+        const begin = () => void models.start()
           .then(() => awaitReady('llm'))
-          .then((up) => { if (up && !gone) return warmPrefix(room); return false; })
+          /* Not where the words come from this browser: its engine keeps one
+             conversation, and a warm would be the conversation the first turn
+             then finds is not its own. */
+          .then((up) => { if (up && !gone && host().llm === 'machine') return warmPrefix(room); return false; })
           .catch(() => {});
+        /* Unless there is nothing to start: a Mac with no model on its shelf,
+           or a page with no machine that has not chosen one for this browser.
+           The first time a pill is opened there, it asks which -- and the room
+           carries on from whatever it was given. See ModelCard. */
+        void modelWanted().then((wanted) => {
+          if (gone) return;
+          /* Where no model can run here at all, the card says so and offers
+             the room anyway, to look around; its other way is the box. */
+          if (wanted) openModelCard({onReady: begin, onLeave: () => {}, onBox: () => navigate('/talk')});
+          else begin();
+        });
+        /* And the voice, once it is up: its kernels, its buffers and the
+           speaker conditioning for this pill's clip, paid for while somebody
+           is still looking at the room rather than on the first sentence of
+           the first reply (measured in machine/models.py, Voice.warm: 1.36s
+           against 0.82s for the same line). Nobody hears it. The voice is
+           asked for by the mute effect below; this waits for it, and a room
+           that is silent (muted, or the knob at zero) or left meanwhile
+           warms nothing. */
+        if (!sound.silent && host().voice) {
+          void awaitReady('tts')
+            .then((up) => (up && !gone && opened() === room && !sound.silent
+              ? models.warm({kind: 'voice', voice: room.persona.voice}) : null))
+            .catch(() => {});
+        }
         /* And anything a hand did on the way in. A press is the usual way an
            evening starts, and it arrives before there is a transcript for it
            to be a turn in -- so it waits, and this is what asks for it. */
@@ -446,7 +484,9 @@ export default function Room() {
     if (b.streaming) {
       pacer.feed(growing && b.text.startsWith(a.text) ? b.text.slice(a.text.length) : b.text);
     } else if (growing) {
-      pacer.done(b.text);
+      // Broken off: over on the glass now, not when its voice runs out.
+      if (b.cut) pacer.cut(b.text);
+      else pacer.done(b.text);
     }
   }), [pacer]);
 
@@ -472,6 +512,8 @@ export default function Room() {
   }), []);
 
   // ---- what the keys mean --------------------------------------------------
+  /* A browser that cannot run the pill at all, stepped into anyway. */
+  const noWords = useLimited('pill');
   const machine: Machine = {
     state: s.state,
     running: s.running,
@@ -486,6 +528,7 @@ export default function Room() {
     captureOn,
     micWarming,
     typing,
+    noWords: !!noWords,
   };
 
   /* Once an evening, and only the first time. The pulse answers exactly one
@@ -518,7 +561,7 @@ export default function Room() {
         // The last thing the pill said, which is what Again says again.
         const said = [...now.transcript].reverse().find((t) => t.role === 'assistant');
         if (!said) break;
-        void speakAgain(said.text);
+        replay(said.text, speakAgain);
         break;
       }
       case 'play':
@@ -560,14 +603,19 @@ export default function Room() {
            that is not there. And the recognizer behind it is asked for here
            too, because until somebody presses this nobody is being listened
            to and nothing should be loaded to listen with. See audio.ts. */
+        /* Nothing to hear with in a browser: the key says so, and how
+           to run it on your Mac, rather than asking for a device. */
+        if (openLimit('ear')) break;
         if (capture.on) micOff();
         else void micOn();
         break;
       case 'type':
+        /* Held open where the pill cannot run: the key is the way to why. */
+        if (openLimit('pill')) break;
         showType(!typing);
         break;
       case 'eject':
-        navigate('/lucid-talk');
+        navigate('/talk');
         break;
     }
   }, [capture, navigate, playback, showType, typing]);
@@ -580,6 +628,7 @@ export default function Room() {
     if (playback.held) playback.hold(false);
     // And the floor: a line typed over a reply is a line typed instead of the
     // rest of it. See onHeard in audio.ts, which says why.
+    if (host().llm === 'none') return false;
     cutIn();
     const now = link.getState();
     void runTurn({slug: now.slug || slug, sessionId: now.sid, text});
@@ -645,34 +694,79 @@ export default function Room() {
    * that will want it rather than in front of it.
    *
    * And the words: with no voice to pace them against they are let out at a
-   * reading pace instead, which is the pacer's other mode. */
+   * reading pace instead, which is the pacer's other mode.
+   *
+   * The knob at zero is the same evening as the switch (sound.silent, said
+   * as lucid:silent): nothing heard, so nothing spoken and no voice held.
+   * A knob dragged through zero asks and un-asks within a second, which the
+   * grace on the other side absorbs; nothing is debounced here. */
   useEffect(() => {
-    const told = (hush: boolean) => {
-      pacer.reading(hush);
-      void models.want('tts', !hush).catch(() => {});
+    const told = (silent: boolean) => {
+      /* Nothing to speak with at all -- a page with no machine and no voice
+         in it -- is the same evening as the sound off: the words at a
+         reading pace. */
+      pacer.reading(silent || !host().voice);
+      /* A Mac without its voice on the shelf has nothing to load: it says
+         so on the rail, and the card brings it down. A page asks either way:
+         its voice is not up until it is wanted (page/voice.ts). */
+      void models.want('tts', !silent && (!host().machine || host().voice)).catch(() => {});
     };
-    told(sound.hush);
+    told(sound.silent);
     const back = (e: Event) => {
-      const hush = !!(e as CustomEvent<boolean>).detail;
+      const silent = !!(e as CustomEvent<boolean>).detail;
       // Nothing on the glass is unheard once the sound is back.
-      if (!hush) setUnheard(new Set());
-      told(hush);
+      if (!silent) setUnheard(new Set());
+      told(silent);
     };
-    document.addEventListener('lucid:hush', back);
-    return () => document.removeEventListener('lucid:hush', back);
+    document.addEventListener('lucid:silent', back);
+    /* And a voice that arrives after the room did -- one fetched in this
+       browser, up a minute into the evening: the pace is the voice's from
+       then on. */
+    let had = host().voice;
+    const moved = onHost(() => {
+      if (host().voice === had) return;
+      had = host().voice;
+      pacer.reading(sound.silent || !had);
+    });
+    return () => {
+      document.removeEventListener('lucid:silent', back);
+      moved();
+    };
   }, [pacer]);
 
-  const onReplay = useCallback((text: string) => {
-    void speakAgain(text);
+  /* The first-open card, at its voice or ear section, for the voice's switch
+     and the microphone when they find their part not downloaded: the card is
+     this game's, so a room is where it can be opened from. */
+  useEffect(() => onAskForCard((section) => openModelCard({onReady: () => {}, onLeave: () => {}, focus: section})), []);
+
+  /* A model writing a reply on this GPU -- a page with no machine, whose
+     words come from the browser -- and the room eases off its frames while
+     it does, so the browser's own paint is not starved: typing into the line
+     during a reply lagged two to three frames behind the keys. Nothing says
+     this on the machine, whose model has a GPU process of its own to queue
+     in, and the room draws as it always has there. */
+  useEffect(() => {
+    const busy = (e: Event) => {
+      room.current?.ease((e as CustomEvent<boolean>).detail ? EASED_MS : 0);
+    };
+    document.addEventListener('lucid:generating', busy);
+    return () => document.removeEventListener('lucid:generating', busy);
   }, []);
+
+  /* The play key on a bubble: whatever stands between the press and the
+     sound, undone once -- the sound off, the voice off, or no voice at all,
+     which opens the panel at it. See replay.ts. */
+  const onReplay = useCallback((text: string) => {
+    replay(text, speakAgain);
+  }, []);
+  const replaying = useSyncExternalStore(onReplayState, replayState);
 
   const onUnheard = useCallback((text: string) => {
     /* Pressing it turns the sound back on and says the line — both halves,
        because a mark that only explains itself sends somebody hunting for a
-       switch on another screen. */
-    if (sound.hush) sound.setHush(false);
+       switch on another screen. The same press as the play key's. */
     setUnheard(new Set());
-    void speakAgain(text);
+    replay(text, speakAgain);
   }, []);
 
   // ---- the console's own commands ------------------------------------------
@@ -756,6 +850,15 @@ export default function Room() {
         }, 1000);
         return 'meter on — a line a second; /mic_meter again stops it';
       });
+
+    /* The first-open card, on purpose: another size of the language model,
+       from in a room. On a Mac it is the shelf's three, fetched if they are
+       not there; in a browser, the builds that run in it. */
+    command('model_choose', 'which language model this pill runs on — download another', () => {
+      if (!here.current) return 'this is not a room — open a pill first';
+      openModelCard({onReady: () => {}, onLeave: () => {}});
+      return '';
+    });
 
     command('session_new', 'begin a fresh conversation with this pill', () => {
       if (!here.current) return 'this is not a room — open a pill first';
@@ -893,7 +996,7 @@ export default function Room() {
     expose('audio', {playback, capture, pacer, vad});
   }, [playback, capture, pacer, vad]);
 
-  if (unknown) return <Navigate to="/lucid-talk" replace />;
+  if (unknown) return <Navigate to="/talk" replace />;
 
   return (
     <>
@@ -910,6 +1013,7 @@ export default function Room() {
           heard={dots.heard}
           musing={dots.musing}
           onReplay={onReplay}
+          replay={replaying}
           onDelete={onDelete}
           onUnheard={onUnheard}
         />
@@ -924,7 +1028,9 @@ export default function Room() {
           <Banners
             nowhere={s.nowhere}
             adrift={s.adrift}
-            onBack={() => navigate('/lucid-talk')}
+            said={s.adrift_said}
+            waking={s.waking}
+            onBack={() => navigate('/talk')}
           />
           <TapeDeck
             machine={machine}
@@ -940,6 +1046,7 @@ export default function Room() {
               onSubmit={onSend}
               onEscape={() => showType(false)}
               onRestored={() => hatch.say('restored what you had typed')}
+              limit="pill"
             />
           </TapeDeck>
         </div>

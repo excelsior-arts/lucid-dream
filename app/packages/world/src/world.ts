@@ -16,18 +16,24 @@
  *
  * ---- on determinism --------------------------------------------------------
  *
- * Rapier is deterministic in the way that matters and not in the way it is
- * often wished to be: the same operations, issued in the same order, against
- * the same build, give the same result, every time, exactly. It does not
- * promise the same result across architectures or across versions — the
- * floating point is the platform's, and a different build may reorder the
- * solver.
+ * Rapier promises more than it is usually given credit for: its JavaScript
+ * and wasm build is cross-platform deterministic, so the same version, the
+ * same initialisation and the same operations in the same order give the same
+ * result on somebody else's machine as on this one. What it warns about is
+ * the arithmetic on *this* side of the boundary — JavaScript's own sin, cos,
+ * pow and the rest are the engine's, not the standard's, and a number that
+ * built an input to the simulation carries whatever that engine made of it
+ * into everything downstream. Our ground is a heightfield of trigonometry and
+ * our motion is worked out the same way, so the guarantee is Rapier's and the
+ * risk is ours.
  *
  * So nothing is ever *stored* as a position. A save is a count per name, and
  * opening it replays the same shoves in the same order against the build that
  * is running (see replay.ts). That is what makes a room a pure function of
  * the clicks even though a physics engine is in the middle of it: the clicks
- * are what is written down, and the physics is redone.
+ * are what is written down, and the physics is redone — which is also the one
+ * repair that works when a browser's maths does differ, since a position that
+ * was never written down cannot be wrong.
  */
 import * as RAPIER from '@dimforge/rapier3d-compat';
 

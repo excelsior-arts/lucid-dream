@@ -13,6 +13,11 @@ const room = () => import('./routes/room/Room');
 
 export const talk: Manifest = {
   slug: 'lucid-talk',
+  /* The address, which is not the name: a player's files stay under
+     lucid-talk/ whatever this says. /lucid-talk was the address until
+     2026-10-08, and still arrives here. */
+  path: 'talk',
+  was: ['lucid-talk'],
   name: 'Lucid Talk',
   blurb: 'A box of pills. Take one and dream out loud.',
   routes: () => [
@@ -36,9 +41,9 @@ export const talk: Manifest = {
  * microphone's thresholds. Those are the machine's — one of each, however many
  * games are on the shelf — and are read from `GET /machine`.
  *
- * Two settings GAME.md carried are gone rather than moved. `idle_stop_minutes`
- * is the machine's own watchdog and is set there (IDLE_MINUTES in
- * machine/machine.py); `warm_on_open` stopped being read when the conversation
+ * Two settings GAME.md carried are not here. `idle_stop_minutes` is the
+ * machine's own watchdog and is set there, in userdata/config.json (see
+ * machine/config.py); `warm_on_open` stopped being read when the conversation
  * moved into the page, which warms on the way into a room either way.
  */
 export const settings = {
@@ -64,6 +69,13 @@ export const settings = {
   // forward. Its replies run long enough that the opening of a scene falls out
   // of the live window within four turns, which is how a conversation that
   // began in a shop ends up in a bedroom nobody walked to.
+  /* Who is playing, as far as the prompts need to know: which words to use
+     for you. Every prompt and every band of the standing is written about
+     two people in the third person, and this is the second of them; the
+     first is the persona's own `pronouns:` line. See conversation/pronouns. */
+  player: {
+    pronouns: 'he' as const,
+  },
   scene: {
     enabled: true,
     // Words spoken since the last note, not turns. A turn is anything from

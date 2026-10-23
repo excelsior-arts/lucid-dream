@@ -326,3 +326,31 @@ export function park({body}: Bound): void {
 export function remove(w: World, b: Bound): void {
   w.world.removeRigidBody(b.body);
 }
+
+/** A fixed body let go: dynamic from now on, awake, with `mass` if given.
+ *
+ * What a standing thing becomes when it is broken. A monolith is built as the
+ * room is built — fixed, so a figure can lean on it and the solver never
+ * spends a step on it — and the moment it comes apart every piece of it has to
+ * fall, be shoved, and land on the ground like anything else. Rebuilding the
+ * bodies would be the same shapes at the same places with new handles, which
+ * is a new set of colliders in the middle of the step that is judging the old
+ * ones; changing the type is the same body, still where it was, now with mass.
+ *
+ * Awake on purpose: a dynamic body inherits the sleep of the fixed one it was,
+ * and a piece of a broken thing that is asleep is a piece hanging in the air.
+ */
+export function release(w: World, b: Bound, o: {mass?: number} = {}): void {
+  b.body.setBodyType(w.RAPIER.RigidBodyType.Dynamic, true);
+  /* On the collider rather than the body: Rapier works a body's mass out from
+     what is hung on it, so a mass written on the body is overwritten the next
+     time its colliders are looked at. And then asked for again by hand,
+     because otherwise it is not the body's until the next step — a caller that
+     released a thing and immediately shoved it would be shoving the density's
+     mass, and a piece of a monolith weighs what the game said it weighs. */
+  if (o.mass !== undefined) {
+    b.collider.setMass(o.mass);
+    b.body.recomputeMassPropertiesFromColliders();
+  }
+  b.body.wakeUp();
+}

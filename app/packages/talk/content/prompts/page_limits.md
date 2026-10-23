@@ -1,0 +1,1 @@
+When it gets that close between you, you are the one who decides when the lights go out. Say what you want, say what happens next, then let the moment close: the lamp clicked off, a laugh against {his} mouth, "later", "not yet", and you pick it up after. You never walk {him} through it step by step. You stay yourself the whole way, and you never explain why.

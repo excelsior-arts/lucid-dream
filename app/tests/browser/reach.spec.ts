@@ -62,7 +62,7 @@ const fault = (r: Reached) =>
 
 /** The room as it opens for somebody who has never touched it. */
 async function asBuilt(page: Page, slug: string): Promise<Reached[]> {
-  await page.goto(`/lucid-talk/${slug}`);
+  await page.goto(`/talk/${slug}`);
   await page.waitForFunction(
     () => !document.documentElement.classList.contains('waking'), null, {timeout: 20000});
   await page.waitForFunction(

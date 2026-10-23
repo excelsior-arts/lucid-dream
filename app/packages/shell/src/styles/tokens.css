@@ -31,6 +31,22 @@
   --inside:#2b0d18; --inside-2:#180509;
   --lining:linear-gradient(rgba(255,255,255,.05), transparent 60%),
            linear-gradient(#33101c, var(--inside));
+  /* The corner rail's geometry and glass, said once. The rail reads them, and
+     so does a page whose own controls stand beside it -- a trip's pause and
+     countdown -- which puts them on the rail's line, at a knob's height, a
+     knob's gap away, in the same glass. A page reads these without importing
+     anything; it has only to be in this document. */
+  --rail-top:max(18px, env(safe-area-inset-top));
+  --rail-right:max(20px, env(safe-area-inset-right));
+  --rail-knob:35px;
+  --rail-gap:9px;
+  --rail-radius:11px;
+  --rail-glass:rgba(12,15,22,.6);
+  /* The icons of a bare row (a trip's pause, countdown and the rail beside
+     them): the stage's warm white a step back, so they are there to be found
+     rather than lit; full white under the pointer. */
+  --rail-bare-ink:rgba(242,234,222,.78);
+  --rail-bare-lit:#f2eade;
   color-scheme:dark;
 }
 
@@ -53,6 +69,18 @@
   animation:vt-rise .62s cubic-bezier(.15,.75,.2,1) both; }
 @keyframes vt-dim  { to { opacity:0; transform:scale(.985); } }
 @keyframes vt-rise { from { opacity:0; transform:scale(1.02); } }
+/* A box opened on the shelf, handed to its open page (shell/handoff.ts). The
+   page itself has no picture in a transition (above), so this was a cut onto
+   the open page's room, which holds itself back until its box is fitted and
+   then fades up: the box went dark for a few frames and came back. Here the
+   page is pictured: the shelf's last frame -- the same box, open, where the
+   open page draws it -- holds, undimmed and unscaled, while the open page
+   comes up over it, laid on it rather than added to it. */
+:root[data-handoff] { view-transition-name:root; }
+html[data-handoff]::view-transition-old(root) { animation:vt-hold .45s linear both; mix-blend-mode:normal; }
+html[data-handoff]::view-transition-new(root) { animation:vt-show .45s cubic-bezier(.3,.6,.4,1) both; mix-blend-mode:normal; }
+@keyframes vt-hold { to { opacity:1; } }
+@keyframes vt-show { from { opacity:0; } }
 
 /* The object that persists. Longer than the fade, and eased so it arrives
    rather than stops. */

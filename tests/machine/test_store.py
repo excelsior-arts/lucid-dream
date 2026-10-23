@@ -12,11 +12,13 @@ written down: all of it is the page's, and is tested there. Nothing below uses
 a word this machine would recognise — `lucid-talk` appears because a test needs
 some game's name, and any other word would do as well.
 """
+import asyncio
 import json
 import unittest
 from pathlib import Path
 
 from fastapi import FastAPI
+from starlette.requests import ClientDisconnect
 from fastapi.testclient import TestClient
 
 from tests import clean
@@ -592,3 +594,27 @@ class WhereAGameKeepsThings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- a caller that went ----------------------------------------------------
+
+class ACallerThatHungUp(unittest.TestCase):
+    """A page cuts off calls it no longer needs, and the cut can land while
+    the body is still arriving. That is a short answer to nobody, not a
+    traceback in the log."""
+
+    class Gone:
+        headers = {}
+
+        async def stream(self):
+            yield b'{"messa'
+            raise ClientDisconnect()
+
+    def test_a_body_that_never_arrives_is_answered_briefly(self):
+        answer = asyncio.run(S.asked(self.Gone()))
+        self.assertEqual(answer.status_code, 400)
+        self.assertIn("hung up", json.loads(answer.body)["error"])
+
+    def test_and_so_is_a_value_put_that_never_arrives(self):
+        with self.assertRaises(S.HungUp):
+            asyncio.run(S.raw(self.Gone()))

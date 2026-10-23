@@ -74,6 +74,43 @@ function Cut() {
   );
 }
 
+/* How far the lid's own controls keep from the rail's knobs. */
+const KNUCKLE = 14;
+
+/* The rail's knobs, without the gutter round them that takes stray presses. */
+function railKnobs() {
+  const rail = document.querySelector<HTMLElement>('[data-rail]');
+  if (!rail) return null;
+  const b = rail.getBoundingClientRect(), cs = getComputedStyle(rail);
+  const k = {left: b.left + parseFloat(cs.paddingLeft), right: b.right - parseFloat(cs.paddingRight),
+             top: b.top + parseFloat(cs.paddingTop), bottom: b.bottom - parseFloat(cs.paddingBottom)};
+  return k.right > k.left && k.bottom > k.top ? k : null;
+}
+
+/* On a phone the open lid's top corner stands under the rail. Anything up
+   there that takes its own presses (`data-own-press`: Talk's gear, at the end
+   of the rule under its title) is kept a knuckle clear of the knobs:
+   --rail-clear, in the lid's own pixels, is how far in from its right edge the
+   sheet ends that line -- nothing where there is room. Measured against where
+   it is drawn, so it holds whatever size the box was fitted to; each pass
+   corrects the last. Close beside a knob, a tap on the gear went to the knob
+   (a phone moves a tap that lands on nothing pressable onto the nearest thing
+   that is, and the rail's gutter is nothing pressable). */
+function clearRail(lid: HTMLElement | null) {
+  if (!lid) return;
+  const was = parseFloat(lid.style.getPropertyValue('--rail-clear')) || 0;
+  const knobs = railKnobs();
+  const scale = lid.getBoundingClientRect().width / (lid.offsetWidth || 1);
+  let need = -Infinity;
+  for (const el of lid.querySelectorAll<HTMLElement>('[data-own-press]')) {
+    const r = el.getBoundingClientRect();
+    if (!knobs || !r.width || r.bottom < knobs.top - KNUCKLE || r.top > knobs.bottom + KNUCKLE) continue;
+    need = Math.max(need, r.right + KNUCKLE - knobs.left);
+  }
+  const clear = Number.isFinite(need) && scale > 0 ? Math.max(0, was + need / scale) : 0;
+  lid.style.setProperty('--rail-clear', `${Math.round(clear)}px`);
+}
+
 /** How long the lid takes to come down before whatever is behind it. */
 const SHUT_MS = 620;
 
@@ -99,15 +136,25 @@ export default function Box({title, lid, cards, note, onTake, onPress, onShut, g
      park the shut-zone over the top edge of its lid. */
   const measure = useCallback(() => {
     fitOpenBox(object.current, room.current);
+    clearRail(lidEl.current);
     const seen = lidEl.current?.getBoundingClientRect();
     const z = zone.current?.style;
     if (!seen || !z) return;
     const deep = Math.max(30, Math.min(seen.height * 0.2, 60)); // a thumb, not a hairline
+    /* Short of anything on the lid's sheet that takes its own presses up
+       there (`data-own-press`, a gear in the corner): the zone lies over
+       the lid, and a press on it would shut the box instead. */
+    let right = seen.right;
+    for (const el of lidEl.current?.querySelectorAll('[data-own-press]') ?? []) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.top < seen.top + deep) right = Math.min(right, r.left);
+    }
     z.left = Math.round(seen.left) + 'px';
     z.top = Math.round(seen.top) + 'px';
-    z.width = Math.round(seen.width) + 'px';
+    z.width = Math.round(Math.max(0, right - seen.left)) + 'px';
     z.height = Math.round(deep) + 'px';
   }, []);
+
 
   useEffect(() => {
     let inner = 0;

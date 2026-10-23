@@ -11,7 +11,11 @@ import type {Message} from '@lucid/machine';
 import type {Open} from './room';
 
 const said = vi.hoisted(() => [] as string[]);
-vi.mock('@lucid/shell', () => ({hatch: {say: (line: string) => { said.push(line); }}}));
+vi.mock('@lucid/shell', () => ({
+  hatch: {say: (line: string) => { said.push(line); }},
+  // A model nobody flagged: the refusal guard is refusal.test's and character.test's business.
+  host: () => ({llm: 'machine', censored: false}),
+}));
 
 /** A language model that says what it is told to say, and remembers what it
     was asked. */
@@ -86,7 +90,7 @@ const PROMPTS = {
   scene_system: 'where are they',
   scene_user: '{heading}\n\n{previous}\n\nSince:\n{recent}\n\n{ask}',
   relation_system: 'judge it',
-  relation_user: 'HIM:\n{him}\n\nHER:\n{her}',
+  relation_user: 'HIM:\n{him_said}\n\nHER:\n{her_said}',
 };
 
 function fakeRoom(o: Partial<Open> = {}): Open {

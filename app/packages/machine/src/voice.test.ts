@@ -60,7 +60,8 @@ const loop = (over: Partial<Parameters<typeof createVoiceLoop>[0]> = {}) =>
     onHeard: (t, s) => heard.push([t, s]),
     onListening: (active) => listened.push(active),
     onDropped: (ms, barged) => dropped.push([ms, barged]),
-    say: (line) => said.push(line),
+    // What the console is told; the debug lines are their own test below.
+    say: (line, level) => { if (level !== 'debug') said.push(line); },
     reply: () => ({interrupt: () => { cut += 1; }}),
     transcribe: () => Promise.resolve(text),
     tunables: () => Promise.resolve({}),
@@ -87,7 +88,8 @@ test('a turn heard is a turn handed on, with how long the room listened', async 
 });
 
 test('and what the recognizer says when it heard the room is not one', async () => {
-  loop();
+  let unheard = 0;
+  loop({onUnheard: () => { unheard += 1; }});
   text = 'Thank you.';
   kit.say({type: 'utterance', samples: new Float32Array(16000), seconds: 1.0});
   await vi.waitFor(() => expect(said.length).toBeGreaterThan(0));
@@ -95,13 +97,56 @@ test('and what the recognizer says when it heard the room is not one', async () 
   // quietly lost looks like a machine that has stopped listening.
   expect(said[0]).toMatch(/no usable speech/);
   expect(heard).toHaveLength(0);
+  // And the page is told, so dots put up for the voice come down.
+  expect(unheard).toBe(1);
 });
 
 test('a recognizer that would not answer says so instead of nothing', async () => {
-  loop({transcribe: () => Promise.reject(new Error('answered 503'))});
+  let unheard = 0;
+  loop({transcribe: () => Promise.reject(new Error('answered 503')), onUnheard: () => { unheard += 1; }});
   kit.say({type: 'utterance', samples: new Float32Array(16000), seconds: 1.0});
   await vi.waitFor(() => expect(said.length).toBeGreaterThan(0));
   expect(said[0]).toMatch(/503/);
+  expect(unheard).toBe(1);
+});
+
+test('every turn says, quietly, that it went to the recognizer and what came back', async () => {
+  /* 10-12: a line heard and never answered had nothing in the log between
+     the meter moving and nothing happening. Now each turn is two debug
+     lines -- a length and a count, never the words -- so the one that went
+     up and did not come back is the first without the second. */
+  const lines: Array<[string, string | undefined]> = [];
+  const capture = (line: string, level?: string) => { lines.push([line, level]); };
+  loop({say: capture});
+  kit.say({type: 'utterance', samples: new Float32Array(16000), seconds: 2.34});
+  await vi.waitFor(() => expect(heard).toHaveLength(1));
+  expect(lines.map(([l]) => l.replace(/ in [\d.]+s$/, ''))).toEqual([
+    'recognizer: 2.3s of you handed over',
+    'recognizer: 2.3s → 13 characters',
+  ]);
+  expect(lines.every(([, level]) => level === 'debug')).toBe(true);
+  expect(lines.some(([l]) => l.includes('are you there'))).toBe(false);
+
+  lines.length = 0;
+  text = 'Thank you.';
+  kit.say({type: 'utterance', samples: new Float32Array(16000), seconds: 1});
+  await vi.waitFor(() => expect(lines.length).toBeGreaterThan(2));
+  expect(lines[1]![0]).toMatch(/^recognizer: 1\.0s → 10 characters, filler in/);
+
+  lines.length = 0;
+  text = '';
+  kit.say({type: 'utterance', samples: new Float32Array(16000), seconds: 1});
+  await vi.waitFor(() => expect(lines.length).toBeGreaterThan(2));
+  expect(lines[1]![0]).toMatch(/^recognizer: 1\.0s → nothing in/);
+});
+
+test('a note from the detector goes to the console at its own level', () => {
+  const lines: Array<[string, string | undefined]> = [];
+  loop({say: (line, level) => { lines.push([line, level]); }});
+  kit.say({type: 'note', text: 'detector: a quiet room', level: 'debug'});
+  kit.say({type: 'note', text: 'hearing you but not taking it: under the gate', level: 'info'});
+  expect(lines).toEqual([['detector: a quiet room', 'debug'],
+                         ['hearing you but not taking it: under the gate', 'info']]);
 });
 
 test('the microphone opening and closing is the room listening', () => {

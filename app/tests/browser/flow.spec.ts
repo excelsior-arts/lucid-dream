@@ -29,12 +29,16 @@ test('the box is opened, a pill is taken, and the back button brings the box bac
   const trouble = watch(page);
 
   await page.goto('/');
-  await expect(page.locator('.object')).toHaveCount(1);
-  await expect(page.locator('.plaque span')).toHaveText('Lucid Talk');
+  /* Two objects on the shelf, and this walk is about the first of them — so
+     it is picked by the name engraved on its lid rather than by being the only
+     thing on the table. A third game is a name in this list and nothing
+     else. */
+  await expect(page.locator('.object')).toHaveCount(2);
+  await expect(page.locator('.plaque span')).toHaveText(['Lucid Talk', 'Lucid Trip']);
 
   // The lid goes up, and only then does the address change.
-  await page.locator('.object').click();
-  await page.waitForURL('**/lucid-talk');
+  await page.locator('.object', {hasText: 'Lucid Talk'}).click();
+  await page.waitForURL('**/talk');
   await expect(page.locator('.card')).toHaveCount(2);
   await expect(page.locator('.card b')).toHaveText(['Purple', 'Gold']);
 
@@ -49,7 +53,7 @@ test('the box is opened, a pill is taken, and the back button brings the box bac
   });
 
   await page.locator('.card', {hasText: 'Purple'}).click();
-  await page.waitForURL('**/lucid-talk/lover');
+  await page.waitForURL('**/talk/lover');
   // The room's stylesheet is scoped under html[data-page="room"]; a route
   // that arrives after another has left must still be the one <html> names,
   // or the glass and the deck are laid out as plain blocks under the stage.
@@ -57,7 +61,7 @@ test('the box is opened, a pill is taken, and the back button brings the box bac
   await expect(page.locator('#glass')).toHaveCSS('position', 'fixed');
 
   await page.goBack();
-  await page.waitForURL('**/lucid-talk');
+  await page.waitForURL('**/talk');
   await expect(page.locator('.card')).toHaveCount(2);
   expect(await page.evaluate(() => (window as unknown as {__flow?: string}).__flow)).toBe(
     'the same document',
@@ -69,7 +73,7 @@ test('the box is opened, a pill is taken, and the back button brings the box bac
 test('a sheet says what a pill remembers, and escape puts it away', async ({page}) => {
   const trouble = watch(page);
 
-  await page.goto('/lucid-talk');
+  await page.goto('/talk');
   await expect(page.locator('.line')).toHaveCount(2);
   await page
     .locator('.line', {hasText: 'Purple'})

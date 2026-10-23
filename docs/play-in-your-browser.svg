@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="324" height="76" viewBox="0 0 324 76" role="img" aria-label="▶ PLAY IN YOUR BROWSER">
+  <title>▶ PLAY IN YOUR BROWSER</title>
+  <defs>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgb(141,92,214)" stop-opacity=".62"/>
+      <stop offset="1" stop-color="rgb(141,92,214)" stop-opacity=".22"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="5"/></filter>
+  </defs>
+  <rect x="12" y="12" width="300" height="52" rx="26.0" fill="rgb(141,92,214)" opacity=".35" filter="url(#glow)"/>
+  <rect x="12" y="12" width="300" height="52" rx="26.0" fill="#0a0c14"/>
+  <rect x="12.5" y="12.5" width="299" height="51" rx="25.5" fill="url(#fill)" stroke="rgb(141,92,214)" stroke-opacity=".75"/>
+  <rect x="30" y="13.5" width="264" height="1" fill="#fff" opacity=".12"/>
+  <path d="M40.0 29.5 L52.5 38 L40.0 46.5 Z" fill="#f2e5d0"/>
+  <text x="173.0" y="43.5" text-anchor="middle" textLength="214" lengthAdjust="spacing" fill="#f2e5d0" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', Arial, sans-serif" font-size="15" font-weight="600">PLAY IN YOUR BROWSER</text>
+</svg>

@@ -24,6 +24,11 @@ const stack = vi.hoisted(() => ({
   /** What `want` says back, and what the poll for readiness settles on. */
   status: 'loading' as string,
   ready: true,
+  /** Whether the machine's shelf has the ear. */
+  ear: true,
+  /** A browser's shelf instead, and whether its ear is the one chosen. */
+  page: false,
+  using: true,
 }));
 vi.mock('@lucid/machine', () => ({
   createVoiceLoop: () => ({
@@ -48,6 +53,10 @@ vi.mock('@lucid/machine', () => ({
     },
   },
   awaitReady: () => Promise.resolve(stack.ready),
+  status: () => Promise.resolve({shelf: {voice: [], ear: stack.page
+    ? [{id: 'moonshine', name: 'Moonshine Base', gb: 0.067, here: stack.ear, suggested: true,
+        using: stack.using}]
+    : [{id: 'stt', name: 'Parakeet', gb: 2.5, here: stack.ear, suggested: true}], fetch: null}}),
 }));
 
 /* The conversation this page runs, stubbed at its two doors: a turn to answer,
@@ -67,10 +76,13 @@ vi.mock('../../conversation/loop', () => ({
   putItBack: () => { conversation.back += 1; },
 }));
 
-const {answering, inputMode, micOff, micOn, recognizer, say} = await import('./audio');
+const {KEEP_MS, answering, inputMode, keepWanting, micOff, micOn, recognizer, say} = await import('./audio');
 const {turns} = conversation;
 
 beforeEach(() => {
+  stack.ear = true;
+  stack.page = false;
+  stack.using = true;
   stack.wanted.length = 0;
   stack.on = stack.refuse = false;
   stack.started = stack.stopped = 0;
@@ -200,4 +212,89 @@ test('a line said over a reply takes the floor from it', () => {
   answering().onHeard('wait, stop for a moment', 1.4);
   expect(conversation.cut).toBe(before + 1);
   expect(turns.at(-1)?.text).toBe('wait, stop for a moment');
+});
+
+test('a machine with no ear on its shelf says so and opens the card at the ear, asking nothing', async () => {
+  const {onAskForCard} = await import('@lucid/shell');
+  const asked: string[] = [];
+  const off = onAskForCard((section) => asked.push(section));
+  stack.ear = false;
+  await micOn();
+  expect(asked).toEqual(['ear']);
+  expect(stack.wanted).toEqual([]);
+  expect(stack.started).toBe(0);
+  off();
+});
+
+test('a browser with no ear chosen, or its ear not downloaded, opens the panel at the microphone', async () => {
+  const {onAskForCard, PAGE, MACHINE, setHost} = await import('@lucid/shell');
+  const asked: string[] = [];
+  const off = onAskForCard((section) => asked.push(section));
+  setHost(PAGE);
+  stack.page = true;
+  try {
+    stack.using = false;
+    await micOn();
+    stack.using = true;
+    stack.ear = false;
+    await micOn();
+    expect(asked).toEqual(['ear', 'ear']);
+    expect(stack.wanted).toEqual([]);
+    expect(stack.started).toBe(0);
+    // Downloaded and chosen: the press is a Mac's, the ear wanted beside the device.
+    stack.ear = true;
+    stack.status = 'ready';
+    await micOn();
+    expect(stack.wanted).toEqual([['stt', true]]);
+    expect(stack.started).toBe(1);
+    expect(link.getState().input_mode).toBe('mic');
+  } finally {
+    off();
+    setHost(MACHINE);
+  }
+});
+
+test('while the microphone is open the recognizer is asked for again, and a loss is said', async () => {
+  /* 10-12: the machine put the recognizer away -- "nothing has wanted the
+     recognizer for 90 seconds" -- with a room listening. The page asked once,
+     on the press, and the grace any page arms was left to run. Now an open
+     microphone says it still wants it, well inside the grace. */
+  expect(KEEP_MS).toBeLessThanOrEqual(45_000);       // half the machine's 90 s, or less
+  stack.status = 'ready';
+  await micOn();
+  stack.wanted.length = 0;
+  const heard: string[] = [];
+  const off = onLog((m) => heard.push(m.text));
+  try {
+    keepWanting();
+    await Promise.resolve();
+    expect(stack.wanted).toEqual([['stt', true]]);
+    expect(heard).toEqual([]);
+    // Swept meanwhile: the ask loads it again, and the console is told.
+    stack.status = 'loading';
+    keepWanting();
+    await vi.waitFor(() => expect(heard).toHaveLength(1));
+    expect(heard[0]).toBe('the recognizer had been put away under an open microphone — it is loading again');
+    // Once, not on every ask while it loads.
+    keepWanting();
+    await Promise.resolve();
+    expect(heard).toHaveLength(1);
+    // And a microphone that is off wants nothing.
+    micOff();
+    stack.wanted.length = 0;
+    keepWanting();
+    expect(stack.wanted).toEqual([]);
+  } finally {
+    off();
+  }
+});
+
+test('a press over a recognizer already up says so, quietly', async () => {
+  stack.status = 'ready';
+  const heard: string[] = [];
+  const off = onLog((m) => heard.push(m.text));
+  await micOn();
+  off();
+  expect(heard).toEqual(['mic on — the recognizer is up']);
+  expect(recognizer.warming).toBe(false);
 });

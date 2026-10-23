@@ -114,7 +114,7 @@ test('a voice is a path on the shelf, its own unless it borrows one', () => {
 
 test('a draft is written and not offered', () => {
   const offered = new Set(personas().map((p) => p.slug));
-  const drafts = all().filter((p) => !offered.has(p.slug));
+  const drafts = all().filter((p) => !offered.has(p.slug) && !p.internal);
   expect(drafts.length, 'no draft to check with').toBeGreaterThan(0);
   for (const one of drafts) expect(one.draft, one.slug).toBe(true);
 });

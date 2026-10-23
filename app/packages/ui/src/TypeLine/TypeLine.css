@@ -34,6 +34,12 @@
 /* hidden means hidden. The `display:flex` above is an author rule and the
    browser's own [hidden] is not, so a line told to go stayed on screen. */
 #say[hidden] { display:none !important; }
+/* Held: a browser that cannot run the pill. The line stays, read-only, its
+   hint the one word of why and the mark in its corner; a press is the note. */
+#say[data-held] { position:relative; }
+#say[data-held] #text { cursor:pointer; padding-right:24px; }
+#say .say-held { position:absolute; top:3px; right:4px; min-height:0; padding:2px; margin:0;
+                 line-height:0; background:transparent; border:0; cursor:pointer; }
 /* The height of the keys beside it, whatever that is on this screen: the
    line is stretched to the row and the box fills the line. Sized by its own
    two rows of type it stood nine pixels over the keys on an iPad, where the

@@ -21,6 +21,7 @@
 // ---- the open box ----------------------------------------------------------
 export type {Card, Props as BoxProps} from './Box/Box';
 export {take} from './Box/take';
+export {counted} from './Box/counted';
 export type {Flight} from './Box/take';
 
 // ---- the deck --------------------------------------------------------------
@@ -41,6 +42,8 @@ export type {Question} from './ConfirmDialog/ask';
 // ---- the sheet -------------------------------------------------------------
 export {FADE_MS, close as closeSheet, isOpen as sheetIsOpen, openSheet} from './Sheet/open';
 export type {Sheet} from './Sheet/open';
+/* A part limited in this browser, pressed: its note in a sheet. */
+export {openLimit} from './Sheet/limit';
 
 // ---- the transcript --------------------------------------------------------
 export type {Line, Props as TranscriptProps} from './Transcript/Transcript';

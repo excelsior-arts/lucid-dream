@@ -8,7 +8,7 @@
 import {Component} from 'react';
 import type {ReactNode} from 'react';
 import {hatch} from '../shell/console';
-import {askAgain} from './lazy';
+import {askAgain, reloadOnce, stale} from './lazy';
 import s from './Doorway.module.css';
 
 /** A page on its way. Shown while a chunk is on the wire.
@@ -31,6 +31,8 @@ export const Waiting = () => <div className={s.wait} role="status" aria-label="o
  */
 export class Doorway extends Component<{children: ReactNode}, {failed: unknown}> {
   override state: {failed: unknown} = {failed: null};
+  /** Presses that asked again in place and were refused again. */
+  private tries = 0;
 
   static getDerivedStateFromError(failed: unknown): {failed: unknown} {
     return {failed};
@@ -41,7 +43,15 @@ export class Doorway extends Component<{children: ReactNode}, {failed: unknown}>
               'error');
   }
 
+  /* A chunk this build no longer has -- the site rebuilt or redeployed under
+     an open tab, its old hashes gone -- never arrives however often it is
+     asked for: the page that names it is stale. So the press reloads the page
+     for the new one, and so does a second press after asking again in place
+     was refused again. Once: a reload that lands on the same failure asks in
+     place from then on rather than reloading for ever. */
   private again = (): void => {
+    if ((stale(this.state.failed) || this.tries > 0) && reloadOnce()) return;
+    this.tries += 1;
     askAgain();
     this.setState({failed: null});
   };
@@ -51,10 +61,10 @@ export class Doorway extends Component<{children: ReactNode}, {failed: unknown}>
     return (
       <div className={`plate ${s.gone}`}>
         <b>That page did not arrive.</b>
-        <p>The machine answered; the page&apos;s own code did not. Nothing is
-           lost — it is worth another press.</p>
+        <p>Its code didn&rsquo;t come through — another press usually fixes it.</p>
         <button type="button" onClick={this.again}>Try again</button>
       </div>
     );
   }
 }
+

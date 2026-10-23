@@ -15,11 +15,12 @@
  * shelf's `receive` hands one straight to the reducer, which is how every
  * picture in the simulated-state walk is taken (app/tests/browser/states.mjs).
  */
+import type {Pronoun} from '../conversation/pronouns';
 
 /** What the models are doing, one word each. Absent until a stack has run.
     The words are the machine's own -- see Stack.status in machine/machine.py,
     which is the one dict both `GET /machine` and the console's lamps read. */
-export type ModelStatus = 'off' | 'starting' | 'loading' | 'ready' | 'error';
+export type ModelStatus = 'off' | 'starting' | 'loading' | 'ready' | 'error' | 'absent';
 
 /** What this page's conversation is doing. */
 export type TalkState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'stopped';
@@ -88,6 +89,10 @@ export interface RelationState {
 export interface PersonaCard {
   slug: string;
   draft: boolean;
+  /** Written for another game to speak through -- a narrator over a walk --
+      and not offered in this one's box. Openable by slug all the same, which
+      is how it stays one character with one memory wherever it is met. */
+  internal: boolean;
   /** The character's own name -- the prompt's, never shown to a player. */
   name: string;
   /** What a player is handed: a colored pill in a box. */
@@ -102,6 +107,14 @@ export interface PersonaCard {
   figure?: string;
   temperature?: number | null;
   top_p?: number | null;
+  /** Seconds of nothing said before it takes the floor itself, and what
+      the quiet reads as when it does. Unset, it waits for ever. See the
+      silence timer in conversation/loop.ts. */
+  silence?: number | null;
+  silence_line?: string;
+  /** Which words the prompts use for it: she, he, they or it. The pills
+      were written as she; a narrator over a walk is an it. */
+  pronouns: Pronoun;
   prompt: string;
   [more: string]: unknown;
 }
@@ -238,6 +251,8 @@ export interface AssistantDelta {
 export interface AssistantDone {
   type: 'assistant_done';
   text: string;
+  /** It broke off: the words stopped coming because something failed. */
+  cut?: boolean;
 }
 
 /** A line for the console, and for anything watching what was said about a

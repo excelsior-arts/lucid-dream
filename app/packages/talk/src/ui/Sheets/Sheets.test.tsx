@@ -121,7 +121,7 @@ test('a conversation has an address, and the row is a link to it', async () => {
   await settle();
   const rows = await screen.findAllByRole('link');
   expect(rows).toHaveLength(1);
-  expect(rows[0]).toHaveAttribute('href', '/lucid-talk/lover?session=2026-08-28T12-12-26_lover');
+  expect(rows[0]).toHaveAttribute('href', '/talk/lover?session=2026-08-28T12-12-26_lover');
 });
 
 test('a card shows what it asked for, not what the card before it asked for', async () => {

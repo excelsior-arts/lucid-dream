@@ -91,10 +91,11 @@ export function normalize(bytes: Uint8Array, lift: Lift): Uint8Array {
     hist[bin] = hist[bin]! + 1;
   }
   if (!pcm.length || !peak) return bytes;
-  // The speech, where there is enough of it to measure. A whisper, or a chunk
-  // that is nearly all breath, falls back to the whole thing rather than being
-  // lifted off a handful of samples.
-  const rms = voiced >= VOICE.ENOUGH ? Math.sqrt(said / voiced) : Math.sqrt(sum / pcm.length);
+  // The speech, where there is enough of it to measure. A chunk with less --
+  // a breath, a sound with no words -- falls back to the whole thing for its
+  // ceiling, and is no measure of the voice at all: see below.
+  const measured = voiced >= VOICE.ENOUGH;
+  const rms = measured ? Math.sqrt(said / voiced) : Math.sqrt(sum / pcm.length);
 
   // The level the loudest half a percent sits above. A stray sample in a
   // plosive no longer decides how loud a whole sentence is played.
@@ -116,13 +117,21 @@ export function normalize(bytes: Uint8Array, lift: Lift): Uint8Array {
   // sentences: the overall quietness is fixed, the shape of the delivery is
   // not. Within a sentence nothing is touched at all -- this is one constant
   // multiplier, not a compressor.
+  //
+  // Only speech moves it. A chunk with too little to measure used to: a
+  // "[sigh]" the voice was handed alone came back a breath 30 dB under her
+  // speech, wanted that much lift, and took the figure with it -- played
+  // ~25 dB up, a whoosh, and the lines after it 4-6 dB hot until the figure
+  // came back down; as a reply's first chunk it was played at speech
+  // loudness, and set the figure for all of it (10-12, the lover). Such a
+  // chunk is played at the voice's figure, or as it came before there is one.
   const want = Math.max(1, VOICE.RMS / (rms || 1));
-  lift.voiceLift = lift.voiceLift ? lift.voiceLift * 0.85 + want * 0.15 : want;
+  if (measured) lift.voiceLift = lift.voiceLift ? lift.voiceLift * 0.85 + want * 0.15 : want;
 
   // The one thing allowed to override it, per sentence -- but measured against
   // the working peak, so it binds when a sentence is genuinely hot rather than
   // whenever one sample is.
-  const gain = Math.max(1, Math.min(lift.voiceLift, VOICE.CEILING / working));
+  const gain = Math.max(1, Math.min(lift.voiceLift || 1, VOICE.CEILING / working));
   if (gain > 1.01) {
     for (let i = 0; i < pcm.length; i++) {
       const v = Math.round(soften((pcm[i]! / 32768) * gain) * 32768);

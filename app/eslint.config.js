@@ -4,9 +4,9 @@ import tseslint from 'typescript-eslint';
 
 /* Which way an import may point.
  *
- * talk → shell, world, audio, machine, ui. ui → shell.
+ * talk → shell, world, audio, machine, ui. trip → shell, machine, ui. ui → shell.
  * machine → shell, audio. audio → shell.
- * shell → nothing of ours. world → nothing of ours.
+ * shell → nothing of ours. world → nothing of ours. trip's trips → world only.
  * That is the whole architecture of this workspace, and a wrong edge is not
  * visible in a diff — it compiles, it runs, and the shell has quietly learned
  * what a pill is. So it is a lint error instead.
@@ -20,19 +20,76 @@ const OUT_OF_PACKAGE = {
   group: ['**/packages/**', '**/src/**'],
   message: 'a package is reached by its name (@lucid/shell), not by climbing out of one',
 };
+/* The same wall for `import()`. no-restricted-imports only sees the static
+   kind, and a dynamic import of a neighbour's content resolves just as well
+   -- so each pattern is turned into a selector over the import expression's
+   string, and the two rules say the same thing. A glob of ours is a package
+   name and maybe a `/*`; a regex pattern is used as it is. */
+const asRegex = (p) => {
+  if (p.regex) return p.regex.replace(/\//g, '\\/');
+  return '^(' + p.group.map((g) => {
+    if (g.startsWith('**/')) return '.*' + g.slice(3).replace(/\*\*/g, '.*').replace(/\//g, '\\/');
+    return g.replace(/\//g, '\\/').replace(/\*/g, '.*') + '$';
+  }).join('|') + ')';
+};
+const dynamic = (patterns) => patterns.map((p) => ({
+  selector: `ImportExpression > Literal[value=/${asRegex(p)}/]`,
+  message: p.message,
+}));
 const inward = (patterns) => ({
   'no-restricted-imports': ['error', {patterns: [...patterns, OUT_OF_PACKAGE]}],
+  'no-restricted-syntax': ['error', ON_WINDOW, ...dynamic([...patterns, OUT_OF_PACKAGE])],
 });
 
-/* Every game on the shelf. A game imports the five framework packages and no
-   game at all -- not its neighbour, and not itself by name, which is the same
-   module graph reached twice. What one game knows about another is that it
-   exists, and it learns even that from app/src/main.tsx.
+// Tests used to read seventy script-scope globals; a bundler renames all
+// of them. debug.ts is the one door, so the wall has to be a rule.
+const ON_WINDOW = {
+  selector: 'AssignmentExpression > MemberExpression.left[object.name="window"]',
+  message: 'nothing goes on window; expose() it through packages/shell/src/debug.ts',
+};
+
+/* Every game on the shelf. A game imports the five framework packages and,
+   of another game, only its mechanism -- never itself by name, which is the
+   same module graph reached twice, and never a neighbour's content. What one
+   game knows about another is that it exists, and it learns even that from
+   app/src/main.tsx.
 
    A list, because flat config has no way to say "a package that is not one of
    the framework five". A second game is a line here, which is the same line it
    already is in main.tsx. */
-const GAMES = ['talk'];
+const GAMES = ['talk', 'trip'];
+
+/* What a game may take from another game: its mechanism, named module by
+   module, and nothing else.
+
+   Lucid Talk is a game and it is also the talking -- the name says both. What
+   makes a character a character there (a standing that fades, a memory that
+   folds, the shape of a dose) is what any game with somebody in it needs, and
+   writing it twice would be the mistake this list exists to avoid. So a second
+   game imports these by subpath and builds its own assembly on them. The
+   rest of that folder is Talk's assembly: it writes into Talk's store and reads
+   Talk's files, and importing it would be a second game running the first
+   game's evening. The pills, the rooms, the routes and the prompts are content,
+   and content stays behind the wall. */
+const MECHANISM = {
+  talk: ['character', 'arc', 'memory', 'relation', 'scene', 'prompt', 'hands', 'named', 'pronouns', 'files',
+         'surface', 'room', 'turn', 'loop', 'floor', 'after']
+    .map((m) => `conversation/${m}`),
+};
+
+/* And how every game bans every game. As a regular expression rather than a
+   glob list, because the globs are gitignore's: a name banned as a directory
+   cannot have one file under it let back in, and the whole point here is one
+   folder with a few files let back in. The whole of a neighbour but its
+   mechanism; the whole of itself, with no exceptions. */
+const gameImports = (self) => GAMES.map((g) => ({
+  regex: g === self || !(MECHANISM[g] ?? []).length
+    ? `^@lucid/${g}(/|$)`
+    : `^@lucid/${g}(?!/(${MECHANISM[g].join('|')})$)(/|$)`,
+  message: 'a game imports the framework and, of another game, only the '
+    + 'mechanism named in MECHANISM: what two of them share beyond that '
+    + 'belongs in the framework, and who is installed is app/src/main.tsx',
+}));
 
 // Small on purpose. The point of lint here is a red/green an agent can run,
 // not a house style -- the code is hand-set and stays so, TypeScript owns
@@ -45,24 +102,14 @@ export default tseslint.config(
     plugins: {'react-refresh': reactRefresh},
     rules: {
       'react-refresh/only-export-components': ['warn', {allowConstantExport: true}],
-      // Tests used to read seventy script-scope globals; a bundler renames all
-      // of them. debug.ts is the one door, so the wall has to be a rule.
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: 'AssignmentExpression > MemberExpression.left[object.name="window"]',
-          message: 'nothing goes on window; expose() it through packages/shell/src/debug.ts',
-        },
-      ],
       ...inward([]),
     },
   },
-  {files: ['packages/shell/src/debug.ts'], rules: {'no-restricted-syntax': 'off'}},
   {
     files: ['packages/shell/**'],
     rules: inward([
       {
-        group: ['@lucid/talk', '@lucid/talk/*'],
+        group: ['@lucid/talk', '@lucid/talk/*', '@lucid/trip', '@lucid/trip/*'],
         message: 'the shell must not know a game exists: take it as a manifest prop instead',
       },
       {
@@ -85,7 +132,7 @@ export default tseslint.config(
     files: ['packages/ui/**'],
     rules: inward([
       {
-        group: ['@lucid/talk', '@lucid/talk/*'],
+        group: ['@lucid/talk', '@lucid/talk/*', '@lucid/trip', '@lucid/trip/*'],
         message: 'ui is what a game is built out of: take it as a prop instead',
       },
       {
@@ -105,7 +152,8 @@ export default tseslint.config(
     files: ['packages/audio/**'],
     rules: inward([
       {
-        group: ['@lucid/talk', '@lucid/talk/*', '@lucid/world', '@lucid/world/*',
+        group: ['@lucid/talk', '@lucid/talk/*', '@lucid/trip', '@lucid/trip/*',
+                '@lucid/world', '@lucid/world/*',
                 '@lucid/ui', '@lucid/ui/*', '@lucid/machine', '@lucid/machine/*'],
         message: 'audio knows nothing of a game, a world, an interface or a model: '
           + 'take it as a callback instead',
@@ -122,7 +170,8 @@ export default tseslint.config(
     files: ['packages/machine/**'],
     rules: inward([
       {
-        group: ['@lucid/talk', '@lucid/talk/*', '@lucid/world', '@lucid/world/*',
+        group: ['@lucid/talk', '@lucid/talk/*', '@lucid/trip', '@lucid/trip/*',
+                '@lucid/world', '@lucid/world/*',
                 '@lucid/ui', '@lucid/ui/*'],
         message: 'the machine knows nothing of a game, a world or an interface: '
           + 'it is handed messages and a voice by name',
@@ -137,20 +186,28 @@ export default tseslint.config(
     files: ['packages/world/**'],
     rules: inward([{group: ['@lucid/*'], message: 'the world imports nothing of ours'}]),
   },
-  /* And a game reaches no game. Two games on one shelf share the framework and
-     nothing else: whatever one of them has that the other wants is either the
-     framework's already or is about to be. */
+  /* The trips themselves: Burning Man is the first, under trips/burning-man.
+     A trip stands on the world -- the desert, its sand and sea and sky, the
+     camera, the keys, the loop and the sound are @lucid/world's -- and on
+     nothing else of ours: the route that opens it hands it an element, and
+     that is the whole of what it knows about the house. Its trip.ts -- the
+     card and the door -- is the one file of a trip the box reads. */
+  {
+    files: ['packages/trip/src/trips/**'],
+    rules: inward([{group: ['@lucid/*', '!@lucid/world', '!@lucid/world/*'],
+                    message: 'a trip stands on @lucid/world and imports nothing else of ours: it is opened by the route and knows nothing of a shell or a box'}]),
+  },
+  /* And a game reaches another game's mechanism, never its content. Two games
+     on one shelf share the framework and the mechanism listed above: whatever
+     else one of them has that the other wants is either the framework's
+     already or is about to be. */
   ...GAMES.map((game) => ({
     files: [`packages/${game}/**`],
-    rules: inward([
-      {
-        group: GAMES.flatMap((g) => [`@lucid/${g}`, `@lucid/${g}/*`]),
-        message: 'a game imports the framework and no game: what two of them '
-          + 'share belongs in the framework, and who is installed is '
-          + 'app/src/main.tsx',
-      },
-    ]),
+    rules: inward(gameImports(game)),
   })),
+  /* The one door onto window, after the shell's own wall so that it is the
+     last word. */
+  {files: ['packages/shell/src/debug.ts'], rules: {'no-restricted-syntax': 'off'}},
   /* The room and the rooms in it are hand-set JavaScript, moved rather than
      rewritten, and the two rules below are house style rather than truth:
      `void el.offsetWidth` to force a reflow and `fn && fn()` as a guard are

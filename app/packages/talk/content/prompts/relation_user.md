@@ -1,10 +1,10 @@
-What HE said:
+What {HE} said:
 
-{him}
+{him_said}
 
-What SHE said back — context only, so you can see how it landed. Nothing she
-says is scored, however warm or cold or clever it is:
+What {SS} said back — context only, so you can see how it landed. Nothing {s}
+{v:says} is scored, however warm or cold or clever it is:
 
-{her}
+{her_said}
 
-What did HIS words do to the relationship? JSON only.
+What did {HIS} words do to the relationship? JSON only.

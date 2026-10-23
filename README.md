@@ -4,16 +4,45 @@
 
 <h1 align="center">L U C I D &nbsp; D R E A M</h1>
 
-<p align="center"><b>Local AI Games</b></p>
+<p align="center"><b>Local 3D and AI Experiences</b></p>
+
+<p align="center">
+  <a href="https://excelsior-arts.github.io/lucid-dream/"><img src="docs/play-in-your-browser.svg" height="64" alt="▶ Play in your browser"></a>
+  <a href="#installing"><img src="docs/run-it-on-your-mac.svg" height="64" alt="Run it on your Mac"></a>
+</p>
+
+## LUCID TRIP
+
+A figure catches fire and walks to the sea.
+
+There is one card in the box, **Burning Man**. Turn it over and a man is
+standing on a dune at dusk; press **Let it** and he catches fire and walks
+down to the water, three minutes of music under him. You can watch, or take
+him with the keyboard and go your own way.
+
+**W A S D** or the arrow keys walk him relative to the camera; let go and he
+finds his own way again. Drag to orbit, scroll to zoom. **P**, **Space** or
+the button pauses. The wordmark at the top takes you back to the box.
+
+Nothing to install, and nothing kept but how many times you have taken it.
+The music streams, so it wants a connection.
+
+Burning Man is the first trip; others will follow, each with a landscape of
+its own.
+
+<p align="center">
+  <a href="https://excelsior-arts.github.io/lucid-dream/trip/burning-man/"><img src="docs/burning-man-dusk.webp" width="48%" alt="Burning Man: a figure on a dune at dusk, the sea below"></a>
+  <a href="https://excelsior-arts.github.io/lucid-dream/trip/burning-man/"><img src="docs/burning-man-alight.webp" width="48%" alt="Burning Man: the figure alight, walking the shore"></a>
+</p>
+
+The browser holds the whole piece, nothing to download:
+**[Burning Man](https://excelsior-arts.github.io/lucid-dream/trip/burning-man/)**
+
+---
 
 ## LUCID TALK
 
 A box of digital drugs for an audio experience with gaming elements.
-
-<p align="center">
-  <img src="docs/talk-box-closed.webp" width="48%" alt="The closed Lucid Talk box">
-  <img src="docs/talk-box-open.webp" width="48%" alt="The open box, Purple and Gold pills">
-</p>
 
 Take a pill and you are in a room with somebody in it — sincere and unguarded,
 or proud and hard to impress, and more flavors coming soon.
@@ -32,43 +61,59 @@ machine.
 
 
 <p align="center">
-  <img src="docs/purple-pill-room.webp" width="48%" alt="Purple's room, warm">
-  <img src="docs/gold-pill-room.webp" width="48%" alt="Gold's room, cold">
+  <a href="https://excelsior-arts.github.io/lucid-dream/talk/lover/"><img src="docs/purple-pill-room.webp" width="48%" alt="Purple's room, warm"></a>
+  <a href="https://excelsior-arts.github.io/lucid-dream/talk/thinker/"><img src="docs/gold-pill-room.webp" width="48%" alt="Gold's room, cold"></a>
 </p>
 
+Take one in your browser: **[Purple pill](https://excelsior-arts.github.io/lucid-dream/talk/lover/)**
+· **[Gold pill](https://excelsior-arts.github.io/lucid-dream/talk/thinker/)**
+
+
+---
+
+## TWO WAYS TO PLAY
+
+|                   | IN YOUR BROWSER                               | ON YOUR MAC                     |
+| ----------------- | --------------------------------------------- | ------------------------------- |
+| **Lucid Trip**    | the whole piece                               | the whole piece                 |
+| **Lucid Talk**    | a smaller model — a taste                     | the full-size one — the evening |
+| **Voice and ear** | optional                                      | built in                        |
+| **Downloads**     | Trip none; Talk 0.5–2.4 GB, once              | ~31 GB, once                    |
+| **Kept**          | in the browser                                | a folder on your Mac            |
+| **Needs**         | Trip any browser; Talk Chrome, Edge or Safari | see below                       |
+
+The browser is a taste: a smaller, more guarded model, a room you can be in
+for a few turns. The evening is on the Mac — the large model, a voice you can
+talk over, the phone on the sofa. Nothing you type or say leaves either.
 
 ---
 
 ## SYSTEM REQUIREMENTS
 
-Read this part like it is 1996, because it matters as much as it did then.
+For the Mac. Read this part like it is 1996, because it matters as much as it
+did then.
 
-|              | REQUIRED                                   |
-| ------------ | ------------------------------------------ |
-| **Computer** | Apple Silicon Mac                          |
-| **System**   | macOS 14 or later                          |
-| **Memory**   | 16 GB unified; 32 GB for the large model   |
-| **Disk**     | 40 GB free, for the models                 |
-| **Runtime**  | Python 3.12, and Node 24 to build the page |
-| **Display**  | any browser from this decade               |
-| **Sound**    | speakers or headphones — headphones better |
-| **Network**  | once, to download the models. Never again  |
-| **Graphics** | none — Apple Silicon is the graphics card  |
+|              | REQUIRED                                                   |
+| ------------ | ---------------------------------------------------------- |
+| **Computer** | Apple Silicon Mac                                          |
+| **System**   | macOS 14 or later                                          |
+| **Memory**   | 16 GB unified; 32 GB for the large model                   |
+| **Disk**     | 40 GB free, for the models                                 |
+| **Runtime**  | Python 3.14, and Node 24 to build the page                 |
+| **Display**  | any browser from this decade                               |
+| **Sound**    | speakers or headphones — headphones better                 |
+| **Network**  | once, for the models; Burning Man's song streams each time |
+| **Graphics** | none — Apple Silicon is the graphics card                  |
 
 The language model ships in three sizes. All three are installed; setup
 picks by memory, `/ai_model_size` in the console switches any time.
 Memory and standing stay — only the writer changes.
 
-|        | model      | holds  | needs | first word |
-| ------ | ---------- | ------ | ----- | ---------- |
-| **lg** | 27B, 4-bit | ~23 GB | 32 GB | ~3-4 s     |
-| **md** | 9B, 4-bit  | ~12 GB | 16 GB | under 1 s  |
-| **sm** | 4B, 4-bit  | ~9 GB  | 8 GB  | under 1 s  |
-
-Holds = language model + recognizer + voice, on the app's own meter;
-leftover is macOS, a browser, the prompt cache. Mic off → no recognizer;
-muted room → no voice. The large one starts speaking as soon as the first
-sentence exists.
+|        | model | needs | first word |
+| ------ | ----- | ----- | ---------- |
+| **lg** | 27B   | 32 GB | ~3-4 s     |
+| **md** | 9B    | 16 GB | under 1 s  |
+| **sm** | 4B    | 8 GB  | under 1 s  |
 
 They are not three speeds of the same model.
 
@@ -87,10 +132,9 @@ They are not three speeds of the same model.
   A core voice shows up; the rest of the persona does not. Rooms and
   voice still run. Not an evening.
 
-**Not supported:** Intel Macs, Windows, Linux, phones on their own. The whole
-thing is built on Apple's MLX, which is Apple Silicon or nothing. A phone joins
-in as a second screen — see ON YOUR MAC — but it is not the Mac that runs
-this.
+**Not on the Mac's terms:** Intel Macs, Windows, Linux, phones — the full
+version is Apple Silicon or nothing. All of them can play in the browser
+instead, and a phone also joins a Mac as a second screen — see ON YOUR MAC.
 
 ---
 
@@ -98,8 +142,9 @@ this.
 
 - **The Lucid Dream machine** — one language model, one ear, one voice, and a console to
   watch them by. It knows nothing about any game.
-- **A shelf of games.** So far: **Lucid Talk**, the box of pills and the rooms
-  behind them.
+- **A shelf of games.** So far: **Lucid Trip**, one card: Burning Man, a
+  figure on fire walking from a dune to the sea, to music; and **Lucid Talk**,
+  the box of pills and the rooms behind them.
 - **The rooms** — drawn in 3D in your browser, lit by how the pill is holding
   you, with things in them you can move.
 - **The wiring** — ear, mind and voice joined so they behave like one person
@@ -107,6 +152,8 @@ this.
 - **The same game on your phone**, running its own conversation from the other
   end of the sofa.
 - **Every conversation on disk**, in a directory you can copy, carry or burn.
+- **The same games in a browser** — nothing to install: Trip whole, Talk with
+  a smaller model.
 
 ---
 
@@ -130,6 +177,11 @@ your own needs a Hugging Face login; the script says so if it hits one.
 `run.sh` prints two addresses; open the one marked **this Mac**,
 `http://localhost:6969`, in your browser. Models take a few seconds to warm;
 first word is in the table above.
+
+Building the page needs a licensed copy of the
+[Three.JS Water Pro](https://threejsroadmap.com/assets/threejs-water-pro)
+library beside this checkout, for Burning Man's sea — see
+[THIRD-PARTY.md](THIRD-PARTY.md).
 
 By hand, or with an agent: **[AGENTS.md](AGENTS.md)**.
 
@@ -164,7 +216,14 @@ lives on disk.
 [Chatterbox](https://huggingface.co/mlx-community/chatterbox-turbo-fp16) ·
 any [MLX chat model](https://huggingface.co/mlx-community) you like.
 
-In the browser: [React](https://react.dev) ·
+Without the Mac: [WebLLM](https://github.com/mlc-ai/web-llm) with
+[Qwen3.5](https://huggingface.co/mlc-ai) ·
+[transformers.js](https://github.com/huggingface/transformers.js) ·
+[ONNX Runtime Web](https://github.com/microsoft/onnxruntime) ·
+[Sopro](https://github.com/samuel-vitorino/sopro) ·
+[Moonshine](https://huggingface.co/onnx-community/moonshine-base-ONNX).
+
+The page: [React](https://react.dev) ·
 [three.js](https://threejs.org) · [Rapier](https://rapier.rs) ·
 [Vite](https://vite.dev).
 
