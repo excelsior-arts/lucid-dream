@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Before any stylesheet: the browser paints the blank canvas between two
+     documents using this, and reads it while parsing the head. Declaring dark
+     in CSS is too late — that is the white flash on navigation. -->
+<meta name="color-scheme" content="dark">
+<!-- Inline, and first: the bundle is a separate request, and a browser paints
+     a new document before it arrives. Without this the first frame is white —
+     invisible in Safari, which covers it with a view transition, and a flash
+     in Firefox, which has none. -->
+<style>html{background:#05060b}</style>
+<!-- No zooming. This is a room drawn to the size of the screen, with a
+     conversation projected onto a pane inside it — pinched to 1.4 it is a
+     corner of a room and a column of type running off the edge, and a phone
+     that zooms in on a focused field leaves it there. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- The bands a phone keeps for itself, above the notch and below the home
+     bar. A starting value for the first paint; the room's own void takes it
+     from here as soon as one is built. -->
+<meta name="theme-color" content="#0a0610">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- PNG first, .ico last. A browser is entitled to take the first icon it
+     understands, and every one of them understands a PNG; the .ico is here
+     for the ones that ask the root of the site for that name and nothing
+     else. The addresses are the server's own — public/shared mirrors them so
+     they resolve in the dev server and in the built files alike. -->
+<link rel="icon" type="image/png" sizes="32x32" href="/lucid-dream/shared/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/lucid-dream/shared/icons/icon-16.png">
+<link rel="icon" href="/lucid-dream/shared/icons/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" sizes="180x180" href="/lucid-dream/shared/icons/icon-180.png">
+<link rel="manifest" href="/lucid-dream/shared/manifest.webmanifest">
+<title>Lucid Dream</title>
+<meta name="description" content="Lucid Trip: A figure catches fire and walks to the sea. Lucid Talk: A box of pills. Take one and dream out loud.">
+<meta property="og:title" content="Lucid Dream">
+<meta property="og:description" content="Lucid Trip: A figure catches fire and walks to the sea. Lucid Talk: A box of pills. Take one and dream out loud.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://excelsior-arts.github.io/lucid-dream/">
+<meta property="og:image" content="https://excelsior-arts.github.io/lucid-dream/og/shelf.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Lucid Dream shelf: the Lucid Trip and Lucid Talk boxes, closed, under a night sky">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image:alt" content="The Lucid Dream shelf: the Lucid Trip and Lucid Talk boxes, closed, under a night sky">
+  <script type="module" crossorigin src="/lucid-dream/assets/index-B5hKykHq.js"></script>
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/rolldown-runtime-hePW80VL.js">
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/shell-DdBBXQT-.js">
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/preload-helper-DeHAP_g1.js">
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/manifest-D7uEQKcc.js">
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/voice-tags-BxNRUble.js">
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/stall-D9sUcaGP.js">
+  <link rel="modulepreload" crossorigin href="/lucid-dream/assets/machine-BB7fl3XH.js">
+  <link rel="stylesheet" crossorigin href="/lucid-dream/assets/src-PMeuVCL-.css">
+  <link rel="stylesheet" crossorigin href="/lucid-dream/assets/index-CaSyD8T5.css">
+</head>
+<body>
+<div id="app"></div>
+</body>
+</html>
